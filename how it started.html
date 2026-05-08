@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLB Player Stats • Pure JS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        
+        :root {
+            --primary: #0f172a;
+        }
+        
+        body {
+            font-family: 'Inter', system_ui, sans-serif;
+        }
+        
+        .font-display {
+            font-family: 'Space Grotesk', 'Inter', system_ui, sans-serif;
+            font-weight: 600;
+        }
+
+        .stat-card {
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .mlb-gradient {
+            background: linear-gradient(135deg, #0f172a 0%, #1e2937 100%);
+        }
+
+        .stat-value {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .section-header {
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .stats-table {
+            font-size: 0.875rem;
+        }
+
+        .loading {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .player-headshot {
+            box-shadow: 0 10px 15px -3px rgb(15 23 42 / 0.1), 0 4px 6px -4px rgb(15 23 42 / 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .player-headshot:hover {
+            transform: scale(1.03);
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            line-height: 1;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <!-- Header -->
+    <div class="border-b border-slate-800 bg-slate-900">
+        <div class="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-x-3">
+                <div class="w-9 h-9 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-inner">
+                    <i class="fa-solid fa-baseball-ball text-white text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-display text-3xl font-semibold tracking-tighter">MLB Stats</h1>
+                    <p class="text-xs text-slate-500 -mt-1">Pure JavaScript • No backend</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-x-2 text-xs px-3 py-1.5 bg-slate-800 rounded-3xl border border-slate-700">
+                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span class="text-emerald-400 font-medium">LIVE DATA</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-3xl mx-auto px-6 py-8">
+        <!-- Controls -->
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <!-- Player Name -->
+                <div class="md:col-span-5">
+                    <label class="section-header text-slate-400 mb-1.5 block">PLAYER NAME</label>
+                    <div class="relative">
+                        <input id="playerName" 
+                               type="text" 
+                               value="Aaron Judge"
+                               class="w-full bg-slate-800 border border-slate-600 focus:border-emerald-500 transition-colors text-white placeholder:text-slate-500 rounded-2xl px-4 py-3 text-sm focus:outline-none">
+                        <div class="absolute right-4 top-3.5 text-slate-500">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Season -->
+                <div class="md:col-span-3">
+                    <label class="section-header text-slate-400 mb-1.5 block">SEASON</label>
+                    <select id="season" 
+                            class="w-full bg-slate-800 border border-slate-600 focus:border-emerald-500 transition-colors text-white rounded-2xl px-4 py-3 text-sm focus:outline-none">
+                        <option value="2025">2025</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                        <option value="2022">2022</option>
+                        <option value="2021">2021</option>
+                        <option value="2020">2020</option>
+                    </select>
+                </div>
+
+                <!-- Stat Type -->
+                <div class="md:col-span-4">
+                    <label class="section-header text-slate-400 mb-1.5 block">STAT TYPE</label>
+                    <div class="flex bg-slate-800 border border-slate-600 rounded-2xl p-1">
+                        <button onclick="setStatType('hitting')" id="btn-hitting"
+                                class="flex-1 px-4 py-2 text-sm font-medium rounded-[14px] transition-all bg-emerald-500 text-white shadow-sm">
+                            <i class="fa-solid fa-baseball mr-2"></i>Hitting
+                        </button>
+                        <button onclick="setStatType('pitching')" id="btn-pitching"
+                                class="flex-1 px-4 py-2 text-sm font-medium rounded-[14px] transition-all text-slate-300 hover:text-white">
+                            <i class="fa-solid fa-mound mr-2"></i>Pitching
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-5 flex justify-end">
+                <button onclick="fetchPlayerStats()"
+                        class="px-8 py-3 bg-white hover:bg-slate-100 transition-all text-slate-900 font-semibold rounded-2xl flex items-center gap-x-2 text-sm shadow-lg shadow-white/10 active:scale-[0.985]">
+                    <i class="fa-solid fa-sync-alt"></i>
+                    <span>Fetch Stats</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="results" class="hidden">
+            <!-- Player Header -->
+            <div class="flex flex-col md:flex-row gap-6 items-start mb-8">
+                <div class="flex-shrink-0">
+                    <img id="headshot" 
+                         class="player-headshot w-28 h-28 rounded-3xl object-cover border-2 border-slate-700 bg-slate-800"
+                         alt="Player headshot"
+                         onerror="this.src='https://via.placeholder.com/112x112/334155/64748b?text=MLB'">
+                </div>
+                
+                <div class="flex-1 pt-1">
+                    <div class="flex items-center gap-x-3">
+                        <h2 id="playerFullName" class="font-display text-4xl font-semibold tracking-tighter"></h2>
+                        <div id="activeBadge" 
+                             class="px-3 py-1 text-xs font-bold bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center gap-x-1.5 border border-emerald-500/30">
+                            <i class="fa-solid fa-check text-xs"></i>
+                            <span>ACTIVE</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-x-4 mt-1 text-sm">
+                        <div class="flex items-center gap-x-2">
+                            <span id="position" class="font-mono text-emerald-400 font-semibold"></span>
+                            <span class="text-slate-500">•</span>
+                            <span id="team" class="font-medium"></span>
+                        </div>
+                        <div id="batsThrows" class="px-2.5 py-px text-xs font-mono bg-slate-800 rounded border border-slate-700"></div>
+                    </div>
+                    
+                    <div class="mt-3 flex items-center gap-x-4 text-xs text-slate-400">
+                        <div><span class="font-medium text-slate-300">Born:</span> <span id="birthDate"></span></div>
+                        <div><span class="font-medium text-slate-300">Height/Weight:</span> <span id="physical"></span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Metrics -->
+            <div class="mb-8">
+                <div class="section-header text-slate-400 mb-3 px-1">2025 SEASON HIGHLIGHTS</div>
+                <div id="metricsRow" class="grid grid-cols-3 md:grid-cols-6 gap-3">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Full Stats Table -->
+            <div class="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between bg-slate-800/50">
+                    <div class="font-semibold text-sm flex items-center gap-x-2">
+                        <i class="fa-solid fa-table text-emerald-400"></i>
+                        <span>FULL STAT BREAKDOWN</span>
+                    </div>
+                    <div id="teamSeason" class="text-xs px-3 py-1 bg-slate-700 rounded-2xl text-slate-300 font-mono"></div>
+                </div>
+                
+                <div class="p-6">
+                    <table class="w-full stats-table">
+                        <thead>
+                            <tr class="border-b border-slate-700 text-xs text-slate-400">
+                                <th class="text-left font-normal pb-3">STATISTIC</th>
+                                <th class="text-right font-normal pb-3">VALUE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statsTableBody" class="text-sm divide-y divide-slate-800">
+                            <!-- Populated dynamically by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mt-4 text-center">
+                <div class="inline-flex items-center gap-x-2 text-[10px] text-slate-500">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>Data from official MLB Stats API • Updated live</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty / Error State -->
+        <div id="emptyState" class="text-center py-16 border border-dashed border-slate-700 rounded-3xl">
+            <div class="mx-auto w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mb-4">
+                <i class="fa-solid fa-baseball-ball text-3xl text-slate-700"></i>
+            </div>
+            <h3 class="font-semibold text-lg">Ready to explore?</h3>
+            <p class="text-sm text-slate-400 max-w-xs mx-auto mt-1">Enter any MLB player name above and click "Fetch Stats"</p>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind script
+        function initializeTailwind() {
+            document.documentElement.style.setProperty('--accent', '#10b981');
+        }
+
+        let currentStatType = 'hitting';
+
+        function setStatType(type) {
+            currentStatType = type;
+            
+            // Update button styles
+            const hittingBtn = document.getElementById('btn-hitting');
+            const pitchingBtn = document.getElementById('btn-pitching');
+            
+            if (type === 'hitting') {
+                hittingBtn.classList.add('bg-emerald-500', 'text-white', 'shadow-sm');
+                hittingBtn.classList.remove('text-slate-300', 'hover:text-white');
+                pitchingBtn.classList.remove('bg-emerald-500', 'text-white', 'shadow-sm');
+                pitchingBtn.classList.add('text-slate-300', 'hover:text-white');
+            } else {
+                pitchingBtn.classList.add('bg-emerald-500', 'text-white', 'shadow-sm');
+                pitchingBtn.classList.remove('text-slate-300', 'hover:text-white');
+                hittingBtn.classList.remove('bg-emerald-500', 'text-white', 'shadow-sm');
+                hittingBtn.classList.add('text-slate-300', 'hover:text-white');
+            }
+        }
+
+        async function fetchPlayerStats() {
+            const playerName = document.getElementById('playerName').value.trim();
+            const season = document.getElementById('season').value;
+            
+            if (!playerName) {
+                alert("Please enter a player name");
+                return;
+            }
+
+            // Show loading state
+            const resultsDiv = document.getElementById('results');
+            const emptyState = document.getElementById('emptyState');
+            resultsDiv.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            
+            // Create loading indicator
+            const loadingHTML = `
+                <div class="flex flex-col items-center justify-center py-12">
+                    <div class="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p class="text-sm text-slate-400">Fetching stats from MLB API...</p>
+                </div>
+            `;
+            resultsDiv.innerHTML = loadingHTML;
+            resultsDiv.classList.remove('hidden');
+
+            try {
+                // Step 1: Search for player
+                const searchUrl = `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(playerName.replace(/ /g, ','))}`;
+                const searchResponse = await fetch(searchUrl);
+                
+                if (!searchResponse.ok) throw new Error("Player search failed");
+                
+                const searchData = await searchResponse.json();
+                
+                if (!searchData.people || searchData.people.length === 0) {
+                    throw new Error(`No player found matching "${playerName}"`);
+                }
+                
+                const player = searchData.people[0];
+                const playerId = player.id;
+                const fullName = player.fullName || playerName;
+
+                // Step 2: Get detailed player info
+                const personUrl = `https://statsapi.mlb.com/api/v1/people/${playerId}`;
+                const personResponse = await fetch(personUrl);
+                const personData = await personResponse.json();
+                const personInfo = personData.people ? personData.people[0] : {};
+
+                // Step 3: Get season stats
+                const statsUrl = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=season&season=${season}&group=${currentStatType}`;
+                const statsResponse = await fetch(statsUrl);
+                
+                if (!statsResponse.ok) throw new Error("Stats not available for this season");
+                
+                const statsData = await statsResponse.json();
+                
+                if (!statsData.stats || !statsData.stats[0] || !statsData.stats[0].splits || statsData.stats[0].splits.length === 0) {
+                    throw new Error(`No ${currentStatType} stats found for ${fullName} in ${season}`);
+                }
+
+                const split = statsData.stats[0].splits[0];
+                const stats = split.stat || {};
+                const teamName = split.team ? split.team.name : (personInfo.currentTeam ? personInfo.currentTeam.name : 'N/A');
+
+                // Render everything
+                renderPlayerUI(player, personInfo, stats, teamName, season, fullName);
+                
+            } catch (error) {
+                console.error(error);
+                resultsDiv.innerHTML = `
+                    <div class="bg-red-900/20 border border-red-500/30 rounded-3xl p-8 text-center">
+                        <i class="fa-solid fa-exclamation-triangle text-red-400 text-3xl mb-4"></i>
+                        <h3 class="font-semibold text-lg mb-1">Something went wrong</h3>
+                        <p class="text-sm text-red-300 max-w-xs mx-auto">${error.message}</p>
+                        
+                        <button onclick="document.getElementById('results').classList.add('hidden'); document.getElementById('emptyState').classList.remove('hidden')" 
+                                class="mt-6 px-5 py-2 text-xs bg-red-500/10 hover:bg-red-500/20 transition-colors text-red-400 rounded-2xl border border-red-500/30">
+                            Try again
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function renderPlayerUI(player, personInfo, stats, teamName, season, fullName) {
+            const resultsDiv = document.getElementById('results');
+            const emptyState = document.getElementById('emptyState');
+            emptyState.classList.add('hidden');
+            
+            // Build the full UI
+            resultsDiv.innerHTML = `
+                <!-- Player Header -->
+                <div class="flex flex-col md:flex-row gap-6 items-start mb-8">
+                    <div class="flex-shrink-0">
+                        <img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_200,h_200,c_fill,d_people:generic:action:hero:650/d_people:generic:action:hero:650/v1/people/${player.id}/headshot/67/current" 
+                             class="player-headshot w-28 h-28 rounded-3xl object-cover border-2 border-slate-700 bg-slate-800"
+                             alt="${fullName} headshot"
+                             onerror="this.src='https://via.placeholder.com/112x112/334155/64748b?text=MLB'">
+                    </div>
+                    
+                    <div class="flex-1 pt-1">
+                        <div class="flex items-center gap-x-3">
+                            <h2 class="font-display text-4xl font-semibold tracking-tighter">${fullName}</h2>
+                            <div class="px-3 py-1 text-xs font-bold bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center gap-x-1.5 border border-emerald-500/30">
+                                <i class="fa-solid fa-check text-xs"></i>
+                                <span>ACTIVE</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center gap-x-4 mt-1 text-sm">
+                            <div class="flex items-center gap-x-2">
+                                <span class="font-mono text-emerald-400 font-semibold">${personInfo.primaryPosition ? personInfo.primaryPosition.abbreviation : 'N/A'}</span>
+                                <span class="text-slate-500">•</span>
+                                <span class="font-medium">${teamName}</span>
+                            </div>
+                            <div class="px-2.5 py-px text-xs font-mono bg-slate-800 rounded border border-slate-700">
+                                ${personInfo.batSide ? personInfo.batSide.code : '?'} / ${personInfo.pitchHand ? personInfo.pitchHand.code : '?'}
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3 flex items-center gap-x-4 text-xs text-slate-400">
+                            <div><span class="font-medium text-slate-300">Born:</span> ${personInfo.birthDate || 'N/A'}</div>
+                            <div><span class="font-medium text-slate-300">Height/Weight:</span> ${personInfo.height || 'N/A'} / ${personInfo.weight || 'N/A'} lbs</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Metrics -->
+                <div class="mb-8">
+                    <div class="section-header text-slate-400 mb-3 px-1">${season} SEASON HIGHLIGHTS</div>
+                    <div class="grid grid-cols-3 md:grid-cols-6 gap-3" id="metricsRow">
+                        ${createMetricsHTML(stats, currentStatType)}
+                    </div>
+                </div>
+
+                <!-- Full Stats Table -->
+                <div class="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between bg-slate-800/50">
+                        <div class="font-semibold text-sm flex items-center gap-x-2">
+                            <i class="fa-solid fa-table text-emerald-400"></i>
+                            <span>FULL STAT BREAKDOWN</span>
+                        </div>
+                        <div class="text-xs px-3 py-1 bg-slate-700 rounded-2xl text-slate-300 font-mono">${teamName} • ${season}</div>
+                    </div>
+                    
+                    <div class="p-6">
+                        <table class="w-full stats-table">
+                            <thead>
+                                <tr class="border-b border-slate-700 text-xs text-slate-400">
+                                    <th class="text-left font-normal pb-3">STATISTIC</th>
+                                    <th class="text-right font-normal pb-3">VALUE</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm divide-y divide-slate-800">
+                                ${createStatsTableHTML(stats)}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <div class="inline-flex items-center gap-x-2 text-[10px] text-slate-500">
+                        <i class="fa-solid fa-info-circle"></i>
+                        <span>Data from official MLB Stats API • Updated live • No backend required</span>
+                    </div>
+                </div>
+            `;
+            
+            resultsDiv.classList.remove('hidden');
+        }
+
+        function createMetricsHTML(stats, type) {
+            let metrics = [];
+            
+            if (type === 'hitting') {
+                metrics = [
+                    { label: 'AVG', value: stats.avg || '.000' },
+                    { label: 'HR', value: stats.homeRuns || 0 },
+                    { label: 'RBI', value: stats.rbi || 0 },
+                    { label: 'OPS', value: stats.ops || '.000' },
+                    { label: 'Hits', value: stats.hits || 0 },
+                    { label: 'AB', value: stats.atBats || 0 }
+                ];
+            } else {
+                metrics = [
+                    { label: 'ERA', value: stats.era || '0.00' },
+                    { label: 'W', value: stats.wins || 0 },
+                    { label: 'L', value: stats.losses || 0 },
+                    { label: 'SO', value: stats.strikeOuts || 0 },
+                    { label: 'IP', value: stats.inningsPitched || '0.0' },
+                    { label: 'WHIP', value: stats.whip || '0.00' }
+                ];
+            }
+            
+            return metrics.map(m => `
+                <div class="stat-card bg-slate-800 border border-slate-700 rounded-2xl p-4 text-center">
+                    <div class="text-xs text-slate-400 mb-1">${m.label}</div>
+                    <div class="metric-value text-white font-semibold">${m.value}</div>
+                </div>
+            `).join('');
+        }
+
+        function createStatsTableHTML(stats) {
+            // Filter to the most useful stats
+            const interestingKeys = [
+                'avg', 'homeRuns', 'rbi', 'ops', 'hits', 'atBats', 'obp', 'slg', 
+                'strikeOuts', 'baseOnBalls', 'era', 'wins', 'losses', 'inningsPitched', 
+                'whip', 'gamesPlayed', 'gamesStarted', 'doubles', 'triples', 'stolenBases'
+            ];
+            
+            let rows = '';
+            
+            for (let key in stats) {
+                if (interestingKeys.includes(key) && stats[key] !== null && stats[key] !== undefined) {
+                    const displayKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                    rows += `
+                        <tr>
+                            <td class="py-3 pr-4 text-slate-300">${displayKey}</td>
+                            <td class="py-3 text-right font-mono font-semibold text-white">${stats[key]}</td>
+                        </tr>
+                    `;
+                }
+            }
+            
+            if (!rows) {
+                rows = `<tr><td colspan="2" class="py-4 text-center text-slate-400">No detailed stats available</td></tr>`;
+            }
+            
+            return rows;
+        }
+
+        // Keyboard support
+        function setupKeyboardSupport() {
+            const input = document.getElementById('playerName');
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    fetchPlayerStats();
+                }
+            });
+            
+            // Set default season to 2025
+            document.getElementById('season').value = '2025';
+        }
+
+        // Initialize everything
+        function init() {
+            initializeTailwind();
+            setupKeyboardSupport();
+            
+            // Set initial button state
+            document.getElementById('btn-hitting').classList.add('bg-emerald-500', 'text-white', 'shadow-sm');
+            
+            // Optional: Auto-load a popular player on first visit (commented out for clean UX)
+            // setTimeout(() => { document.getElementById('playerName').value = 'Shohei Ohtani'; fetchPlayerStats(); }, 800);
+            
+            console.log('%c[MLB Stats] Pure JavaScript app initialized successfully', 'color:#64748b');
+        }
+
+        // Boot the app
+        window.onload = init;
+    </script>
+</body>
+</html>

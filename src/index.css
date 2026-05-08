@@ -1,0 +1,231 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+}
+
+.live-pulse {
+  animation: livePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.linescore-table {
+  border-collapse: collapse;
+}
+
+.linescore-table td, .linescore-table th {
+  white-space: nowrap;
+}
+
+.dot-ball   { box-shadow: 0 0 6px rgba(74, 222, 128, 0.6); }
+.dot-strike { box-shadow: 0 0 6px rgba(251, 191, 36, 0.6); }
+.dot-out    { box-shadow: 0 0 6px rgba(248, 113, 113, 0.6); }
+
+/* Custom react-datepicker styling for MLB dark theme */
+.react-datepicker-custom {
+  background-color: #0f172a !important;
+  border: 1px solid #334155 !important;
+  border-radius: 1.5rem !important;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4) !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+
+.react-datepicker__header {
+  background-color: #1e2937 !important;
+  border-bottom: 1px solid #334155 !important;
+  border-radius: 1.5rem 1.5rem 0 0 !important;
+  padding-top: 1rem !important;
+}
+
+.react-datepicker__current-month {
+  color: #fff !important;
+  font-weight: 600 !important;
+  font-size: 0.95rem !important;
+}
+
+.react-datepicker__day-name {
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+.react-datepicker__day {
+  color: #e2e8f0 !important;
+  border-radius: 0.5rem !important;
+  transition: all 0.1s ease !important;
+}
+
+.react-datepicker__day:hover {
+  background-color: #1e2937 !important;
+  color: #fff !important;
+}
+
+.react-datepicker__day--selected {
+  background-color: #10b981 !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+
+.react-datepicker__day--keyboard-selected {
+  background-color: #10b981 !important;
+  color: #fff !important;
+}
+
+.react-datepicker__day--today-custom {
+  background-color: #334155 !important;
+  color: #10b981 !important;
+  font-weight: 600 !important;
+  border: 1px solid #10b981 !important;
+}
+
+.react-datepicker__navigation {
+  top: 1rem !important;
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: #64748b !important;
+}
+
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+  border-color: #fff !important;
+}
+
+.react-datepicker__day--disabled {
+  color: #475569 !important;
+  cursor: not-allowed !important;
+}
+
+/* Hide app nav on mobile when viewing a game page */
+@media (max-width: 639px) {
+  body.game-page-open nav#main-nav {
+    display: none !important;
+  }
+}
+
+/* Today button styling */
+.react-datepicker__today-button {
+  background-color: #1e2937 !important;
+  border-top: 1px solid #334155 !important;
+  color: #10b981 !important;
+  font-weight: 600 !important;
+  border-radius: 0 0 1.5rem 1.5rem !important;
+  padding: 0.75rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.react-datepicker__today-button:hover {
+  background-color: #10b981 !important;
+  color: #fff !important;
+}
+
+/* ─── LIGHT THEME ─────────────────────────────────────────────────────────── */
+/* When html does NOT have .dark class, override dark Tailwind utility colors.   */
+/* html:not(.dark) [class~="foo"] has specificity 0-2-1, beating Tailwind 0-1-0 */
+
+html:not(.dark) { color-scheme: light; }
+
+/* ── Backgrounds ── */
+html:not(.dark) [class~="bg-slate-950"]      { background-color: #f8fafc; }
+html:not(.dark) [class~="bg-slate-900"]      { background-color: #ffffff; }
+html:not(.dark) [class~="bg-slate-800"]      { background-color: #f1f5f9; }
+html:not(.dark) [class~="bg-slate-700"]      { background-color: #e2e8f0; }
+html:not(.dark) [class~="bg-[#121827]"]      { background-color: #ffffff; }
+html:not(.dark) [class~="bg-[#0f1923]"]      { background-color: #f8fafc; }
+
+/* Opacity variants (Tailwind encodes the slash literally in the class token) */
+html:not(.dark) [class~="bg-slate-900\/95"]  { background-color: rgba(255,255,255,0.95); }
+html:not(.dark) [class~="bg-slate-900\/80"]  { background-color: rgba(255,255,255,0.80); }
+html:not(.dark) [class~="bg-slate-900\/70"]  { background-color: rgba(255,255,255,0.70); }
+html:not(.dark) [class~="bg-slate-900\/60"]  { background-color: rgba(255,255,255,0.60); }
+html:not(.dark) [class~="bg-slate-900\/50"]  { background-color: rgba(255,255,255,0.50); }
+html:not(.dark) [class~="bg-slate-900\/40"]  { background-color: rgba(255,255,255,0.40); }
+html:not(.dark) [class~="bg-slate-800\/80"]  { background-color: rgba(241,245,249,0.80); }
+html:not(.dark) [class~="bg-slate-800\/70"]  { background-color: rgba(241,245,249,0.70); }
+html:not(.dark) [class~="bg-slate-800\/60"]  { background-color: rgba(241,245,249,0.60); }
+html:not(.dark) [class~="bg-slate-800\/50"]  { background-color: rgba(241,245,249,0.50); }
+html:not(.dark) [class~="bg-slate-800\/40"]  { background-color: rgba(241,245,249,0.40); }
+html:not(.dark) [class~="bg-slate-800\/30"]  { background-color: rgba(241,245,249,0.30); }
+html:not(.dark) [class~="bg-slate-950\/80"]  { background-color: rgba(248,250,252,0.80); }
+html:not(.dark) [class~="bg-slate-950\/50"]  { background-color: rgba(248,250,252,0.50); }
+html:not(.dark) [class~="bg-slate-950\/40"]  { background-color: rgba(248,250,252,0.40); }
+
+/* ── Borders ── */
+html:not(.dark) [class~="border-slate-800"]       { border-color: #e2e8f0; }
+html:not(.dark) [class~="border-slate-700"]       { border-color: #cbd5e1; }
+html:not(.dark) [class~="border-slate-600"]       { border-color: #94a3b8; }
+html:not(.dark) [class~="border-slate-700\/60"]   { border-color: rgba(203,213,225,0.60); }
+html:not(.dark) [class~="border-slate-700\/50"]   { border-color: rgba(203,213,225,0.50); }
+html:not(.dark) [class~="border-slate-700\/40"]   { border-color: rgba(203,213,225,0.40); }
+html:not(.dark) [class~="border-slate-700\/30"]   { border-color: rgba(203,213,225,0.30); }
+html:not(.dark) [class~="border-slate-800\/50"]   { border-color: rgba(226,232,240,0.50); }
+html:not(.dark) [class~="border-slate-800\/30"]   { border-color: rgba(226,232,240,0.30); }
+
+/* ── Text ── */
+html:not(.dark) [class~="text-slate-200"]  { color: #1e293b; }
+html:not(.dark) [class~="text-slate-300"]  { color: #334155; }
+html:not(.dark) [class~="text-slate-400"]  { color: #64748b; }
+html:not(.dark) [class~="text-slate-500"]  { color: #94a3b8; }
+html:not(.dark) [class~="text-slate-600"]  { color: #64748b; }
+
+/* ── Hover backgrounds ── */
+html:not(.dark) [class~="hover:bg-slate-900"]:hover      { background-color: #f8fafc; }
+html:not(.dark) [class~="hover:bg-slate-800"]:hover      { background-color: #f1f5f9; }
+html:not(.dark) [class~="hover:bg-slate-800\/40"]:hover  { background-color: rgba(241,245,249,0.40); }
+html:not(.dark) [class~="hover:bg-slate-800\/60"]:hover  { background-color: rgba(241,245,249,0.60); }
+
+/* ── Gradients (override Tailwind CSS vars) ── */
+html:not(.dark) [class~="from-slate-950"]      { --tw-gradient-from: #f8fafc var(--tw-gradient-from-position); --tw-gradient-to: rgb(248 250 252 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+html:not(.dark) [class~="from-slate-900"]      { --tw-gradient-from: #ffffff var(--tw-gradient-from-position); --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+html:not(.dark) [class~="from-slate-800"]      { --tw-gradient-from: #f1f5f9 var(--tw-gradient-from-position); --tw-gradient-to: rgb(241 245 249 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+html:not(.dark) [class~="from-slate-800\/60"]  { --tw-gradient-from: rgba(241,245,249,0.60) var(--tw-gradient-from-position); }
+html:not(.dark) [class~="to-slate-950"]        { --tw-gradient-to: #f8fafc var(--tw-gradient-to-position); }
+html:not(.dark) [class~="to-slate-900"]        { --tw-gradient-to: #ffffff var(--tw-gradient-to-position); }
+html:not(.dark) [class~="to-slate-900\/60"]    { --tw-gradient-to: rgba(255,255,255,0.60) var(--tw-gradient-to-position); }
+html:not(.dark) [class~="via-slate-900"]       { --tw-gradient-via: #ffffff; --tw-gradient-stops: var(--tw-gradient-from), #ffffff, var(--tw-gradient-to); }
+
+/* ── Divide colors ── */
+html:not(.dark) [class~="divide-slate-800"] > * + * { border-color: #e2e8f0; }
+html:not(.dark) [class~="divide-slate-700"] > * + * { border-color: #cbd5e1; }
+
+/* ── Ring colors ── */
+html:not(.dark) [class~="ring-slate-800"]  { --tw-ring-color: #e2e8f0; }
+html:not(.dark) [class~="ring-slate-700"]  { --tw-ring-color: #cbd5e1; }
+
+/* ── Black overlays (stadium backgrounds etc.) ── */
+html:not(.dark) [class~="bg-black\/60"]  { background-color: rgba(248,250,252,0.85); }
+html:not(.dark) [class~="bg-black\/40"]  { background-color: rgba(248,250,252,0.70); }
+html:not(.dark) [class~="bg-black\/20"]  { background-color: rgba(248,250,252,0.50); }
+
+/* ── React DatePicker light theme ── */
+html:not(.dark) .react-datepicker-custom {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important;
+}
+html:not(.dark) .react-datepicker__header {
+  background-color: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+html:not(.dark) .react-datepicker__current-month { color: #1e293b !important; }
+html:not(.dark) .react-datepicker__day-name      { color: #64748b !important; }
+html:not(.dark) .react-datepicker__day           { color: #334155 !important; }
+html:not(.dark) .react-datepicker__day:hover     { background-color: #f1f5f9 !important; color: #1e293b !important; }
+html:not(.dark) .react-datepicker__day--selected { background-color: #10b981 !important; color: #fff !important; }
+html:not(.dark) .react-datepicker__day--keyboard-selected { background-color: #10b981 !important; color: #fff !important; }
+html:not(.dark) .react-datepicker__today-button  { background-color: #f8fafc !important; border-top: 1px solid #e2e8f0 !important; color: #10b981 !important; }
+html:not(.dark) .react-datepicker__today-button:hover { background-color: #10b981 !important; color: #fff !important; }
+html:not(.dark) .react-datepicker__navigation-icon::before { border-color: #94a3b8 !important; }
+
+
