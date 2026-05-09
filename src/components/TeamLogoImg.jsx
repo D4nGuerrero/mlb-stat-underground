@@ -2,8 +2,8 @@ import { useTheme } from '../context/ThemeContext';
 
 /**
  * Theme-aware team logo image.
- * Dark mode  → /team-logos/{id}.svg                      (full-color primary)
- * Light mode → /team-logos/team-cap-on-light/{id}.svg    (dark cap for light bg)
+ * Dark mode  → /team-logos/team-cap-on-dark/{id}.svg
+ * Light mode → /team-logos/team-cap-on-light/{id}.svg
  */
 export default function TeamLogoImg({ teamId, className, alt, onError, style }) {
   const { isDark } = useTheme();
@@ -11,7 +11,7 @@ export default function TeamLogoImg({ teamId, className, alt, onError, style }) 
   if (!teamId) return null;
 
   const src = isDark
-    ? `https://www.mlbstatic.com/team-logos/${teamId}.svg`
+    ? `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${teamId}.svg`
     : `https://www.mlbstatic.com/team-logos/team-cap-on-light/${teamId}.svg`;
 
   return (

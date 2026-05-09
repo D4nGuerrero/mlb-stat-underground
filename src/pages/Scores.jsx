@@ -7,6 +7,13 @@ import { teamLogoUrl } from '../utils/mlbHelpers';
 export default function GameDay() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [favoriteTeams, setFavoriteTeams] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]');
+    } catch {
+      return [];
+    }
+  });
   const [games, setGames] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [liveCount, setLiveCount] = useState(0);
@@ -65,7 +72,7 @@ export default function GameDay() {
       const dateToFetch = dateToUse || selectedDate;
       const dateStr = getDateStr(dateToFetch);
       const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore,probablePitcher`,
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
       );
       const data = await res.json();
       const dayGames = data.dates?.[0]?.games || [];
@@ -85,6 +92,20 @@ export default function GameDay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    // When coming back from TeamPage, favorites may have changed.
+    const refreshFav = () => {
+      try {
+        setFavoriteTeams(JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]'));
+      } catch {
+        setFavoriteTeams([]);
+      }
+    };
+    refreshFav();
+    window.addEventListener('focus', refreshFav);
+    return () => window.removeEventListener('focus', refreshFav);
+  }, []);
+
   // Sort: Live → Upcoming → Final
   const sortedGames = [...games].sort((a, b) => {
     const priority = (g) => {
@@ -95,6 +116,16 @@ export default function GameDay() {
     };
     const pa = priority(a), pb = priority(b);
     if (pa !== pb) return pa - pb;
+
+    // Favorite teams first (within same bucket)
+    const isFav = (g) => {
+      const awayId = g.teams?.away?.team?.id;
+      const homeId = g.teams?.home?.team?.id;
+      return favoriteTeams.includes(awayId) || favoriteTeams.includes(homeId);
+    };
+    const fa = isFav(a), fb = isFav(b);
+    if (fa !== fb) return fa ? -1 : 1;
+
     // Within upcoming, sort by time
     if (pa === 1) return new Date(a.gameDate) - new Date(b.gameDate);
     return 0;
@@ -112,23 +143,66 @@ export default function GameDay() {
     return { isLive, isFinal, isDelayed, isPostponed, detail };
   };
 
-  // No-hitter / perfect game detection
+  /**
+   * Batters reaching via BB + HBP (offense drawn vs opposing pitchers). From boxscore team batting.
+   */
+  const battingReachViaWalk = (game, offensiveSide) => {
+    const b = game.boxscore?.teams?.[offensiveSide]?.teamStats?.batting;
+    if (!b) return null;
+    const bb = Number(b.baseOnBalls ?? 0);
+    const hbp = Number(b.hitByPitch ?? 0);
+    return bb + hbp;
+  };
+
+  /**
+   * Perfect game watch: opposing lineup has 0 hits, 0 walks/HBP, and the fielding team has 0 errors.
+   * No-hitter watch: 0 hits but a walk/HBP or a defensive error already occurred.
+   *
+   * Home pitching vs away bats — use away hits/walks and **home** defensive errors (home fields vs away).
+   * Away pitching vs home bats — use home hits/walks and **away** defensive errors.
+   */
   const getNoHitAlert = (game) => {
     const ls = game.linescore;
     if (!ls || game.status.abstractGameState !== 'Live') return null;
     const inning = ls.currentInning || 0;
     if (inning < 2) return null;
-    const awayHits = ls.teams?.away?.hits ?? 1;
-    const homeHits = ls.teams?.home?.hits ?? 1;
-    const awayErr = ls.teams?.away?.errors ?? 1;
-    const homeErr = ls.teams?.home?.errors ?? 1;
+
+    const awayHits = ls.teams?.away?.hits ?? 0;
+    const homeHits = ls.teams?.home?.hits ?? 0;
+    const awayDefErrors = ls.teams?.away?.errors ?? 0;
+    const homeDefErrors = ls.teams?.home?.errors ?? 0;
+
+    const awayReach = battingReachViaWalk(game, 'away');
+    const homeReach = battingReachViaWalk(game, 'home');
+
     const alerts = [];
+
+    // Home club pitching — away offense hitless (walks/HBP = runners via “walk”; errors = home defense)
     if (awayHits === 0) {
-      alerts.push({ side: 'home', type: awayErr === 0 ? 'PG' : 'NH', label: awayErr === 0 ? '✨ PG' : '🚫 NH' });
+      const pgEligible =
+        awayReach != null &&
+        awayReach === 0 &&
+        homeDefErrors === 0;
+      alerts.push({
+        side: 'home',
+        type: pgEligible ? 'PG' : 'NH',
+        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter watch',
+      });
     }
+
+    // Away club pitching — home offense hitless (errors = away defense)
     if (homeHits === 0) {
-      alerts.push({ side: 'away', type: homeErr === 0 ? 'PG' : 'NH', label: homeErr === 0 ? '✨ PG' : '🚫 NH' });
+      const pgEligible =
+        homeReach != null &&
+        homeReach === 0 &&
+        awayDefErrors === 0;
+      alerts.push({
+        side: 'away',
+        type: pgEligible ? 'PG' : 'NH',
+        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter watch',
+      });
     }
+
     return alerts.length > 0 ? alerts : null;
   };
 

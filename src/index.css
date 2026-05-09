@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
@@ -20,6 +20,16 @@ body {
 @keyframes livePulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+.watch-pop {
+  animation: watchPop 220ms ease-out;
+}
+
+@keyframes watchPop {
+  0% { transform: scale(1); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
 }
 
 .linescore-table {

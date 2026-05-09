@@ -34,18 +34,39 @@ export const mlbTeams = [
 ];
 
 export const teamLogoUrl = (teamId) =>
-  `https://www.mlbstatic.com/team-logos/${teamId}.svg`;
+  `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${teamId}.svg`;
 
 export const playerHeadshotUrl = (playerId) =>
-  `https://img.mlbstatic.com/mlb-photos/image/upload/w_120,h_120,c_fill,d_people:generic:action:hero:650/d_people:generic:action:hero:650/v1/people/${playerId}/headshot/67/current`;
+`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`
+
+
+// Hero shot – batter (horizontal pose)
+export const playerHeroShotUrl = (playerId) =>
+`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:action:hero:current.jpg/q_auto:good,w_2208/v1/people/${playerId}/action/hero/current`
 
 // Action shot – batter (vertical pose)
 export const playerActionShotUrl = (playerId) =>
   `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,h_240,c_fill,g_face/v1/people/${playerId}/action/vertical/current`;
 
+
 // Action shot – pitcher (pitching pose)
 export const pitcherActionShotUrl = (playerId) =>
   `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,h_240,c_fill,g_face/v1/people/${playerId}/action/pitching/current`;
+
+
+// Stadium exterior background (prod-gameday.mlbstatic.com) venue id parameter, day/night needs parameter
+export const stadiumExteriorUrl = (venueId, timeOfDay = 'day') =>
+    `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/${venueId}@2x.jpg`
+
+/** Pick day vs night exterior asset from official game date (local browser time). */
+export const stadiumTimeOfDay = (gameDateStr) => {
+  if (!gameDateStr) return 'day';
+  const d = new Date(gameDateStr);
+  if (Number.isNaN(d.getTime())) return 'day';
+  const h = d.getHours();
+  return h >= 18 || h < 7 ? 'night' : 'day';
+};
+
 
 // Stadium infield background (prod-gameday.mlbstatic.com)
 // Uses infield-full with "default" id — per the official gameday asset registry
@@ -55,6 +76,11 @@ export const stadiumInfieldUrl = () =>
 // Batter silhouette art: {cut}/{team:GENERIC}-{homeOrAway}-{stand}@2x.png
 export const batterSilhouetteUrl = (stand = 'R', homeOrAway = 'home') =>
   `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/batters/immortal/GENERIC-${homeOrAway}-${stand}@2x.png`;
+
+// Stadium exterior background (prod-gameday.mlbstatic.com)
+const getStadiumUrl = (venueId, timeOfDay = 'day') => {
+  return `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/${venueId}@2x.jpg`;
+};
 
 export const FALLBACK_HEADSHOT = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56'%3E%3Crect width='56' height='56' fill='%23334155' rx='8'/%3E%3Ccircle cx='28' cy='20' r='9' fill='%2364748b'/%3E%3Cellipse cx='28' cy='44' rx='14' ry='10' fill='%2364748b'/%3E%3C/svg%3E`;
 
@@ -102,113 +128,125 @@ export const renderBaseDiamond = (on1, on2, on3) => {
 };
 
 // ============================================
-// FULL ORIGINAL STRIKE ZONE (from mlb_gameday.html)
+// UPDATED renderStrikeZone — MLB At Bat aesthetic
+// Drop-in replacement for the version in mlbHelpers.js
+// Used for static play-detail sheets (not the live canvas).
 // ============================================
-// opts.bgColor — override the outer rect fill (default '#070d17')
-// opts.compact  — slightly smaller render
+
+// opts.bgColor    — outer rect fill (default transparent)
+// opts.compact    — tighter padding
 export const renderStrikeZone = (playEvents = [], szTop = 3.5, szBot = 1.5, opts = {}) => {
-  const bgColor = opts.bgColor ?? '#070d17';
-  const W = 220,
-    H = 236;
-  const padL = 26,
-    padR = 8,
-    padT = 12,
-    padB = 26;
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
+  const W = 220, H = 240;
+  const PAD_L = 36, PAD_R = 20, PAD_T = 18, PAD_B = 36;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const bgColor = opts.bgColor ?? 'transparent';
 
-  const xMin = -1.75,
-    xMax = 1.75;
-  const zMin = 0.4,
-    zMax = 5.0;
+  const X_RANGE = 2.0;
+  const Z_MIN = 0.5, Z_MAX = 5.5;
 
-  const toX = (px) => padL + ((px - xMin) / (xMax - xMin)) * plotW;
-  const toY = (pz) => padT + plotH - ((pz - zMin) / (zMax - zMin)) * plotH;
+  const toX = (x) => PAD_L + ((x + X_RANGE) / (2 * X_RANGE)) * plotW;
+  const toZ = (z) => PAD_T + plotH - ((z - Z_MIN) / (Z_MAX - Z_MIN)) * plotH;
 
-  const hwPlate = 17 / 24;
-  const zx1 = toX(-hwPlate),
-    zx2 = toX(hwPlate);
-  const zy1 = toY(szTop),
-    zy2 = toY(szBot);
-  const zw = zx2 - zx1,
-    zh = zy2 - zy1;
+  const hw = (17 / 12) / 2; // half plate width in feet
+  const szX1 = toX(-hw), szX2 = toX(hw);
+  const szY1 = toZ(szTop), szY2 = toZ(szBot);
+  const zw = szX2 - szX1, zh = szY2 - szY1;
 
-  const gridLines = [1, 2]
-    .flatMap((i) => [
-      `<line x1="${(zx1 + (zw * i) / 3).toFixed(1)}" y1="${zy1.toFixed(1)}" x2="${(zx1 + (zw * i) / 3).toFixed(1)}" y2="${zy2.toFixed(1)}" stroke="#1e3a4c" stroke-width="0.75"/>`,
-      `<line x1="${zx1.toFixed(1)}" y1="${(zy1 + (zh * i) / 3).toFixed(1)}" x2="${zx2.toFixed(1)}" y2="${(zy1 + (zh * i) / 3).toFixed(1)}" stroke="#1e3a4c" stroke-width="0.75"/>`,
-    ])
-    .join('\n');
+  // Grid
+  const gridLines = [1, 2].flatMap((i) => [
+    `<line x1="${(szX1 + zw * i / 3).toFixed(1)}" y1="${szY1.toFixed(1)}" x2="${(szX1 + zw * i / 3).toFixed(1)}" y2="${szY2.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="0.75"/>`,
+    `<line x1="${szX1.toFixed(1)}" y1="${(szY1 + zh * i / 3).toFixed(1)}" x2="${szX2.toFixed(1)}" y2="${(szY1 + zh * i / 3).toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="0.75"/>`,
+  ]).join('');
 
-  const pm = W / 2,
-    py = H - 6;
-
-  const pitchColor = (desc = '') => {
+  // Pitch color by result
+  const pitchColor = (desc = '', typeCode = '') => {
     const d = desc.toLowerCase();
-    if (d.includes('called strike'))
-      return { f: '#ef4444', s: '#fca5a5', g: '#ef444480' };
-    if (d.includes('swinging strike'))
-      return { f: '#f97316', s: '#fdba74', g: '#f9731680' };
-    if (d.includes('in play'))
-      return { f: '#eab308', s: '#fde047', g: '#eab30880' };
-    if (d.includes('foul tip'))
-      return { f: '#a78bfa', s: '#c4b5fd', g: '#a78bfa80' };
-    if (d.includes('foul'))
-      return { f: '#94a3b8', s: '#cbd5e1', g: '#94a3b840' };
-    if (d.includes('ball'))
-      return { f: '#4ade80', s: '#86efac', g: '#4ade8080' };
-    if (d.includes('hit by'))
-      return { f: '#c084fc', s: '#e9d5ff', g: '#c084fc80' };
-    return { f: '#64748b', s: '#94a3b8', g: '#64748b40' };
+    const TYPE_COLORS = {
+      FF: '#FF3B2F', FT: '#FF5A1F', FC: '#FF8C00', FS: '#FF4500', SI: '#FF5A1F',
+      SL: '#007AFF', CU: '#5856D6', KC: '#6E5DB8', SV: '#00C3E0',
+      CH: '#34C759', EP: '#30D158', KN: '#FFD60A',
+    };
+    const base = TYPE_COLORS[typeCode] || null;
+    if (d.includes('called strike')) return { f: '#FF3B30', s: '#FF6B61', g: 'rgba(255,59,48,0.35)' };
+    if (d.includes('swinging strike')) return { f: '#FF9500', s: '#FFB84D', g: 'rgba(255,149,0,0.35)' };
+    if (d.includes('in play')) return { f: '#FFD60A', s: '#FFE566', g: 'rgba(255,214,10,0.35)' };
+    if (d.includes('foul')) return { f: '#636366', s: '#8E8E93', g: 'rgba(99,99,102,0.25)' };
+    if (d.includes('ball')) return { f: '#30D158', s: '#6DDC87', g: 'rgba(48,209,88,0.3)' };
+    if (d.includes('hit by')) return { f: '#BF5AF2', s: '#D28CF7', g: 'rgba(191,90,242,0.35)' };
+    if (base) return { f: base, s: base, g: `${base}55` };
+    return { f: '#636366', s: '#8E8E93', g: 'rgba(99,99,102,0.25)' };
   };
 
   const pitches = playEvents.filter(
-    (e) => e.isPitch && e.pitchData?.coordinates?.pX != null,
+    (e) => e.isPitch && e.pitchData?.coordinates?.pX != null
   );
 
-  const dots = pitches
-    .map((p, i) => {
-      const { f, s, g } = pitchColor(p.details?.description || '');
-      const cx = toX(p.pitchData.coordinates.pX).toFixed(1);
-      const cy = toY(p.pitchData.coordinates.pZ).toFixed(1);
-      const isLast = i === pitches.length - 1;
-      const op = isLast
-        ? 1
-        : Math.max(0.3, 0.3 + (i / Math.max(pitches.length - 1, 1)) * 0.7);
-      const r = isLast ? 9 : 8;
-      const code = p.details?.type?.code || '?';
-      const mph = p.pitchData?.startSpeed
-        ? Math.round(p.pitchData.startSpeed)
-        : '';
-      const desc = p.details?.description || '';
-      const n = i + 1;
-      return `<g opacity="${op.toFixed(2)}">
-      <title>#${n} ${code}${mph ? ' ' + mph + 'mph' : ''} — ${desc}</title>
-      <circle cx="${cx}" cy="${cy}" r="${r + (isLast ? 1.5 : 0)}" fill="${g}" stroke="none"/>
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}" stroke="${s}" stroke-width="${isLast ? 1.5 : 0.75}"/>
-      <text x="${cx}" y="${(parseFloat(cy) + 3.5).toFixed(1)}" text-anchor="middle" font-size="6.5" font-family="monospace" font-weight="bold" fill="white">${n}</text>
+  const dots = pitches.map((p, i) => {
+    const { f, s, g } = pitchColor(
+      p.details?.description || '',
+      p.details?.type?.code || ''
+    );
+    const cx = toX(p.pitchData.coordinates.pX).toFixed(1);
+    const cy = toZ(p.pitchData.coordinates.pZ).toFixed(1);
+    const isLast = i === pitches.length - 1;
+    const opacity = isLast ? 1 : Math.max(0.35, 0.35 + (i / Math.max(pitches.length - 1, 1)) * 0.55);
+    const r = isLast ? 9 : 7.5;
+    const n = i + 1;
+    const mph = p.pitchData?.startSpeed ? Math.round(p.pitchData.startSpeed) : '';
+    const typeCode = p.details?.type?.code || '?';
+    return `
+    <g opacity="${opacity.toFixed(2)}">
+      <title>#${n} ${typeCode}${mph ? ' ' + mph + 'mph' : ''} — ${p.details?.description || ''}</title>
+      <circle cx="${cx}" cy="${cy}" r="${(r + 5).toFixed(1)}" fill="${g}"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}" stroke="${s}" stroke-width="${isLast ? 1.5 : 1}"/>
+      ${isLast ? `<circle cx="${(parseFloat(cx) - r * 0.28).toFixed(1)}" cy="${(parseFloat(cy) - r * 0.28).toFixed(1)}" r="${(r * 0.3).toFixed(1)}" fill="rgba(255,255,255,0.4)"/>` : ''}
+      <text x="${cx}" y="${(parseFloat(cy) + 3.5).toFixed(1)}" text-anchor="middle" font-size="6.5" font-family="-apple-system,sans-serif" font-weight="700" fill="white">${n}</text>
     </g>`;
-    })
-    .join('\n');
+  }).join('');
 
-  const noData =
-    pitches.length === 0
-      ? `<text x="${W / 2}" y="${zy1 + zh / 2 + 4}" text-anchor="middle" font-size="10" fill="#334155" font-family="sans-serif" font-style="italic">No pitches yet</text>`
-      : '';
+  // Home plate
+  const pm = W / 2;
+  const py = H - PAD_B + 12;
 
   return `<svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block">
-    <rect width="${W}" height="${H}" fill="${bgColor}" rx="8"/>
-    <rect x="${(zx1 - 12).toFixed(1)}" y="${(zy1 - 10).toFixed(1)}" width="${(zw + 24).toFixed(1)}" height="${(zh + 20).toFixed(1)}" fill="none" stroke="#162032" stroke-width="1" rx="3" stroke-dasharray="4,3"/>
-    <rect x="${zx1.toFixed(1)}" y="${zy1.toFixed(1)}" width="${zw.toFixed(1)}" height="${zh.toFixed(1)}" fill="#0c1c2e" rx="1"/>
+    <rect width="${W}" height="${H}" fill="${bgColor}" rx="10"/>
+
+    <!-- Strike zone background -->
+    <rect x="${szX1.toFixed(1)}" y="${szY1.toFixed(1)}" width="${zw.toFixed(1)}" height="${zh.toFixed(1)}"
+          fill="rgba(255,255,255,0.03)" rx="1"/>
+
+    <!-- Grid -->
     ${gridLines}
-    <rect x="${zx1.toFixed(1)}" y="${zy1.toFixed(1)}" width="${zw.toFixed(1)}" height="${zh.toFixed(1)}" fill="none" stroke="#334155" stroke-width="1.5" rx="1"/>
-    <line x1="${(W / 2).toFixed(1)}" y1="${(zy1 - 14).toFixed(1)}" x2="${(W / 2).toFixed(1)}" y2="${(py - 4).toFixed(1)}" stroke="#0f1f30" stroke-width="1" stroke-dasharray="3,4"/>
-    <text x="${(padL - 3).toFixed(1)}" y="${(zy1 + 4).toFixed(1)}" text-anchor="end" font-size="7.5" fill="#3f5068" font-family="monospace">${szTop.toFixed(1)}'</text>
-    <text x="${(padL - 3).toFixed(1)}" y="${(zy2 + 4).toFixed(1)}" text-anchor="end" font-size="7.5" fill="#3f5068" font-family="monospace">${szBot.toFixed(1)}'</text>
-    <polygon points="${pm},${py + 13} ${pm - 9},${py + 6} ${pm - 9},${py} ${pm + 9},${py} ${pm + 9},${py + 6}" fill="#1e2d3d" stroke="#3b5268" stroke-width="1.5"/>
+
+    <!-- Strike zone border -->
+    <rect x="${szX1.toFixed(1)}" y="${szY1.toFixed(1)}" width="${zw.toFixed(1)}" height="${zh.toFixed(1)}"
+          fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" rx="1"
+          filter="url(#szglow)"/>
+
+    <!-- Height labels -->
+    <text x="${(szX1 - 5).toFixed(1)}" y="${(szY1 + 4).toFixed(1)}" text-anchor="end"
+          font-size="8" fill="rgba(255,255,255,0.3)" font-family="-apple-system,sans-serif"
+          font-weight="600">${szTop.toFixed(1)}'</text>
+    <text x="${(szX1 - 5).toFixed(1)}" y="${(szY2 + 4).toFixed(1)}" text-anchor="end"
+          font-size="8" fill="rgba(255,255,255,0.3)" font-family="-apple-system,sans-serif"
+          font-weight="600">${szBot.toFixed(1)}'</text>
+
+    <!-- Home plate -->
+    <polygon points="${pm},${py + 9} ${pm - 8},${py + 4} ${pm - 8},${py - 3} ${pm + 8},${py - 3} ${pm + 8},${py + 4}"
+             fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+
+    <!-- Pitches -->
     ${dots}
-    ${noData}
-    <text x="${W / 2}" y="${H - 1}" text-anchor="middle" font-size="7" fill="#1e3148" font-family="sans-serif">catcher's view</text>
+
+    ${pitches.length === 0
+      ? `<text x="${W / 2}" y="${szY1 + zh / 2 + 4}" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.15)" font-family="-apple-system,sans-serif">No pitches yet</text>`
+      : ''}
+
+    <!-- Label -->
+    <text x="${W / 2}" y="${H - 3}" text-anchor="middle" font-size="7.5"
+          fill="rgba(255,255,255,0.14)" font-family="-apple-system,sans-serif"
+          font-weight="500" letter-spacing="0.08em">CATCHER'S VIEW</text>
   </svg>`;
 };
 

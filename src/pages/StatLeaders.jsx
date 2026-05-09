@@ -94,6 +94,7 @@ export default function StatLeaders() {
   const [category, setCategory] = useState('homeRuns');
   const [season, setSeason] = useState('2026');
   const [leaders, setLeaders] = useState([]);
+  const [leagueFilter, setLeagueFilter] = useState('all'); // 'all' | 'AL' | 'NL'
   const [teamStats, setTeamStats] = useState([]);
   const [teamGroup, setTeamGroup] = useState('hitting');
   const [teamCat, setTeamCat] = useState('homeRuns');
@@ -132,7 +133,7 @@ export default function StatLeaders() {
     setError(null);
     setLeaders([]);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${category}&season=${season}&statGroup=${group}&leaderGameTypes=R&limit=${limit}&sportId=1&hydrate=person,team`;
+      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${category}&season=${season}&statGroup=${group}&leaderGameTypes=R&limit=${limit}&sportId=1&hydrate=person,team(league)`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -185,6 +186,13 @@ export default function StatLeaders() {
   };
 
   const currentCat = allCats.find((c) => c.key === (isTeam ? teamCat : category)) ?? allCats[0];
+  const filteredLeaders = leaders.filter((l) => {
+    if (leagueFilter === 'all') return true;
+    const leagueId = l.team?.league?.id;
+    if (leagueFilter === 'AL') return leagueId === 103;
+    if (leagueFilter === 'NL') return leagueId === 104;
+    return true;
+  });
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -233,6 +241,27 @@ export default function StatLeaders() {
               ))}
             </div>
           )}
+
+          {!isTeam && (
+            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+              {[
+                { key: 'all', label: 'MLB' },
+                { key: 'AL', label: 'AL' },
+                { key: 'NL', label: 'NL' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setLeagueFilter(key)}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                    leagueFilter === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <select
             value={season}
             onChange={(e) => setSeason(e.target.value)}
@@ -360,7 +389,7 @@ export default function StatLeaders() {
           </div>
         )}
 
-        {!isTeam && leaders.map((leader, i) => {
+        {!isTeam && filteredLeaders.map((leader, i) => {
           const isTop3 = i < 3;
           return (
             <div

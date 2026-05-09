@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 
@@ -270,6 +270,8 @@ function ScheduleTab({ teamId, season }) {
   const [games, setGames] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [view, setView] = useState('list'); // 'list' | 'month'
+  const gameRefs = useRef({});
 
   useEffect(() => {
     (async () => {
@@ -285,45 +287,218 @@ function ScheduleTab({ teamId, season }) {
     })();
   }, [teamId, season]);
 
+  useEffect(() => {
+    if (view !== 'list') return;
+    if (!games?.length) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const idx = games.findIndex((g) => {
+      const d = new Date((g.officialDate ?? g.gameDate ?? '') + 'T00:00:00');
+      d.setHours(0, 0, 0, 0);
+      return d >= today;
+    });
+    const target = idx >= 0 ? games[idx] : games[games.length - 1];
+    const el = target?.gamePk ? gameRefs.current[target.gamePk] : null;
+    if (el?.scrollIntoView) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [games, view]);
+
   if (loading) return <Spinner />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
+  const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const monthLabel = (d) => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const gamesByMonth = (() => {
+    const map = {};
+    for (const g of (games ?? [])) {
+      const d = new Date((g.officialDate ?? g.gameDate ?? '') + 'T00:00:00');
+      const k = monthKey(d);
+      (map[k] = map[k] ?? []).push(g);
+    }
+    Object.values(map).forEach((arr) => arr.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate)));
+    return map;
+  })();
+
+  const months = Object.keys(gamesByMonth).sort();
+  const defaultMonth = (() => {
+    const now = new Date();
+    const k = monthKey(now);
+    return months.includes(k) ? k : (months[0] ?? k);
+  })();
+
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
+
+  const buildMonthGrid = (monthStr) => {
+    const [yy, mm] = monthStr.split('-').map((x) => Number(x));
+    const first = new Date(yy, mm - 1, 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7)); // Monday start
+    const days = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      days.push(d);
+    }
+    const gamesForMonth = gamesByMonth[monthStr] ?? [];
+    const byDate = {};
+    for (const g of gamesForMonth) {
+      const k = g.officialDate ?? (g.gameDate ? g.gameDate.split('T')[0] : '');
+      (byDate[k] = byDate[k] ?? []).push(g);
+    }
+    return { days, byDate, monthDate: first };
+  };
+
   return (
-    <div className="space-y-1">
-      {(games ?? []).length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No schedule found.</div>}
-      {(games ?? []).map((g) => {
-        const home = g.teams?.home;
-        const away = g.teams?.away;
-        const isFinal = g.status?.abstractGameState === 'Final';
-        const isLive = g.status?.abstractGameState === 'Live';
-        const homeWin = isFinal && home?.score > away?.score;
-        const awayWin = isFinal && away?.score > home?.score;
-        const isHome = home?.team?.id?.toString() === teamId?.toString();
-        const opp = isHome ? away : home;
-        return (
-          <div
-            key={g.gamePk}
-            className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl"
-            onClick={() => navigate(`/game/${g.gamePk}`)}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
+          {[
+            { key: 'list', label: 'List' },
+            { key: 'month', label: 'Monthly' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                view === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {view === 'month' && (
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-slate-900 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
           >
-            <div className="w-16 text-xs text-slate-500 flex-shrink-0">{fmtDate(g.officialDate)}</div>
-            <div className="w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
-            <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-6 h-6 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
-            <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name}</div>
-            <div className="text-right flex-shrink-0 text-sm">
-              {isFinal ? (
-                <span className={`font-semibold ${isHome ? (homeWin ? 'text-emerald-400' : 'text-red-400') : (awayWin ? 'text-emerald-400' : 'text-red-400')}`}>
-                  {isHome ? (homeWin ? 'W' : 'L') : (awayWin ? 'W' : 'L')} {isHome ? `${home?.score}-${away?.score}` : `${away?.score}-${home?.score}`}
-                </span>
-              ) : isLive ? (
-                <span className="text-yellow-400 text-xs font-medium">LIVE</span>
-              ) : (
-                <span className="text-slate-500 text-xs">{g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '–'}</span>
-              )}
+            {months.map((m) => {
+              const [yy, mm] = m.split('-').map((x) => Number(x));
+              return (
+                <option key={m} value={m}>
+                  {monthLabel(new Date(yy, mm - 1, 1))}
+                </option>
+              );
+            })}
+          </select>
+        )}
+      </div>
+
+      {(games ?? []).length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No schedule found.</div>}
+      {view === 'list' && (
+        <div className="space-y-1">
+          {(games ?? []).map((g) => {
+            const home = g.teams?.home;
+            const away = g.teams?.away;
+            const isFinal = g.status?.abstractGameState === 'Final';
+            const isLive = g.status?.abstractGameState === 'Live';
+            const homeWin = isFinal && home?.score > away?.score;
+            const awayWin = isFinal && away?.score > home?.score;
+            const isHome = home?.team?.id?.toString() === teamId?.toString();
+            const opp = isHome ? away : home;
+            return (
+              <div
+                key={g.gamePk}
+                ref={(el) => { if (el) gameRefs.current[g.gamePk] = el; }}
+                className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl"
+                onClick={() => navigate(`/game/${g.gamePk}`)}
+              >
+                <div className="w-16 text-xs text-slate-500 flex-shrink-0">{fmtDate(g.officialDate)}</div>
+                <div className="w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
+                <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-6 h-6 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
+                <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name}</div>
+                <div className="text-right flex-shrink-0 text-sm">
+                  {isFinal ? (
+                    <span className={`font-semibold ${isHome ? (homeWin ? 'text-emerald-400' : 'text-red-400') : (awayWin ? 'text-emerald-400' : 'text-red-400')}`}>
+                      {isHome ? (homeWin ? 'W' : 'L') : (awayWin ? 'W' : 'L')}{' '}
+                      {isHome ? `${home?.score}-${away?.score}` : `${away?.score}-${home?.score}`}
+                    </span>
+                  ) : isLive ? (
+                    <span className="text-yellow-400 text-xs font-medium">LIVE</span>
+                  ) : (
+                    <span className="text-slate-500 text-xs">{g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '–'}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === 'month' && months.length > 0 && (() => {
+        const { days, byDate, monthDate } = buildMonthGrid(selectedMonth);
+        const monthIdx = monthDate.getMonth();
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        return (
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-slate-800">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                <div key={d} className="px-2 py-2 text-[10px] font-semibold tracking-wider text-slate-500 text-center">
+                  {d}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {days.map((d) => {
+                const inMonth = d.getMonth() === monthIdx;
+                const key = d.toISOString().split('T')[0];
+                const dayGames = byDate[key] ?? [];
+                const isToday = key === todayStr;
+                return (
+                  <div
+                    key={key}
+                    className={`min-h-[92px] border-b border-r border-slate-800/50 p-2 ${inMonth ? '' : 'opacity-40'} ${isToday ? 'bg-emerald-500/[0.06]' : ''}`}
+                  >
+                    <div className={`text-[11px] font-mono ${isToday ? 'text-emerald-300' : 'text-slate-400'}`}>
+                      {d.getDate()}
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      {dayGames.slice(0, 2).map((g) => {
+                        const home = g.teams?.home;
+                        const away = g.teams?.away;
+                        const isHome = home?.team?.id?.toString() === teamId?.toString();
+                        const opp = isHome ? away : home;
+                        const isFinal = g.status?.abstractGameState === 'Final';
+                        const isLive = g.status?.abstractGameState === 'Live';
+                        return (
+                          <button
+                            key={g.gamePk}
+                            onClick={() => navigate(`/game/${g.gamePk}`)}
+                            className="w-full flex items-center gap-1.5 bg-slate-800/40 hover:bg-slate-800/70 border border-slate-700/40 rounded-xl px-2 py-1 transition-colors"
+                            title={opp?.team?.name ?? 'Game'}
+                          >
+                            <img
+                              src={teamLogoUrl(opp?.team?.id)}
+                              alt=""
+                              className="w-4 h-4 object-contain"
+                              onError={(e) => (e.target.style.display = 'none')}
+                            />
+                            <span className="text-[10px] text-slate-300 truncate flex-1 text-left">
+                              {opp?.team?.abbreviation ?? opp?.team?.name?.split(' ').pop() ?? '—'}
+                            </span>
+                            {isLive && <span className="text-[9px] font-bold text-yellow-300">LIVE</span>}
+                            {isFinal && <span className="text-[9px] font-bold text-slate-400">F</span>}
+                          </button>
+                        );
+                      })}
+                      {dayGames.length > 2 && (
+                        <div className="text-[9px] text-slate-500">
+                          +{dayGames.length - 2} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
-      })}
+      })()}
     </div>
   );
 }
@@ -573,6 +748,19 @@ export default function TeamPage() {
   const [teamInfo, setTeamInfo] = useState(null);
   const [season, setSeason] = useState(SEASON.toString());
   const [activeTab, setActiveTab] = useState('stats');
+  const [favoriteTeams, setFavoriteTeams] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const isFavorite = favoriteTeams.includes(Number(teamId));
+
+  useEffect(() => {
+    localStorage.setItem('mlbFavoriteTeams', JSON.stringify(favoriteTeams));
+  }, [favoriteTeams]);
 
   useEffect(() => {
     fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}?hydrate=division,league`)
@@ -580,6 +768,21 @@ export default function TeamPage() {
       .then((json) => setTeamInfo(json.teams?.[0] ?? null))
       .catch(() => {});
   }, [teamId]);
+
+  useEffect(() => {
+    // keep state in sync when navigating between teams
+    try {
+      setFavoriteTeams(JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]'));
+    } catch {
+      setFavoriteTeams([]);
+    }
+  }, [teamId]);
+
+  const toggleFavorite = () => {
+    const idNum = Number(teamId);
+    if (!idNum) return;
+    setFavoriteTeams((prev) => (prev.includes(idNum) ? prev.filter((x) => x !== idNum) : [idNum, ...prev]));
+  };
 
   const TABS = [
     { key: 'stats', label: 'Stats' },
@@ -624,15 +827,28 @@ export default function TeamPage() {
             )}
           </div>
           <div className="flex-shrink-0">
-            <select
-              value={season}
-              onChange={(e) => setSeason(e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-            >
-              {[2026, 2025, 2024, 2023, 2022, 2021].map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleFavorite}
+                className={`px-4 py-2 rounded-2xl text-sm font-semibold border transition-all active:scale-[0.985] ${
+                  isFavorite
+                    ? 'bg-yellow-400/15 hover:bg-yellow-400/20 text-yellow-300 border-yellow-400/30'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                }`}
+                title={isFavorite ? 'Unfavorite team' : 'Favorite team'}
+              >
+                {isFavorite ? '★ Favorited' : '☆ Favorite'}
+              </button>
+              <select
+                value={season}
+                onChange={(e) => setSeason(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+              >
+                {[SEASON, SEASON - 1, SEASON - 2, SEASON - 3, SEASON - 4].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>

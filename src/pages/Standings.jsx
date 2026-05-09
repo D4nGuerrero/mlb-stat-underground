@@ -5,7 +5,7 @@ import { teamLogoUrl } from '../utils/mlbHelpers';
 export default function Standings() {
   const navigate = useNavigate();
   const cache = useRef({});
-  const [season, setSeason] = useState('2025');
+  const [season, setSeason] = useState(() => String(new Date().getFullYear()));
   const [standingsData, setStandingsData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);

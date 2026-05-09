@@ -7,10 +7,12 @@ import {
   playerActionShotUrl,
   pitcherActionShotUrl,
   stadiumInfieldUrl,
+  stadiumExteriorUrl,
+  stadiumTimeOfDay,
   batterSilhouetteUrl,
   renderBaseDiamond,
-  renderStrikeZone,
 } from '../utils/mlbHelpers';
+import PitchCanvas from '../components/PitchCanvas';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -215,6 +217,22 @@ export default function GamePage() {
     document.body.classList.add('game-page-open');
     return () => document.body.classList.remove('game-page-open');
   }, []);
+
+  const venueId = feed?.gameData?.venue?.id;
+  const exteriorTimeOfDay = stadiumTimeOfDay(feed?.gameData?.gameDate);
+  const [exteriorFailed, setExteriorFailed] = useState(false);
+
+  useEffect(() => {
+    if (!venueId) {
+      setExteriorFailed(true);
+      return;
+    }
+    setExteriorFailed(false);
+    const img = new Image();
+    img.onload = () => setExteriorFailed(false);
+    img.onerror = () => setExteriorFailed(true);
+    img.src = stadiumExteriorUrl(venueId, exteriorTimeOfDay);
+  }, [venueId, exteriorTimeOfDay]);
 
   // History API: push state when sheet opens so back button closes it
   const openSheet = useCallback((play) => {
@@ -894,16 +912,21 @@ export default function GamePage() {
               </div>
             </div>
 
-            {/* Strike zone */}
+            {/* Pitch locations (canvas) */}
             {pitches.length > 0 && (
               <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-4">
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">
                   Pitch Locations
                 </div>
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: renderStrikeZone(play.playEvents || [], szT, szB),
-                  }}
+                <PitchCanvas
+                  playEvents={play.playEvents || []}
+                  szTop={szT}
+                  szBot={szB}
+                  width={260}
+                  height={280}
+                  gamePk={gamePk}
+                  variant="gamedayDark"
+                  className="mx-auto"
                 />
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center">
                   {[
@@ -1336,18 +1359,36 @@ export default function GamePage() {
         {currentTab === 'live' && isLive && ls && (
           <div className="space-y-3">
 
-            {/* ── AT-BAT VISUAL: Stadium background + Strike zone + Batter silhouette ── */}
-            <div
-              className="relative overflow-hidden rounded-2xl border border-slate-700/60"
-              style={{
-                backgroundImage: `url(${stadiumInfieldUrl()})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center 30%',
-                minHeight: '300px',
-              }}
-            >
+            {/* ── AT-BAT VISUAL: Composite stadium (exterior top + infield bottom) + PitchCanvas + silhouette ── */}
+            <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[320px] flex flex-col">
+              {/* Background stack: top half exterior, bottom half infield */}
+              <div className="absolute inset-0 flex flex-col pointer-events-none">
+                <div
+                  className="h-[48%] min-h-[130px] bg-cover bg-center bg-top"
+                  style={{
+                    backgroundImage:
+                      venueId && !exteriorFailed
+                        ? `url(${stadiumExteriorUrl(venueId, exteriorTimeOfDay)})`
+                        : undefined,
+                    backgroundColor:
+                      !venueId || exteriorFailed ? '#0f172a' : undefined,
+                  }}
+                />
+                <div
+                  className="flex-1 min-h-[130px] bg-cover"
+                  style={{
+                    backgroundImage: `url(${stadiumInfieldUrl()})`,
+                    backgroundPosition: 'center 30%',
+                  }}
+                />
+              </div>
+              {/* Seam blend between halves */}
+              <div
+                className="absolute left-0 right-0 top-[48%] h-16 -translate-y-1/2 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-black/35 to-transparent"
+                aria-hidden
+              />
               {/* Gradient overlay for readability */}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/30 to-black/85 pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/25 to-black/80 pointer-events-none z-[2]" />
 
               {/* Top bar: LIVE badge + inning indicator + count summary */}
               <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
@@ -1365,7 +1406,7 @@ export default function GamePage() {
                 </div>
               </div>
 
-              {/* Strike zone centered with pitch overlay data */}
+              {/* Pitch canvas centered */}
               <div className="relative z-10 flex flex-col items-center pt-12 pb-20 px-3">
                 {latestPitch && (
                   <div className="flex items-center gap-2 mb-2 flex-wrap justify-center">
@@ -1387,13 +1428,15 @@ export default function GamePage() {
                     {latestPitch.details.description}
                   </div>
                 )}
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: renderStrikeZone(allPitchEvents, szTop, szBot, {
-                      bgColor: 'rgba(7,13,23,0.72)',
-                    }),
-                  }}
-                  className="w-full max-w-[260px]"
+                <PitchCanvas
+                  playEvents={allPitchEvents}
+                  szTop={szTop}
+                  szBot={szBot}
+                  width={280}
+                  height={300}
+                  gamePk={gamePk}
+                  variant="gamedayDark"
+                  className="mx-auto"
                 />
               </div>
 

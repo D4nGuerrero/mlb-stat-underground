@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { playerHeadshotUrl, teamLogoUrl } from '../utils/mlbHelpers';
+import { playerHeadshotUrl, teamLogoUrl, stadiumInfieldUrl, playerActionShotUrl, playerHeroShotUrl } from '../utils/mlbHelpers';
 
 export default function PlayerPage() {
   const { playerId } = useParams();
   const navigate = useNavigate();
   const [playerInfo, setPlayerInfo] = useState(null);
   const [stats, setStats] = useState(null);
+  const [yearByYear, setYearByYear] = useState(null);
+  const [season, setSeason] = useState(() => new Date().getFullYear());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -17,15 +19,17 @@ export default function PlayerPage() {
 
     Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam`).then((r) => r.json()),
-      fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=season,career&group=hitting,pitching&season=2025`).then((r) => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=season,career&group=hitting,pitching&season=${season}`).then((r) => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=yearByYear&group=hitting,pitching&hydrate=team`).then((r) => r.json()),
     ])
-      .then(([bioData, statsData]) => {
+      .then(([bioData, statsData, ybyData]) => {
         setPlayerInfo(bioData.people?.[0] || null);
         setStats(statsData.stats || []);
+        setYearByYear(ybyData.stats || []);
       })
       .catch(() => setError('Failed to load player data.'))
       .finally(() => setIsLoading(false));
-  }, [playerId]);
+  }, [playerId, season]);
 
   const getStatGroup = (type, group) =>
     stats?.find((s) => s.type?.displayName === type && s.group?.displayName === group)?.splits?.[0]?.stat || null;
@@ -88,7 +92,7 @@ export default function PlayerPage() {
           <tbody>
             {seasonStat && (
               <tr className="border-b border-slate-800/60 hover:bg-slate-800/20">
-                <td className="py-2 pr-3 font-semibold text-slate-300">2025</td>
+                <td className="py-2 pr-3 font-semibold text-slate-300">{season}</td>
                 {cols.map((c) => (
                   <td key={c.key} className="px-2 text-center text-slate-400 font-mono">
                     {seasonStat[c.key] ?? '-'}
@@ -112,6 +116,59 @@ export default function PlayerPage() {
     );
   };
 
+  const getYearByYearSplits = (group) =>
+    yearByYear?.find((s) => s.type?.displayName === 'yearByYear' && s.group?.displayName === group)?.splits ?? [];
+
+  const YearByYearTable = ({ cols, group }) => {
+    const splits = getYearByYearSplits(group);
+    if (!splits?.length) return null;
+
+    const rows = splits
+      .filter((sp) => sp.season && sp.stat)
+      .sort((a, b) => Number(b.season) - Number(a.season));
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-slate-500 border-b border-slate-700/60">
+              <th className="text-left py-2 font-normal pr-3 w-14">Year</th>
+              <th className="text-left py-2 font-normal pr-3 min-w-[140px]">Team</th>
+              {cols.map((c) => (
+                <th key={c.key} className="px-2 text-center font-normal whitespace-nowrap">{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((sp) => (
+              <tr key={`${sp.season}-${sp.team?.id ?? 'na'}`} className="border-b border-slate-800/60 hover:bg-slate-800/20">
+                <td className="py-2 pr-3 font-semibold text-slate-300">{sp.season}</td>
+                <td className="py-2 pr-3">
+                  <div className="flex items-center gap-2">
+                    {sp.team?.id && (
+                      <img
+                        src={teamLogoUrl(sp.team.id)}
+                        alt=""
+                        className="w-4 h-4 object-contain flex-shrink-0"
+                        onError={(e) => (e.target.style.display = 'none')}
+                      />
+                    )}
+                    <span className="text-slate-400 truncate">{sp.team?.name ?? '—'}</span>
+                  </div>
+                </td>
+                {cols.map((c) => (
+                  <td key={c.key} className="px-2 text-center text-slate-400 font-mono">
+                    {sp.stat?.[c.key] ?? '-'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       <button
@@ -121,6 +178,18 @@ export default function PlayerPage() {
         <i className="fa-solid fa-arrow-left" />
         Back
       </button>
+
+      <div className="flex items-center justify-end mb-4">
+        <select
+          value={season}
+          onChange={(e) => setSeason(Number(e.target.value))}
+          className="bg-slate-900 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+        >
+          {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2, new Date().getFullYear() - 3].map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+      </div>
 
       {isLoading && (
         <div className="flex items-center justify-center py-20">
@@ -135,7 +204,17 @@ export default function PlayerPage() {
       {!isLoading && !error && playerInfo && (
         <div className="bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden">
           {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-800/60 to-slate-900/60 px-5 sm:px-8 py-6 sm:py-8">
+          <div
+            className="relative overflow-hidden px-5 sm:px-8 py-6 sm:py-8"
+            style={{
+              backgroundImage: `url(${playerHeroShotUrl(playerId)})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              height: '283px'
+            
+            }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/30 to-black/85 pointer-events-none" />
             <div className="flex items-end gap-4 sm:gap-6">
               <div className="relative flex-shrink-0">
                 <img
@@ -196,6 +275,16 @@ export default function PlayerPage() {
                 </div>
               </div>
             )}
+            <div className="pt-2">
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">
+                Career by Year
+              </div>
+              {!isPitcher && <YearByYearTable cols={hitCols} group="hitting" />}
+              {isPitcher && <YearByYearTable cols={pitchCols} group="pitching" />}
+              {!getYearByYearSplits('hitting')?.length && !getYearByYearSplits('pitching')?.length && (
+                <div className="text-slate-600 text-sm text-center py-6">No year-by-year data available</div>
+              )}
+            </div>
             {!seasonHitting && !careerHitting && !seasonPitching && !careerPitching && (
               <div className="text-slate-600 text-sm text-center py-6">No stats available</div>
             )}

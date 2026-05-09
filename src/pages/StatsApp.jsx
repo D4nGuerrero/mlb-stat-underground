@@ -152,7 +152,7 @@ const EXODUS_HERO_STATS = {
 const LOWER_IS_BETTER = new Set(['era', 'whip']);
 
 // ─── Sub-components ───────────────────────────────────────────────────────
-function PlayerHeader({ playerData, season, onWatch }) {
+function PlayerHeader({ playerData, season, isWatched, isWatchAnimating, onToggleWatch }) {
   const heroKeys = HITTING_HERO;
   return (
     <div className="p-5 sm:p-6 border-b border-slate-800">
@@ -172,10 +172,16 @@ function PlayerHeader({ playerData, season, onWatch }) {
               {playerData.fullName}
             </Link>
             <button
-              onClick={() => onWatch(playerData)}
-              className="text-xs px-3 py-1.5 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border border-yellow-400/30 font-semibold rounded-xl flex items-center gap-1"
+              onClick={() => onToggleWatch(playerData)}
+              className={[
+                'text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98]',
+                isWatchAnimating ? 'watch-pop' : '',
+                isWatched
+                  ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
+                  : 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30',
+              ].join(' ')}
             >
-              ★ Watch
+              {isWatched ? '✕ Remove' : '★ Watch'}
             </button>
           </div>
           <div className="flex items-center gap-2 mt-1.5">
@@ -388,6 +394,153 @@ function ExodusPlayerCard({ player }) {
   );
 }
 
+function AcquisitionPlayerCard({ player }) {
+  const heroStats = EXODUS_HERO_STATS[player.group] || EXODUS_HERO_STATS.hitting;
+
+  return (
+    <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-slate-900 via-slate-950 to-black shadow-2xl shadow-black/30 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/30">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_45%)] pointer-events-none" />
+
+      <div className="relative p-5 border-b border-white/5">
+        <div className="flex items-start gap-4">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-2xl bg-emerald-500/20 blur-xl" />
+            <img
+              src={player.photo}
+              alt={player.fullName}
+              className="relative w-16 h-16 rounded-2xl object-cover border border-white/10 shadow-lg"
+              onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+            />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-white truncate">{player.fullName}</h2>
+              <div className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium uppercase tracking-wider text-emerald-300">
+                ACQUIRED
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                {player.teams2025.map((t, i) => (
+                  <img
+                    key={i}
+                    src={t.logoDark}
+                    alt={t.name}
+                    className="w-9 h-9 object-contain flex-shrink-0"
+                    onError={(e) => (e.target.style.display = 'none')}
+                  />
+                ))}
+                <span className="truncate text-slate-300 font-medium">{getTeamNames(player.teams2025)}</span>
+              </div>
+
+              <div className="w-7 h-7 rounded-full bg-slate-800 border border-white/5 flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </div>
+
+              <div className="flex items-center gap-2 min-w-0">
+                {player.teams2026.map((t, i) => (
+                  <img
+                    key={i}
+                    src={t.logoDark}
+                    alt={t.name}
+                    className="w-9 h-9 object-contain flex-shrink-0"
+                    onError={(e) => (e.target.style.display = 'none')}
+                  />
+                ))}
+                <span className="truncate font-medium text-emerald-300">{getTeamNames(player.teams2026)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-5">
+        <div className="grid grid-cols-4 gap-3">
+          {heroStats.map((k) => {
+            const prev = Number(player.statsPrev?.[k] ?? 0);
+            const curr = Number(player.statsCurrent?.[k] ?? 0);
+
+            const isLowerBetter = LOWER_IS_BETTER.has(k);
+            const improved = isLowerBetter ? curr < prev : curr > prev;
+            const declined = isLowerBetter ? curr > prev : curr < prev;
+
+            return (
+              <div
+                key={k}
+                className={`group relative overflow-hidden rounded-2xl border transition-all duration-300 ${
+                  improved
+                    ? 'border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.10] via-slate-900 to-slate-950'
+                    : declined
+                    ? 'border-red-500/20 bg-gradient-to-b from-red-500/[0.08] via-slate-900 to-slate-950'
+                    : 'border-white/5 bg-gradient-to-b from-slate-900 to-slate-950'
+                }`}
+              >
+                <div
+                  className={`absolute -top-6 -right-6 w-20 h-20 rounded-full blur-3xl opacity-20 ${
+                    improved ? 'bg-emerald-400' : declined ? 'bg-red-400' : 'bg-slate-500'
+                  }`}
+                />
+                <div className="relative p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      {HERO_LABELS[k] || k.toUpperCase()}
+                    </div>
+                    <div
+                      className={`flex items-center justify-center rounded-full border w-5 h-5 ${
+                        improved
+                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                          : declined
+                          ? 'border-red-500/20 bg-red-500/10 text-red-400'
+                          : 'border-slate-700 bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      {improved ? (
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 3l5 6h-3v8H8V9H5l5-6z" clipRule="evenodd" />
+                        </svg>
+                      ) : declined ? (
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 17l-5-6h3V3h4v8h3l-5 6z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="text-2xl font-black tracking-tight text-white leading-none">
+                      {player.statsCurrent?.[k] ?? '—'}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-[11px] text-slate-500">Prev: {player.statsPrev?.[k] ?? '—'}</div>
+                      <div
+                        className={`text-[11px] font-semibold tabular-nums ${
+                          improved ? 'text-emerald-400' : declined ? 'text-red-400' : 'text-slate-500'
+                        }`}
+                      >
+                        {improved
+                          ? `+${(curr - prev).toFixed(isLowerBetter ? 2 : 3)}`
+                          : declined
+                          ? `${(curr - prev).toFixed(isLowerBetter ? 2 : 3)}`
+                          : '±0.000'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────
 export default function StatsApp() {
   const [playerName, setPlayerName] = useState('Aaron Judge');
@@ -405,10 +558,14 @@ export default function StatsApp() {
       return [];
     }
   });
+  const [watchAnimId, setWatchAnimId] = useState(null);
 
   const [formerTeamId, setFormerTeamId] = useState(140);
   const [exodusResults, setExodusResults] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const [acquisitionTeamId, setAcquisitionTeamId] = useState(140);
+  const [acquisitionResults, setAcquisitionResults] = useState([]);
 
   const [hotPlayers, setHotPlayers] = useState([]);
   const [coldPlayers, setColdPlayers] = useState([]);
@@ -471,6 +628,18 @@ export default function StatsApp() {
 
   const removeFromWatchlist = (id) => setWatchlist(watchlist.filter((p) => p.id !== id));
 
+  const toggleWatchlist = (player) => {
+    if (!player?.id) return;
+    const exists = watchlist.some((p) => p.id === player.id);
+    if (exists) {
+      removeFromWatchlist(player.id);
+      return;
+    }
+    addToWatchlist(player);
+    setWatchAnimId(player.id);
+    window.setTimeout(() => setWatchAnimId(null), 250);
+  };
+
   const analyzeTeamExodus = async () => {
     if (!formerTeamId) return;
     setIsAnalyzing(true);
@@ -517,80 +686,60 @@ export default function StatsApp() {
     }
   };
 
-  const analyzeTeamAcquisitions = async (targetTeamId2026) => {
-  if (!targetTeamId2026) return;
+  const analyzeTeamAcquisitions = async () => {
+    if (!acquisitionTeamId) return;
+    setIsAnalyzing(true);
+    setAcquisitionResults([]);
+    try {
+      const res = await fetch(
+        `https://statsapi.mlb.com/api/v1/teams/${acquisitionTeamId}/roster?season=2026&rosterType=fullRoster&hydrate=person(stats(type=yearByYear))`
+      );
+      const data = await res.json();
+      const roster = data.roster ?? [];
 
-  setIsAnalyzing(true);
-  setAcquisitionResults([]);   // ← use a new state for this: const [acquisitionResults, setAcquisitionResults] = useState([]);
+      const acquired = roster
+        .map((entry) => {
+          const person = entry.person;
+          const prev = processPlayerSeason(person, '2025');
+          const current = processPlayerSeason(person, '2026');
+          if (!prev || !current) return null;
 
-  try {
-    // 1. Fetch 2026 roster with full yearByYear stats (one call)
-    const rosterRes = await fetch(
-      `https://statsapi.mlb.com/api/v1/teams/${targetTeamId2026}/roster?season=2026&rosterType=fullRoster&hydrate=person(stats(group=hitting,type=yearByYear))`
-    );
+          const wasOnTeam = prev.teams.some((t) => t.id === acquisitionTeamId);
+          const isOnTeamNow = current.teams.some((t) => t.id === acquisitionTeamId);
+          if (wasOnTeam || !isOnTeamNow) return null;
 
-    const rosterData = await rosterRes.json();
-    const rosterPlayers2026 = rosterData.roster ?? [];
-
-    console.log(`Analyzing acquisitions for team ${targetTeamId2026} — ${rosterPlayers2026.length} players`);
-
-    // 2. Build acquisitions array
-    const acquisitions = rosterPlayers2026
-      .map(player => {
-        const p = player.person;
-        const hitting = p.stats?.find(s => s.group?.displayName === "hitting");
-
-        const split2025 = hitting?.splits?.find(sp => sp.season === "2025");
-        const split2026 = hitting?.splits?.find(sp => sp.season === "2026");
-
-        // Only keep players who actually changed teams
-        if (
-          split2025?.team?.id &&
-          split2026?.team?.id &&
-          split2025.team.id !== split2026.team.id
-        ) {
           return {
-            fullName: p.fullName,
-            playerId: p.id,
-
-            // Player photo
-            photo: `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/${p.id}/headshot/67/current`,
-
-            // Previous team (2025)
-            team2025: split2025.team.name,
-            team2025Id: split2025.team.id,
-            team2025Logo: `https://www.mlbstatic.com/team-logos/team-cap-on-light/${split2025.team.id}.svg`,
-            team2025LogoDark: `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${split2025.team.id}.svg`,
-
-            // New team (2026) — always the same for this call
-            team2026: split2026.team.name,
-            team2026Id: split2026.team.id,
-            team2026Logo: `https://www.mlbstatic.com/team-logos/team-cap-on-light/${split2026.team.id}.svg`,
-            team2026LogoDark: `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${split2026.team.id}.svg`,
-
-            statsPrev: split2025.stat ?? null,     // 2025 stats
-            statsCurrent: split2026.stat ?? null   // 2026 stats
+            fullName: person.fullName,
+            playerId: person.id,
+            photo: `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/${person.id}/headshot/67/current`,
+            teams2025: prev.teams,
+            teams2026: current.teams,
+            statsPrev: prev.stat,
+            statsCurrent: current.stat,
+            group: current.group,
           };
+        })
+        .filter(Boolean);
+
+      // Sort: hitters by OPS, pitchers by ERA improvement signal (rough)
+      acquired.sort((a, b) => {
+        if (a.group === 'pitching' || b.group === 'pitching') {
+          const aEra = Number(a.statsCurrent?.era ?? 99);
+          const bEra = Number(b.statsCurrent?.era ?? 99);
+          return aEra - bEra;
         }
-        return null;
-      })
-      .filter(Boolean);
+        const aOps = Number(a.statsCurrent?.ops ?? 0);
+        const bOps = Number(b.statsCurrent?.ops ?? 0);
+        return bOps - aOps;
+      });
 
-    // 3. Sort by "value" — highest 2026 home runs first
-    acquisitions.sort((a, b) => 
-      (b.statsCurrent?.homeRuns ?? 0) - (a.statsCurrent?.homeRuns ?? 0)
-    );
-
-    console.log(`Found ${acquisitions.length} new acquisitions`);
-
-    setAcquisitionResults(acquisitions.slice(0, 12)); // top 12 most valuable
-
-  } catch (err) {
-    console.error("Error analyzing team acquisitions:", err);
-  } finally {
-    setIsAnalyzing(false);
-  }
-};
+      setAcquisitionResults(acquired);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const fetchHotCold = async () => {
     setIsHotColdLoading(true);
@@ -601,16 +750,25 @@ export default function StatsApp() {
       const tenDaysAgo = new Date(today);
       tenDaysAgo.setDate(today.getDate() - 10);
       const fmt = (d) => d.toISOString().split('T')[0];
-      const yr = today.getFullYear();
       const dateRange = `startDate=${fmt(tenDaysAgo)}&endDate=${fmt(today)}`;
 
+      // Use byDateRange stats for a true "cold" list (not just bottom of a top-50 leaders list).
       const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=onBasePlusSlugging&season=${yr}&statGroup=hitting&leaderGameTypes=R&limit=50&sportId=1&hydrate=person,team&${dateRange}`
+        `https://statsapi.mlb.com/api/v1/stats?stats=byDateRange&group=hitting&sportIds=1&playerPool=all&limit=5000&hydrate=person,team&${dateRange}`
       );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const all = data.leagueLeaders?.[0]?.leaders ?? [];
-      setHotPlayers(all.slice(0, 10));
-      setColdPlayers([...all].slice(-10).reverse());
+      const splits = data.stats?.[0]?.splits ?? [];
+
+      // Filter out tiny samples so the lists feel sane.
+      const eligible = splits.filter((s) => (Number(s.stat?.plateAppearances) || 0) >= 15);
+      eligible.sort((a, b) => (Number(b.stat?.ops) || 0) - (Number(a.stat?.ops) || 0));
+
+
+      console.log('AVER', eligible.slice(0,10));
+      
+      setHotPlayers(eligible.slice(0, 10));
+      setColdPlayers([...eligible].reverse().slice(0, 10));
     } catch (err) {
       console.error(err);
     } finally {
@@ -716,7 +874,8 @@ export default function StatsApp() {
           { key: 'hotcold', label: '🔥 Hot & Cold ❄️' },
 
           { key: 'exodus', label: 'Team Exodus' },
-                    { key: 'rankings', label: 'Exodus Rankings' },
+          { key: 'acquisitions', label: 'Team Acquisitions' },
+          { key: 'rankings', label: 'Exodus Rankings' },
                     
         ].map(({ key, label }) => (
           <button
@@ -797,7 +956,13 @@ export default function StatsApp() {
 
           {playerData && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
-              <PlayerHeader playerData={playerData} season={season} onWatch={addToWatchlist} />
+              <PlayerHeader
+                playerData={playerData}
+                season={season}
+                isWatched={watchlist.some((p) => p.id === playerData.id)}
+                isWatchAnimating={watchAnimId === playerData.id}
+                onToggleWatch={toggleWatchlist}
+              />
               <div className="divide-y divide-slate-800">
                 {statGroups.map((group) => (
                   <StatGroup
@@ -922,7 +1087,7 @@ export default function StatsApp() {
                       onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{p.person?.fullName}</div>
+                      <div className="font-semibold text-sm truncate">{p.player.fullName}</div>
                       <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                         {p.team?.id && (
                           <img
@@ -936,8 +1101,10 @@ export default function StatsApp() {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="font-display text-xl tabular-nums text-orange-400">{p.value}</div>
-                      <div className="text-[10px] text-slate-500">OPS</div>
+                      <div className="font-display text-xl tabular-nums text-orange-400">
+                        {p.value ?? p.stat?.ops ?? '—'}
+                      </div>
+                      <div className="text-[10px] text-slate-500">OPS (10d)</div>
                     </div>
                   </div>
                 ))}
@@ -963,7 +1130,7 @@ export default function StatsApp() {
                       onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{p.person?.fullName}</div>
+                      <div className="font-semibold text-sm truncate">{p.player?.fullName}</div>
                       <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                         {p.team?.id && (
                           <img
@@ -977,8 +1144,10 @@ export default function StatsApp() {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="font-display text-xl tabular-nums text-blue-400">{p.value}</div>
-                      <div className="text-[10px] text-slate-500">OPS</div>
+                      <div className="font-display text-xl tabular-nums text-blue-400">
+                        {p.value ?? p.stat?.ops ?? '—'}
+                      </div>
+                      <div className="text-[10px] text-slate-500">OPS (10d)</div>
                     </div>
                   </div>
                 ))}
@@ -1034,6 +1203,57 @@ export default function StatsApp() {
           {!isAnalyzing && exodusResults.length === 0 && (
             <div className="p-8 text-center text-slate-500 text-sm">
               No players left this roster after 2025. Try a different team.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TEAM ACQUISITIONS TAB */}
+      {activeTab === 'acquisitions' && (
+        <div>
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
+            <h3 className="font-semibold text-lg mb-1">Team Acquisitions Analyzer</h3>
+            <p className="text-sm text-slate-400 mb-4">
+              Players added for 2026 (not on this team in 2025) and how they’re performing now.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+              <div className="flex-1 w-full">
+                <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">
+                  TEAM (2026 ROSTER)
+                </label>
+                <select
+                  value={acquisitionTeamId}
+                  onChange={(e) => setAcquisitionTeamId(Number(e.target.value))}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500"
+                >
+                  {mlbTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name} ({team.abbr})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={analyzeTeamAcquisitions}
+                disabled={isAnalyzing}
+                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto"
+              >
+                {isAnalyzing ? 'Analyzing Acquisitions…' : 'Analyze Acquisitions'}
+              </button>
+            </div>
+          </div>
+
+          {acquisitionResults.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {acquisitionResults.map((player) => (
+                <AcquisitionPlayerCard key={player.playerId} player={player} />
+              ))}
+            </div>
+          )}
+
+          {!isAnalyzing && acquisitionResults.length === 0 && (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              No acquisitions detected (or not enough stats yet). Try a different team.
             </div>
           )}
         </div>
