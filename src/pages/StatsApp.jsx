@@ -765,7 +765,7 @@ export default function StatsApp() {
       eligible.sort((a, b) => (Number(b.stat?.ops) || 0) - (Number(a.stat?.ops) || 0));
 
 
-      console.log('AVER', eligible.slice(0,10));
+     
       
       setHotPlayers(eligible.slice(0, 10));
       setColdPlayers([...eligible].reverse().slice(0, 10));
