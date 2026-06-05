@@ -1,4 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
+import { TeamPicker, SegmentedControl, Select, Collapsible } from '../components/ui';
 
 // ── MLB Teams ────────────────────────────────────────────────────────────────
 const MLB_TEAMS = [
@@ -1223,60 +1225,6 @@ const OUTCOME_BG = {
   OUT: 'bg-slate-700/20 border-slate-700/20', HBP: 'bg-purple-400/10 border-purple-400/20',
 };
 
-// ── TeamPicker Component ──────────────────────────────────────────────────────
-
-function TeamPicker({ label, selected, onSelect, exclude }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const filtered = MLB_TEAMS.filter(t => t.id !== exclude?.id && t.name.toLowerCase().includes(query.toLowerCase()));
-
-  return (
-    <div className="flex-1 min-w-0">
-      <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 text-center">{label}</div>
-      <button onClick={() => setOpen(true)}
-        className="w-full flex flex-col items-center gap-2 p-3 sm:p-4 bg-slate-900 border border-slate-700 hover:border-slate-500 rounded-2xl transition-all active:scale-[0.97]">
-        {selected ? (
-          <>
-            <img src={teamLogoUrl(selected.id)} className="w-14 h-14 object-contain" alt={selected.name} />
-            <div className="text-center">
-              <div className="font-semibold text-sm text-white leading-tight">{selected.name}</div>
-              <div className="text-[10px] text-slate-500">{selected.league} · {selected.division}</div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="w-14 h-14 rounded-2xl bg-slate-800 border-2 border-dashed border-slate-600 flex items-center justify-center text-2xl text-slate-600">⚾</div>
-            <span className="text-sm text-slate-500">Pick team</span>
-          </>
-        )}
-      </button>
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-4 border-b border-slate-800">
-              <div className="text-sm font-semibold text-white mb-3">Select {label} Team</div>
-              <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search teams…"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500" />
-            </div>
-            <div className="overflow-y-auto max-h-72">
-              {filtered.map(t => (
-                <button key={t.id} onClick={() => { onSelect(t); setOpen(false); setQuery(''); }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800 transition-colors text-left">
-                  <img src={teamLogoUrl(t.id)} className="w-8 h-8 object-contain flex-shrink-0" alt={t.name} />
-                  <div>
-                    <div className="text-sm font-medium text-slate-200">{t.name}</div>
-                    <div className="text-[10px] text-slate-500">{t.league} {t.division}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── LineupBuilder Component ──────────────────────────────────────────────────
 
 function LineupBuilder({ lineup, onMove, starters, onPickStarter, title, loading, mode, onModeChange }) {
@@ -1288,15 +1236,18 @@ function LineupBuilder({ lineup, onMove, starters, onPickStarter, title, loading
         <div className="flex items-center gap-2">
           {loading && <span className="text-[10px] text-emerald-400 font-mono animate-pulse">Loading…</span>}
           {onModeChange && (
-            <div className="flex rounded-lg overflow-hidden border border-slate-700 text-[10px] font-semibold">
-              <button
-                onClick={() => onModeChange('realistic')}
-                className={`px-2 py-1 transition-colors ${mode === 'realistic' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
-              >Realistic</button>
-              <button
-                onClick={() => onModeChange('optimized')}
-                className={`px-2 py-1 transition-colors ${mode === 'optimized' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
-              >Optimized</button>
+            <div className="flex rounded-lg overflow-hidden border border-slate-700 text-[10px] font-semibold p-0.5">
+              <SegmentedControl
+                value={mode}
+                onChange={onModeChange}
+                variant="speed"
+                size="xs"
+                rounded="lg"
+                options={[
+                  { value: 'realistic', label: 'Realistic' },
+                  { value: 'optimized', label: 'Optimized' },
+                ]}
+              />
             </div>
           )}
         </div>
@@ -1386,7 +1337,6 @@ const PITCH_RESULT_LABELS = { B: 'Ball', CS: 'Called Strike', SS: 'Swing & Miss'
 
 // ── AtBatCard — expandable pitch sequence ────────────────────────────────────
 function AtBatCard({ play, index }) {
-  const [open, setOpen] = useState(false);
   const outcome = play.outcome;
   const outcomeColor = {
     HR: 'text-yellow-400', '3B': 'text-orange-400', '2B': 'text-blue-400',
@@ -1395,39 +1345,50 @@ function AtBatCard({ play, index }) {
   }[outcome] || 'text-slate-400';
 
   const hasPitches = play.pitches?.length > 0;
+
+  const renderHeader = (open = false) => (
+    <>
+      <span className="text-slate-600 font-mono text-[10px] w-4 mt-0.5 shrink-0">{index + 1}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`font-semibold text-xs ${outcomeColor}`}>{outcome}</span>
+          <span className="text-slate-300 text-xs truncate">{play.batter}</span>
+          {play.runs > 0 && <span className="text-green-400 font-bold text-[10px] bg-green-400/10 px-1 rounded">{play.runs > 1 ? `+${play.runs}R` : '+1R'}</span>}
+          {play.walkOff && <span className="text-yellow-400 text-[10px] font-bold bg-yellow-400/10 px-1 rounded">WALK-OFF</span>}
+          {play.barrel && <span className="text-orange-400 text-[10px] bg-orange-400/10 px-1 rounded">🛢 BARREL</span>}
+        </div>
+        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+          <span className="text-slate-600 text-[10px]">vs {play.pitcher}</span>
+          {hasPitches && <span className="text-slate-600 text-[10px]">{play.pitches.length}p</span>}
+          {play.exitVelocity && <span className="text-slate-500 text-[10px] font-mono">{play.exitVelocity} mph EV</span>}
+          {play.launchAngle !== undefined && play.launchAngle !== null && <span className="text-slate-500 text-[10px] font-mono">{play.launchAngle}° LA</span>}
+          {play.hardHit && <span className="text-orange-400 text-[10px]">Hard Hit</span>}
+        </div>
+        <p className="text-slate-500 text-[11px] mt-0.5 leading-tight">{play.desc}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-slate-600 font-mono text-[10px]">{play.inning}</span>
+        {hasPitches && (
+          <span className={`text-slate-600 text-[10px] transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+        )}
+      </div>
+    </>
+  );
+
+  if (!hasPitches) {
+    return (
+      <div className="border-b border-slate-800/50 w-full text-left px-3 py-2.5 flex items-start gap-2">
+        {renderHeader()}
+      </div>
+    );
+  }
+
   return (
-    <div className="border-b border-slate-800/50">
-      <button
-        onClick={() => hasPitches && setOpen(o => !o)}
-        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 hover:bg-slate-800/30 transition-colors ${hasPitches ? 'cursor-pointer' : 'cursor-default'}`}
-      >
-        <span className="text-slate-600 font-mono text-[10px] w-4 mt-0.5 shrink-0">{index + 1}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`font-semibold text-xs ${outcomeColor}`}>{outcome}</span>
-            <span className="text-slate-300 text-xs truncate">{play.batter}</span>
-            {play.runs > 0 && <span className="text-green-400 font-bold text-[10px] bg-green-400/10 px-1 rounded">{play.runs > 1 ? `+${play.runs}R` : '+1R'}</span>}
-            {play.walkOff && <span className="text-yellow-400 text-[10px] font-bold bg-yellow-400/10 px-1 rounded">WALK-OFF</span>}
-            {play.barrel && <span className="text-orange-400 text-[10px] bg-orange-400/10 px-1 rounded">🛢 BARREL</span>}
-          </div>
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            <span className="text-slate-600 text-[10px]">vs {play.pitcher}</span>
-            {hasPitches && <span className="text-slate-600 text-[10px]">{play.pitches.length}p</span>}
-            {play.exitVelocity && <span className="text-slate-500 text-[10px] font-mono">{play.exitVelocity} mph EV</span>}
-            {play.launchAngle !== undefined && play.launchAngle !== null && <span className="text-slate-500 text-[10px] font-mono">{play.launchAngle}° LA</span>}
-            {play.hardHit && <span className="text-orange-400 text-[10px]">Hard Hit</span>}
-          </div>
-          <p className="text-slate-500 text-[11px] mt-0.5 leading-tight">{play.desc}</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-slate-600 font-mono text-[10px]">{play.inning}</span>
-          {hasPitches && (
-            <span className={`text-slate-600 text-[10px] transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
-          )}
-        </div>
-      </button>
-      {open && hasPitches && (
-        <div className="bg-slate-950/60 px-3 pb-3">
+    <Disclosure as="div" className="border-b border-slate-800/50">
+      <DisclosureButton className="w-full text-left px-3 py-2.5 flex items-start gap-2 hover:bg-slate-800/30 transition-colors focus:outline-none">
+        {({ open }) => renderHeader(open)}
+      </DisclosureButton>
+      <DisclosurePanel className="bg-slate-950/60 px-3 pb-3 focus:outline-none">
           <div className="flex flex-col gap-1">
             {play.pitches.map((p, i) => {
               const def = PITCH_DEFS[p.type] || PITCH_DEFS.FF;
@@ -1453,9 +1414,8 @@ function AtBatCard({ play, index }) {
               );
             })}
           </div>
-        </div>
-      )}
-    </div>
+      </DisclosurePanel>
+    </Disclosure>
   );
 }
 
@@ -1741,7 +1701,7 @@ function SeasonMode() {
         <div className="flex-1">
           <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Your Team</div>
           <button onClick={() => { setResult(null); }} className="hidden" />
-          <TeamPicker label="Your Team" selected={myTeam} onSelect={t => { setMyTeam(t); setResult(null); }} exclude={null} />
+          <TeamPicker label="Your Team" teams={MLB_TEAMS} selected={myTeam} onSelect={t => { setMyTeam(t); setResult(null); }} exclude={null} />
         </div>
         <div className="flex flex-col gap-2 pt-6">
           <button onClick={run} disabled={!myTeam || simming}
@@ -1765,12 +1725,20 @@ function SeasonMode() {
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
-            {[['log', 'Game Log'], ['standings', 'Standings']].map(([v, l]) => (
-              <button key={v} onClick={() => setTab(v)}
-                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${tab === v ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>{l}</button>
-            ))}
+            <SegmentedControl
+              value={tab}
+              onChange={setTab}
+              variant="simulator"
+              size="sm"
+              rounded="lg"
+              className="flex-1"
+              optionClassName="flex-1"
+              options={[
+                { value: 'log', label: 'Game Log' },
+                { value: 'standings', label: 'Standings' },
+              ]}
+            />
           </div>
 
           {tab === 'log' && (
@@ -1832,10 +1800,12 @@ const YEAR_OPTIONS = Array.from({ length: 2025 - 1900 }, (_, i) => 2024 - i);
 
 function YearPicker({ value, onChange }) {
   return (
-    <select value={value} onChange={e => onChange(Number(e.target.value))}
-      className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500">
-      {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-    </select>
+    <Select
+      value={value}
+      onChange={onChange}
+      size="sm"
+      options={YEAR_OPTIONS.map((y) => ({ value: y, label: String(y) }))}
+    />
   );
 }
 
@@ -1926,14 +1896,14 @@ function HistoricalReplay() {
       {/* Away Team + Year */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <TeamPicker label="Away Team" selected={awayTeam} onSelect={t => { setAwayTeam(t); setResult(null); }} exclude={homeTeam} />
+          <TeamPicker label="Away Team" teams={MLB_TEAMS} selected={awayTeam} onSelect={t => { setAwayTeam(t); setResult(null); }} exclude={homeTeam} />
           <div className="flex items-center justify-center gap-2">
             <span className="text-[10px] text-slate-500">Season:</span>
             <YearPicker value={awayYear} onChange={y => { setAwayYear(y); setResult(null); }} />
           </div>
         </div>
         <div className="space-y-2">
-          <TeamPicker label="Home Team" selected={homeTeam} onSelect={t => { setHomeTeam(t); setResult(null); }} exclude={awayTeam} />
+          <TeamPicker label="Home Team" teams={MLB_TEAMS} selected={homeTeam} onSelect={t => { setHomeTeam(t); setResult(null); }} exclude={awayTeam} />
           <div className="flex items-center justify-center gap-2">
             <span className="text-[10px] text-slate-500">Season:</span>
             <YearPicker value={homeYear} onChange={y => { setHomeYear(y); setResult(null); }} />
@@ -2009,10 +1979,19 @@ function HistoricalReplay() {
           </div>
 
           <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
-            {[['plays','Play-by-Play'],['box','Box Score']].map(([v, l]) => (
-              <button key={v} onClick={() => setResultTab(v)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${resultTab === v ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>{l}</button>
-            ))}
+            <SegmentedControl
+              value={resultTab}
+              onChange={setResultTab}
+              variant="simulator"
+              size="sm"
+              rounded="lg"
+              className="flex-1"
+              optionClassName="flex-1 py-1.5"
+              options={[
+                { value: 'plays', label: 'Play-by-Play' },
+                { value: 'box', label: 'Box Score' },
+              ]}
+            />
           </div>
 
           {resultTab === 'plays' && (
@@ -2064,20 +2043,17 @@ const RESEARCH_QUESTIONS = [
 ];
 
 function FeaturesPanel() {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden mb-6">
-      <button onClick={() => setOpen(v => !v)} className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-800/40 transition-colors">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-slate-300">Simulation Engine</span>
-          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full border border-emerald-400/20">
-            {PLANNED_FEATURES.filter(f => f.done).length}/{PLANNED_FEATURES.length} features
-          </span>
-        </div>
-        <span className="text-slate-600 text-xs">{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div className="border-t border-slate-800">
+    <Collapsible
+      className="mb-6"
+      title="Simulation Engine"
+      badge={
+        <span className="text-[9px] font-mono text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full border border-emerald-400/20">
+          {PLANNED_FEATURES.filter(f => f.done).length}/{PLANNED_FEATURES.length} features
+        </span>
+      }
+    >
+        <div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-slate-800">
             {PLANNED_FEATURES.map(f => (
               <div key={f.title} className="bg-slate-900 p-4 flex gap-3">
@@ -2109,8 +2085,7 @@ function FeaturesPanel() {
             </div>
           </div>
         </div>
-      )}
-    </div>
+    </Collapsible>
   );
 }
 
@@ -2258,12 +2233,21 @@ export default function BaseballSimulator() {
       {/* Features Panel */}
       <FeaturesPanel />
 
-      {/* Top Tabs */}
       <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-2xl p-1 mb-6">
-        {[['game','⚾ Single Game'], ['season','📅 Season'], ['playoffs','🏆 Playoffs'], ['history','📜 History']].map(([v, l]) => (
-          <button key={v} onClick={() => setTab(v)}
-            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${tab === v ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}>{l}</button>
-        ))}
+        <SegmentedControl
+          value={tab}
+          onChange={setTab}
+          variant="simulator"
+          size="sm"
+          className="flex-1"
+          optionClassName="flex-1"
+          options={[
+            { value: 'game', label: '⚾ Single Game' },
+            { value: 'season', label: '📅 Season' },
+            { value: 'playoffs', label: '🏆 Playoffs' },
+            { value: 'history', label: '📜 History' },
+          ]}
+        />
       </div>
 
       {/* Season Tab */}
@@ -2280,11 +2264,11 @@ export default function BaseballSimulator() {
         <>
           {/* Team Pickers */}
           <div className="flex items-stretch gap-3 mb-4">
-            <TeamPicker label="Away" selected={awayTeam} onSelect={t => { setAwayTeam(t); setResult(null); }} exclude={homeTeam} />
+            <TeamPicker label="Away" teams={MLB_TEAMS} selected={awayTeam} onSelect={t => { setAwayTeam(t); setResult(null); }} exclude={homeTeam} />
             <div className="flex flex-col items-center justify-center flex-shrink-0 gap-1 pt-6">
               <span className="text-slate-700 font-mono text-lg">@</span>
             </div>
-            <TeamPicker label="Home" selected={homeTeam} onSelect={t => { setHomeTeam(t); setResult(null); }} exclude={awayTeam} />
+            <TeamPicker label="Home" teams={MLB_TEAMS} selected={homeTeam} onSelect={t => { setHomeTeam(t); setResult(null); }} exclude={awayTeam} />
           </div>
 
           {/* Venue info */}
@@ -2321,12 +2305,17 @@ export default function BaseballSimulator() {
           {/* Speed + Sim Button */}
           <div className="flex items-center gap-3 mb-5">
             <div className="flex bg-slate-900 border border-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0">
-              {[['instant','⚡'],['live','▶ Live']].map(([val, label]) => (
-                <button key={val} onClick={() => setSpeed(val)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${speed === val ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                  {label}
-                </button>
-              ))}
+              <SegmentedControl
+                value={speed}
+                onChange={setSpeed}
+                variant="speed"
+                size="sm"
+                rounded="lg"
+                options={[
+                  { value: 'instant', label: '⚡' },
+                  { value: 'live', label: '▶ Live' },
+                ]}
+              />
             </div>
             <button onClick={runSimulation} disabled={!awayTeam || !homeTeam || simming || awayLoading || homeLoading}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all active:scale-[0.97] text-sm">
@@ -2399,12 +2388,20 @@ export default function BaseballSimulator() {
                 ))}
               </div>
 
-              {/* Result Tabs */}
               <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
-                {[['plays','Play-by-Play'],['box','Box Score']].map(([v, l]) => (
-                  <button key={v} onClick={() => setResultTab(v)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${resultTab === v ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>{l}</button>
-                ))}
+                <SegmentedControl
+                  value={resultTab}
+                  onChange={setResultTab}
+                  variant="simulator"
+                  size="sm"
+                  rounded="lg"
+                  className="flex-1"
+                  optionClassName="flex-1 py-1.5"
+                  options={[
+                    { value: 'plays', label: 'Play-by-Play' },
+                    { value: 'box', label: 'Box Score' },
+                  ]}
+                />
               </div>
 
               {resultTab === 'plays' && (
@@ -2429,10 +2426,19 @@ export default function BaseballSimulator() {
               {resultTab === 'box' && (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
                   <div className="flex gap-1 p-2 border-b border-slate-800">
-                    {[['away', result.awayTeam.abbr], ['home', result.homeTeam.abbr]].map(([v, l]) => (
-                      <button key={v} onClick={() => setBoxTab(v)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${boxTab === v ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>{l}</button>
-                    ))}
+                    <SegmentedControl
+                      value={boxTab}
+                      onChange={setBoxTab}
+                      variant="simulator"
+                      size="sm"
+                      rounded="lg"
+                      className="flex-1"
+                      optionClassName="flex-1 py-1.5"
+                      options={[
+                        { value: 'away', label: result.awayTeam.abbr },
+                        { value: 'home', label: result.homeTeam.abbr },
+                      ]}
+                    />
                   </div>
                   <div className="p-2">
                     <BoxScore

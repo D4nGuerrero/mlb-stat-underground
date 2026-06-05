@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, stadiumInfieldUrl, playerActionShotUrl, playerHeroShotUrl } from '../utils/mlbHelpers';
+import { Select } from '../components/ui';
+
+const SEASON_OPTIONS = [
+  new Date().getFullYear(),
+  new Date().getFullYear() - 1,
+  new Date().getFullYear() - 2,
+  new Date().getFullYear() - 3,
+].map((y) => ({ value: y, label: String(y) }));
 
 export default function PlayerPage() {
   const { playerId } = useParams();
@@ -180,15 +188,12 @@ export default function PlayerPage() {
       </button>
 
       <div className="flex items-center justify-end mb-4">
-        <select
+        <Select
           value={season}
-          onChange={(e) => setSeason(Number(e.target.value))}
-          className="bg-slate-900 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-        >
-          {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2, new Date().getFullYear() - 3].map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
+          onChange={setSeason}
+          options={SEASON_OPTIONS}
+          buttonClassName="bg-slate-900"
+        />
       </div>
 
       {isLoading && (

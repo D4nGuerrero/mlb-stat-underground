@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Collapsible } from '../components/ui';
 
 // ─── NAV SECTIONS ──────────────────────────────────────────────────────────
 const NAV = [
@@ -81,7 +82,6 @@ const ParamRow = ({ name, type, req, desc }) => (
 
 // ─── COLLAPSIBLE ENDPOINT CARD ─────────────────────────────────────────────
 const EndpointCard = ({ method = 'GET', path, summary, description, params, example, response, notes }) => {
-  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const fullUrl = example?.startsWith('http') ? example : `https://statsapi.mlb.com/api${example ?? path}`;
 
@@ -98,23 +98,20 @@ const EndpointCard = ({ method = 'GET', path, summary, description, params, exam
   }[method] ?? 'bg-slate-700 text-slate-300';
 
   return (
-    <div className="border border-slate-700 rounded-2xl overflow-hidden mb-3">
-      {/* Header */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full text-left flex items-center gap-3 px-4 py-3.5 hover:bg-slate-800/40 transition-colors"
-      >
-        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0 font-mono ${methodColor}`}>
-          {method}
-        </span>
-        <code className="text-sm text-slate-200 font-mono flex-1 truncate">{path}</code>
-        {summary && <span className="text-xs text-slate-500 hidden sm:block truncate max-w-xs">{summary}</span>}
-        <span className="text-slate-500 flex-shrink-0 ml-auto text-xs">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {/* Expanded body */}
-      {open && (
-        <div className="px-4 pb-5 pt-1 border-t border-slate-800 space-y-4">
+    <Collapsible
+      className="border-slate-700 mb-3"
+      headerClassName="px-4 py-3.5 gap-3"
+      title={
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0 font-mono ${methodColor}`}>
+            {method}
+          </span>
+          <code className="text-sm text-slate-200 font-mono flex-1 truncate">{path}</code>
+          {summary && <span className="text-xs text-slate-500 hidden sm:block truncate max-w-xs">{summary}</span>}
+        </div>
+      }
+    >
+        <div className="px-4 pb-5 pt-1 space-y-4">
           {description && <p className="text-sm text-slate-300">{description}</p>}
 
           {/* Example URL + copy */}
@@ -176,8 +173,7 @@ const EndpointCard = ({ method = 'GET', path, summary, description, params, exam
             </div>
           )}
         </div>
-      )}
-    </div>
+    </Collapsible>
   );
 };
 

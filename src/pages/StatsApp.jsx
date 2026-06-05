@@ -6,6 +6,15 @@ import {
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
 } from '../utils/mlbHelpers';
+import { TabBar, Select, SegmentedControl } from '../components/ui';
+
+const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015].map(
+  (y) => ({ value: String(y), label: String(y) }),
+);
+const TEAM_OPTIONS = mlbTeams.map((t) => ({
+  value: t.id,
+  label: `${t.name} (${t.abbr})`,
+}));
 
 // ─── Stat groups & hero stats ─────────────────────────────────────────────
 const HITTING_GROUPS = [
@@ -867,28 +876,19 @@ export default function StatsApp() {
         <p className="text-slate-400 mt-1 text-sm">Search any player · Build a watchlist · Track Team Exodus</p>
       </div>
 
-      <div className="flex flex-wrap gap-1 bg-slate-900 border border-slate-700 rounded-2xl p-1 mb-6 w-fit">
-        {[
+      <TabBar
+        className="mb-6"
+        tabs={[
           { key: 'search', label: 'Player Search' },
           { key: 'watchlist', label: `Watchlist${watchlist.length ? ` (${watchlist.length})` : ''}` },
           { key: 'hotcold', label: '🔥 Hot & Cold ❄️' },
-
           { key: 'exodus', label: 'Team Exodus' },
           { key: 'acquisitions', label: 'Team Acquisitions' },
           { key: 'rankings', label: 'Exodus Rankings' },
-                    
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => handleTabChange(key)}
-            className={`px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
-              activeTab === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        ]}
+        activeKey={activeTab}
+        onChange={handleTabChange}
+      />
 
       {/* PLAYER SEARCH TAB */}
       {activeTab === 'search' && (
@@ -908,32 +908,27 @@ export default function StatsApp() {
               </div>
               <div className="sm:col-span-3">
                 <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">SEASON</label>
-                <select
+                <Select
                   value={season}
-                  onChange={(e) => setSeason(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500"
-                >
-                  {[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015].map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSeason}
+                  options={SEASON_OPTIONS}
+                  buttonClassName="border-slate-600 py-3"
+                />
               </div>
               <div className="sm:col-span-4">
                 <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">STAT GROUP</label>
                 <div className="flex bg-slate-800 border border-slate-600 rounded-2xl p-1">
-                  {['hitting', 'pitching'].map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setStatType(t)}
-                      className={`flex-1 py-2 rounded-[14px] text-sm font-medium transition-all capitalize ${
-                        statType === t ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
+                  <SegmentedControl
+                    value={statType}
+                    onChange={setStatType}
+                    variant="emerald"
+                    className="flex-1"
+                    optionClassName="flex-1"
+                    options={[
+                      { value: 'hitting', label: 'hitting' },
+                      { value: 'pitching', label: 'pitching' },
+                    ]}
+                  />
                 </div>
               </div>
             </div>
@@ -1171,17 +1166,12 @@ export default function StatsApp() {
                 <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">
                   TEAM THEY LEFT (2025 ROSTER)
                 </label>
-                <select
+                <Select
                   value={formerTeamId}
-                  onChange={(e) => setFormerTeamId(Number(e.target.value))}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500"
-                >
-                  {mlbTeams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name} ({team.abbr})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setFormerTeamId}
+                  options={TEAM_OPTIONS}
+                  buttonClassName="border-slate-600 py-3"
+                />
               </div>
               <button
                 onClick={analyzeTeamExodus}
@@ -1222,17 +1212,12 @@ export default function StatsApp() {
                 <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">
                   TEAM (2026 ROSTER)
                 </label>
-                <select
+                <Select
                   value={acquisitionTeamId}
-                  onChange={(e) => setAcquisitionTeamId(Number(e.target.value))}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500"
-                >
-                  {mlbTeams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name} ({team.abbr})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAcquisitionTeamId}
+                  options={TEAM_OPTIONS}
+                  buttonClassName="border-slate-600 py-3"
+                />
               </div>
               <button
                 onClick={analyzeTeamAcquisitions}

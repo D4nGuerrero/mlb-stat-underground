@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl } from '../utils/mlbHelpers';
+import { SegmentedControl } from '../components/ui';
 
 export default function GameDay() {
   const navigate = useNavigate();
@@ -311,20 +312,18 @@ export default function GameDay() {
               : `Games on ${formatDisplayDate(selectedDate)}`}
           </div>
           <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 gap-0.5">
-            {[
-              { key: 'card', icon: 'fa-th-large', title: 'Cards' },
-              { key: 'list', icon: 'fa-list',     title: 'List'  },
-              { key: 'grid', icon: 'fa-th',        title: 'Grid'  },
-            ].map(({ key, icon, title }) => (
-              <button
-                key={key}
-                onClick={() => setViewMode(key)}
-                title={title}
-                className={`w-8 h-8 flex items-center justify-center rounded-xl text-xs transition-all ${viewMode === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}
-              >
-                <i className={`fa-solid ${icon}`} />
-              </button>
-            ))}
+            <SegmentedControl
+              value={viewMode}
+              onChange={setViewMode}
+              size="xs"
+              rounded="xl"
+              optionClassName="w-8 h-8"
+              options={[
+                { value: 'card', icon: 'fa-th-large', title: 'Cards' },
+                { value: 'list', icon: 'fa-list', title: 'List' },
+                { value: 'grid', icon: 'fa-th', title: 'Grid' },
+              ]}
+            />
           </div>
         </div>
 
