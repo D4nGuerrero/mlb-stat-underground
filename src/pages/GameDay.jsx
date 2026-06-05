@@ -13,6 +13,7 @@ import {
   renderBaseDiamond,
 } from '../utils/mlbHelpers';
 import PitchCanvas from '../components/PitchCanvas';
+import { TabBar, Modal, SegmentedControl } from '../components/ui';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -699,14 +700,12 @@ export default function GamePage() {
     const location = hitData?.location;
 
     return (
-      <div
-        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center sm:justify-center sm:p-4"
-        onClick={closeSheet}
+      <Modal
+        open
+        onClose={closeSheet}
+        size="md"
+        panelClassName="max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#0d1520] border-slate-700/70 p-0"
       >
-        <div
-          className="w-full sm:max-w-lg max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#0d1520] border border-slate-700/70 rounded-t-3xl sm:rounded-2xl shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
           {/* Drag handle — mobile only */}
           <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
             <div className="w-10 h-1 rounded-full bg-slate-600" />
@@ -1052,8 +1051,7 @@ export default function GamePage() {
               </div>
             )}
           </div>
-        </div>
-      </div>
+      </Modal>
     );
   };
 
@@ -1339,21 +1337,13 @@ export default function GamePage() {
         </div>
 
         {/* Tab nav */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-          {tabList.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`px-4 py-2 rounded-2xl text-sm font-semibold whitespace-nowrap transition-all ${
-                currentTab === key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <TabBar
+          className="mb-4"
+          variant="standalone"
+          tabs={tabList}
+          activeKey={currentTab}
+          onChange={setActiveTab}
+        />
 
         {/* Tab content */}
         {currentTab === 'live' && isLive && ls && (
@@ -1728,24 +1718,17 @@ export default function GamePage() {
 
         {currentTab === 'summary' && (
           <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-4 sm:p-5">
-            <div className="flex gap-2 mb-4">
-              {[
-                { key: 'all', label: 'All Plays' },
-                { key: 'scoring', label: 'Scoring Only' },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setSummaryFilter(key)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    summaryFilter === key
-                      ? 'bg-white text-slate-900 border-white'
-                      : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              value={summaryFilter}
+              onChange={setSummaryFilter}
+              variant="pill"
+              size="sm"
+              className="mb-4"
+              options={[
+                { value: 'all', label: 'All Plays' },
+                { value: 'scoring', label: 'Scoring Only' },
+              ]}
+            />
 
             <div className="space-y-5">
               {inningGroups.map(({ key, plays: groupPlays }) => (

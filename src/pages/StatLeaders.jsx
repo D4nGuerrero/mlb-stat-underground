@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
+import { SegmentedControl, Select } from '../components/ui';
+
+const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => ({
+  value: String(y),
+  label: `${y} Season`,
+}));
+const LIMIT_OPTIONS = [
+  { value: 10, label: 'Top 10' },
+  { value: 25, label: 'Top 25' },
+  { value: 50, label: 'Top 50' },
+];
 
 const HITTING_CATS = [
   { key: 'homeRuns', label: 'Home Runs', abbr: 'HR', format: 'int' },
@@ -211,113 +222,87 @@ export default function StatLeaders() {
       <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5 mb-6 space-y-4">
         {/* Player / Team toggle */}
         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
-          {['player', 'team'].map((opt) => (
-            <button
-              key={opt}
-              onClick={() => { setPlayerOrTeam(opt); if (opt === 'team') { setTeamGroup('hitting'); setTeamCat('homeRuns'); } }}
-              className={`px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all capitalize ${
-                playerOrTeam === opt ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {opt === 'player' ? 'Player' : 'Team'}
-            </button>
-          ))}
+          <SegmentedControl
+            value={playerOrTeam}
+            onChange={(opt) => {
+              setPlayerOrTeam(opt);
+              if (opt === 'team') {
+                setTeamGroup('hitting');
+                setTeamCat('homeRuns');
+              }
+            }}
+            variant="emerald"
+            options={[
+              { value: 'player', label: 'Player' },
+              { value: 'team', label: 'Team' },
+            ]}
+          />
         </div>
 
         {/* Group + season */}
         <div className="flex flex-wrap gap-3 items-center">
           {!isTeam && (
             <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-              {['hitting', 'pitching', 'fielding'].map((g) => (
-                <button
-                  key={g}
-                  onClick={() => handleGroupChange(g)}
-                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all capitalize ${
-                    group === g ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {g}
-                </button>
-              ))}
+              <SegmentedControl
+                value={group}
+                onChange={handleGroupChange}
+                options={[
+                  { value: 'hitting', label: 'hitting' },
+                  { value: 'pitching', label: 'pitching' },
+                  { value: 'fielding', label: 'fielding' },
+                ]}
+              />
             </div>
           )}
 
           {!isTeam && (
             <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-              {[
-                { key: 'all', label: 'MLB' },
-                { key: 'AL', label: 'AL' },
-                { key: 'NL', label: 'NL' },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setLeagueFilter(key)}
-                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
-                    leagueFilter === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              <SegmentedControl
+                value={leagueFilter}
+                onChange={setLeagueFilter}
+                options={[
+                  { value: 'all', label: 'MLB' },
+                  { value: 'AL', label: 'AL' },
+                  { value: 'NL', label: 'NL' },
+                ]}
+              />
             </div>
           )}
 
-          <select
-            value={season}
-            onChange={(e) => setSeason(e.target.value)}
-            className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500"
-          >
-            {[2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => (
-              <option key={y} value={y}>{y} Season</option>
-            ))}
-          </select>
+          <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} />
 
           {!isTeam && (
-            <select
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500"
-            >
-              <option value={10}>Top 10</option>
-              <option value={25}>Top 25</option>
-              <option value={50}>Top 50</option>
-            </select>
+            <Select value={limit} onChange={setLimit} options={LIMIT_OPTIONS} />
           )}
         </div>
 
         {/* Team sub-group toggle */}
         {isTeam && (
           <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
-            {['hitting', 'pitching'].map((g) => (
-              <button
-                key={g}
-                onClick={() => { setTeamGroup(g); setTeamCat(g === 'hitting' ? 'homeRuns' : 'era'); }}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all capitalize ${
-                  teamGroup === g ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {g}
-              </button>
-            ))}
+            <SegmentedControl
+              value={teamGroup}
+              onChange={(g) => {
+                setTeamGroup(g);
+                setTeamCat(g === 'hitting' ? 'homeRuns' : 'era');
+              }}
+              variant="emerald"
+              options={[
+                { value: 'hitting', label: 'hitting' },
+                { value: 'pitching', label: 'pitching' },
+              ]}
+            />
           </div>
         )}
 
         {/* Category pills */}
-        <div className="flex flex-wrap gap-1.5">
-          {allCats.map((cat) => (
-            <button
-              key={cat.key}
-              onClick={() => isTeam ? setTeamCat(cat.key) : setCategory(cat.key)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                (isTeam ? teamCat : category) === cat.key
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
-              }`}
-            >
-              {cat.abbr}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          value={isTeam ? teamCat : category}
+          onChange={isTeam ? setTeamCat : setCategory}
+          variant="category"
+          size="sm"
+          wrap
+          options={allCats.map((cat) => ({ value: cat.key, label: cat.abbr }))}
+        />
       </div>
 
       {/* Results card */}

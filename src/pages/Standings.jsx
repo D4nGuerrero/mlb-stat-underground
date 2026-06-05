@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { teamLogoUrl } from '../utils/mlbHelpers';
+import { SegmentedControl, Select } from '../components/ui';
+
+const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => ({
+  value: String(y),
+  label: String(y),
+}));
+const STANDINGS_TYPE_OPTIONS = [
+  { value: 'regularSeason', label: 'Regular Season' },
+  { value: 'wildCard', label: 'Wild Card' },
+  { value: 'divisionLeaders', label: 'Division Leaders' },
+  { value: 'springTraining', label: 'Spring Training' },
+  { value: 'postseason', label: 'Postseason' },
+];
 
 export default function Standings() {
   const navigate = useNavigate();
@@ -200,46 +213,24 @@ export default function Standings() {
       <div className="flex flex-wrap gap-3 items-center mb-6">
         {/* View type */}
         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-          {[
-            { key: 'division', label: 'Division' },
-            { key: 'league',   label: 'League'   },
-            { key: 'overall',  label: 'Overall'  },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setViewType(key)}
-              className={`px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                viewType === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          <SegmentedControl
+            value={viewType}
+            onChange={setViewType}
+            options={[
+              { value: 'division', label: 'Division' },
+              { value: 'league', label: 'League' },
+              { value: 'overall', label: 'Overall' },
+            ]}
+          />
         </div>
 
-        {/* Standings type */}
-        <select
+        <Select
           value={standingsType}
-          onChange={(e) => setStandingsType(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500"
-        >
-          <option value="regularSeason">Regular Season</option>
-          <option value="wildCard">Wild Card</option>
-          <option value="divisionLeaders">Division Leaders</option>
-          <option value="springTraining">Spring Training</option>
-          <option value="postseason">Postseason</option>
-        </select>
+          onChange={setStandingsType}
+          options={STANDINGS_TYPE_OPTIONS}
+        />
 
-        {/* Season */}
-        <select
-          value={season}
-          onChange={(e) => setSeason(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500"
-        >
-          {[2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
+        <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} />
 
         <button
           onClick={fetchStandings}

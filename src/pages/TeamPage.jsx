@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
+import { TabBar, Select, SegmentedControl } from '../components/ui';
 
 const SEASON = new Date().getFullYear();
+const SEASON_OPTIONS = [SEASON, SEASON - 1, SEASON - 2, SEASON - 3, SEASON - 4].map((y) => ({
+  value: String(y),
+  label: String(y),
+}));
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmtDate = (d) => {
@@ -354,37 +359,27 @@ function ScheduleTab({ teamId, season }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
-          {[
-            { key: 'list', label: 'List' },
-            { key: 'month', label: 'Monthly' },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setView(key)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                view === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          <SegmentedControl
+            value={view}
+            onChange={setView}
+            size="sm"
+            options={[
+              { value: 'list', label: 'List' },
+              { value: 'month', label: 'Monthly' },
+            ]}
+          />
         </div>
 
         {view === 'month' && (
-          <select
+          <Select
             value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-          >
-            {months.map((m) => {
+            onChange={setSelectedMonth}
+            options={months.map((m) => {
               const [yy, mm] = m.split('-').map((x) => Number(x));
-              return (
-                <option key={m} value={m}>
-                  {monthLabel(new Date(yy, mm - 1, 1))}
-                </option>
-              );
+              return { value: m, label: monthLabel(new Date(yy, mm - 1, 1)) };
             })}
-          </select>
+            buttonClassName="bg-slate-900"
+          />
         )}
       </div>
 
@@ -839,32 +834,19 @@ export default function TeamPage() {
               >
                 {isFavorite ? '★ Favorited' : '☆ Favorite'}
               </button>
-              <select
-                value={season}
-                onChange={(e) => setSeason(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-              >
-                {[SEASON, SEASON - 1, SEASON - 2, SEASON - 3, SEASON - 4].map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
+              <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto bg-slate-900 border border-slate-700 rounded-2xl p-1 mb-6 scrollbar-none">
-        {TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${activeTab === key ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        className="mb-6"
+        listClassName="overflow-x-auto scrollbar-none"
+        tabs={TABS}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+      />
 
       {/* Tab content */}
       <div>
