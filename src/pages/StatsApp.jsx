@@ -1076,12 +1076,12 @@ export default function StatsApp() {
                 </div>
                 {hotPlayers.map((p, i) => (
                   <div
-                    key={p.person?.id ?? i}
+                    key={p.player?.id ?? i}
                     className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors"
                   >
                     <span className="w-5 text-center font-mono text-xs text-slate-500 flex-shrink-0">{i + 1}</span>
                     <img
-                      src={playerHeadshotUrl(p.person?.id)}
+                      src={playerHeadshotUrl(p.player?.id)}
                       alt=""
                       className="w-9 h-9 rounded-xl object-cover border border-slate-700 flex-shrink-0"
                       onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
@@ -1119,16 +1119,17 @@ export default function StatsApp() {
                 </div>
                 {coldPlayers.map((p, i) => (
                   <div
-                    key={p.person?.id ?? i}
+                    key={p.player?.id ?? i}
                     className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors"
                   >
                     <span className="w-5 text-center font-mono text-xs text-slate-500 flex-shrink-0">{i + 1}</span>
                     <img
-                      src={playerHeadshotUrl(p.person?.id)}
+                      src={playerHeadshotUrl(p.player?.id)}
                       alt=""
                       className="w-9 h-9 rounded-xl object-cover border border-slate-700 flex-shrink-0"
                       onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
                     />
+                    
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm truncate">{p.player?.fullName}</div>
                       <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">

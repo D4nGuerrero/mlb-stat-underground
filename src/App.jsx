@@ -16,9 +16,7 @@ function App() {
       <nav id="main-nav" className="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-x-2 sm:gap-x-3 flex-shrink-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-red-500 to-red-700 rounded-2xl flex items-center justify-center">
-              <i className="fa-solid fa-baseball text-white text-base sm:text-xl"></i>
-            </div>
+              <img src='/logo.png' alt='MLB Live Logo' className="w-10 h-10 " />
             <div className="hidden xs:block">
               <div className="font-display text-xl sm:text-2xl tracking-tighter leading-none">
                 MLB Live
