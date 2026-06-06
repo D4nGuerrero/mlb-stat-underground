@@ -13,8 +13,8 @@ export const mlbTeams = [
   { id: 116, name: 'Detroit Tigers', abbr: 'DET' },
   { id: 117, name: 'Houston Astros', abbr: 'HOU' },
   { id: 118, name: 'Kansas City Royals', abbr: 'KC' },
-  { id: 119, name: 'Los Angeles Angels', abbr: 'LAA' },
-  { id: 108, name: 'Los Angeles Dodgers', abbr: 'LAD' },
+  { id: 108, name: 'Los Angeles Angels', abbr: 'LAA' },
+  { id: 119, name: 'Los Angeles Dodgers', abbr: 'LAD' },
   { id: 146, name: 'Miami Marlins', abbr: 'MIA' },
   { id: 158, name: 'Milwaukee Brewers', abbr: 'MIL' },
   { id: 142, name: 'Minnesota Twins', abbr: 'MIN' },
@@ -33,8 +33,13 @@ export const mlbTeams = [
   { id: 120, name: 'Washington Nationals', abbr: 'WSH' },
 ];
 
-export const teamLogoUrl = (teamId) =>
-  `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${teamId}.svg`;
+// export const teamLogoUrl = (teamId) =>
+//   `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${teamId}.svg`;
+
+
+// team logo dark mode and light mode
+export const teamLogoUrl = (teamId, darkmode = true) =>
+  `https://www.mlbstatic.com/team-logos/${darkmode ? 'team-cap-on-dark/' : ''}${teamId}.svg`;
 
 export const playerHeadshotUrl = (playerId) =>
 `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`
