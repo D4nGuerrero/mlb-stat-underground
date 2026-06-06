@@ -6,120 +6,36 @@ import {
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
 } from '../utils/mlbHelpers';
-import { TabBar, Select, SegmentedControl } from '../components/ui';
-
-const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015].map(
-  (y) => ({ value: String(y), label: String(y) }),
-);
+import { TabBar, Select } from '../components/ui';
+import {
+  enrichMoversWithDeltaScores,
+  formatDeltaScore,
+} from '../utils/playerDeltaScore';
 const TEAM_OPTIONS = mlbTeams.map((t) => ({
   value: t.id,
   label: `${t.name} (${t.abbr})`,
 }));
 
-// ─── Stat groups & hero stats ─────────────────────────────────────────────
-const HITTING_GROUPS = [
-  {
-    label: 'Batting Line',
-    stats: [
-      { key: 'gamesPlayed', label: 'G' },
-      { key: 'plateAppearances', label: 'PA' },
-      { key: 'atBats', label: 'AB' },
-      { key: 'runs', label: 'R' },
-      { key: 'hits', label: 'H' },
-      { key: 'doubles', label: '2B' },
-      { key: 'triples', label: '3B' },
-      { key: 'homeRuns', label: 'HR' },
-      { key: 'rbi', label: 'RBI' },
-      { key: 'stolenBases', label: 'SB' },
-      { key: 'caughtStealing', label: 'CS' },
-      { key: 'leftOnBase', label: 'LOB' },
-    ],
-  },
-  {
-    label: 'Plate Discipline',
-    stats: [
-      { key: 'baseOnBalls', label: 'BB' },
-      { key: 'intentionalWalks', label: 'IBB' },
-      { key: 'strikeOuts', label: 'SO' },
-      { key: 'hitByPitch', label: 'HBP' },
-      { key: 'sacBunts', label: 'SH' },
-      { key: 'sacFlies', label: 'SF' },
-      { key: 'groundIntoDoublePlay', label: 'GIDP' },
-      { key: 'numberOfPitches', label: 'Pit' },
-    ],
-  },
-  {
-    label: 'Rate Stats',
-    stats: [
-      { key: 'avg', label: 'AVG' },
-      { key: 'obp', label: 'OBP' },
-      { key: 'slg', label: 'SLG' },
-      { key: 'ops', label: 'OPS' },
-      { key: 'babip', label: 'BABIP' },
-      { key: 'totalBases', label: 'TB' },
-      { key: 'atBatsPerHomeRun', label: 'AB/HR' },
-    ],
-  },
-];
-
-const PITCHING_GROUPS = [
-  {
-    label: 'Pitching Line',
-    stats: [
-      { key: 'wins', label: 'W' },
-      { key: 'losses', label: 'L' },
-      { key: 'gamesPlayed', label: 'G' },
-      { key: 'gamesStarted', label: 'GS' },
-      { key: 'inningsPitched', label: 'IP' },
-      { key: 'completeGames', label: 'CG' },
-      { key: 'shutouts', label: 'SHO' },
-      { key: 'saves', label: 'SV' },
-      { key: 'saveOpportunities', label: 'SVO' },
-      { key: 'holds', label: 'HLD' },
-      { key: 'blownSaves', label: 'BS' },
-      { key: 'gamesFinished', label: 'GF' },
-    ],
-  },
-  {
-    label: 'Results Allowed',
-    stats: [
-      { key: 'hits', label: 'H' },
-      { key: 'runs', label: 'R' },
-      { key: 'earnedRuns', label: 'ER' },
-      { key: 'homeRuns', label: 'HR' },
-      { key: 'baseOnBalls', label: 'BB' },
-      { key: 'intentionalWalks', label: 'IBB' },
-      { key: 'hitBatsmen', label: 'HBP' },
-      { key: 'strikeOuts', label: 'SO' },
-      { key: 'wildPitches', label: 'WP' },
-      { key: 'balks', label: 'BK' },
-    ],
-  },
-  {
-    label: 'Rate Stats',
-    stats: [
-      { key: 'era', label: 'ERA' },
-      { key: 'whip', label: 'WHIP' },
-      { key: 'winPercentage', label: 'W%' },
-      { key: 'strikeoutsPer9Inn', label: 'K/9' },
-      { key: 'walksPer9Inn', label: 'BB/9' },
-      { key: 'hitsPer9Inn', label: 'H/9' },
-      { key: 'strikeoutWalkRatio', label: 'K/BB' },
-      { key: 'battersFaced', label: 'BF' },
-    ],
-  },
-];
-
-const HITTING_HERO = ['avg', 'homeRuns', 'rbi', 'ops', 'obp', 'slg'];
-const PITCHING_HERO = ['era', 'wins', 'strikeOuts', 'whip', 'inningsPitched', 'saves'];
-
-const HERO_LABELS = {
-  avg: 'AVG', homeRuns: 'HR', rbi: 'RBI', ops: 'OPS', obp: 'OBP', slg: 'SLG',
-  era: 'ERA', wins: 'W', strikeOuts: 'K', whip: 'WHIP', inningsPitched: 'IP', saves: 'SV',
-  winPercentage: 'W%', strikeoutsPer9Inn: 'K/9',
-};
-
 // ─── Pure helpers ─────────────────────────────────────────────────────────
+const sortSearchResults = (people) =>
+  [...people].sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    const aMlb = a.currentTeam?.sport?.id === 1 ? 1 : 0;
+    const bMlb = b.currentTeam?.sport?.id === 1 ? 1 : 0;
+    if (aMlb !== bMlb) return bMlb - aMlb;
+    return (a.fullName ?? '').localeCompare(b.fullName ?? '');
+  });
+
+const mapSearchPerson = (person) => ({
+  id: person.id,
+  fullName: person.fullName,
+  team: person.currentTeam?.name ?? '—',
+  teamId: person.currentTeam?.id,
+  position: person.primaryPosition?.abbreviation ?? '',
+  headshot: playerHeadshotUrl(person.id),
+  active: person.active,
+});
+
 const processPlayerSeason = (person, season) => {
   const group = person.primaryPosition?.abbreviation === 'P' ? 'pitching' : 'hitting';
   const statsBlock = person.stats?.find((s) => s.group?.displayName?.toLowerCase() === group);
@@ -158,150 +74,141 @@ const EXODUS_HERO_STATS = {
   pitching: ['era', 'whip', 'strikeoutsPer9Inn', 'winPercentage'],
 };
 
+const HERO_LABELS = {
+  avg: 'AVG', obp: 'OBP', slg: 'SLG', ops: 'OPS',
+  era: 'ERA', whip: 'WHIP', strikeoutsPer9Inn: 'K/9', winPercentage: 'W%',
+};
+
 const LOWER_IS_BETTER = new Set(['era', 'whip']);
 
+const SCORE_TONE_STYLES = {
+  positive: {
+    card: 'border-emerald-500/35 bg-gradient-to-b from-emerald-500/[0.12] via-slate-950 to-black hover:border-emerald-500/50',
+    glow: 'bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.18),transparent_50%)]',
+    badge: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+    photo: 'bg-emerald-500/20',
+  },
+  negative: {
+    card: 'border-red-500/35 bg-gradient-to-b from-red-500/[0.10] via-slate-950 to-black hover:border-red-500/50',
+    glow: 'bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.16),transparent_50%)]',
+    badge: 'bg-red-500/15 border-red-500/30 text-red-300',
+    photo: 'bg-red-500/20',
+  },
+  neutral: {
+    card: 'border-slate-600/60 bg-gradient-to-b from-slate-900 via-slate-950 to-black hover:border-slate-500/50',
+    glow: 'bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.10),transparent_50%)]',
+    badge: 'bg-slate-700/50 border-slate-600/60 text-slate-300',
+    photo: 'bg-slate-500/20',
+  },
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────
-function PlayerHeader({ playerData, season, isWatched, isWatchAnimating, onToggleWatch }) {
-  const heroKeys = HITTING_HERO;
+function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch }) {
   return (
-    <div className="p-5 sm:p-6 border-b border-slate-800">
-      <div className="flex items-start gap-4 sm:gap-6">
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
+      <Link to={`/player/${player.id}`} className="flex items-center gap-3 flex-1 min-w-0">
         <img
-          src={playerData.headshot}
-          alt={playerData.fullName}
-          className="w-20 h-20 sm:w-28 sm:h-28 rounded-3xl object-cover border-2 border-slate-700 flex-shrink-0"
+          src={player.headshot}
+          alt=""
+          className="w-12 h-12 rounded-2xl object-cover border border-slate-700 flex-shrink-0"
           onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
         />
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <Link
-              to={`/player/${playerData.id}`}
-              className="font-display text-2xl sm:text-3xl hover:text-emerald-400 transition-colors"
-            >
-              {playerData.fullName}
-            </Link>
-            <button
-              onClick={() => onToggleWatch(playerData)}
-              className={[
-                'text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98]',
-                isWatchAnimating ? 'watch-pop' : '',
-                isWatched
-                  ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
-                  : 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30',
-              ].join(' ')}
-            >
-              {isWatched ? '✕ Remove' : '★ Watch'}
-            </button>
+          <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
+            {player.fullName}
           </div>
-          <div className="flex items-center gap-2 mt-1.5">
-            {playerData.teamId && (
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
+            {player.teamId && (
               <img
-                src={teamLogoUrl(playerData.teamId)}
+                src={teamLogoUrl(player.teamId)}
                 alt=""
-                className="w-5 h-5 object-contain"
+                className="w-4 h-4 object-contain flex-shrink-0"
                 onError={(e) => (e.target.style.display = 'none')}
               />
             )}
-            <span className="text-emerald-400 text-sm">
-              {playerData.team}
-              {playerData.position ? ` · ${playerData.position}` : ''}
-            </span>
-            <span className="text-slate-600 text-xs">· {season}</span>
-          </div>
-
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3 mt-4">
-            {heroKeys.map((key) => {
-              const val = playerData.stats[key];
-              if (val == null) return null;
-              return (
-                <div key={key} className="bg-slate-800/80 border border-slate-700 rounded-2xl p-2.5 sm:p-3 text-center">
-                  <div className="text-[10px] sm:text-xs text-slate-500 mb-1 font-medium">
-                    {HERO_LABELS[key]}
-                  </div>
-                  <div className="font-display text-xl sm:text-2xl text-white tabular-nums">
-                    {val}
-                  </div>
-                </div>
-              );
-            })}
+            <span className="truncate">{player.team}</span>
+            {player.position && <span className="text-slate-600">· {player.position}</span>}
           </div>
         </div>
-      </div>
+      </Link>
+      <button
+        type="button"
+        onClick={() => onToggleWatch(player)}
+        className={[
+          'text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0',
+          isWatchAnimating ? 'watch-pop' : '',
+          isWatched
+            ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
+            : 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30',
+        ].join(' ')}
+      >
+        {isWatched ? '✕' : '★ Watch'}
+      </button>
     </div>
   );
 }
 
-function StatGroup({ label, stats, playerStats }) {
-  const rows = stats.filter((s) => playerStats[s.key] != null);
-  if (!rows.length) return null;
-
-  return (
-    <div className="p-4 sm:p-5">
-      <div className="text-xs font-semibold text-slate-500 tracking-wider uppercase mb-3">
-        {label}
-      </div>
-      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-        {rows.map(({ key, label: shortLabel }) => (
-          <div key={key} className="bg-slate-800/50 rounded-xl p-2 sm:p-2.5 text-center">
-            <div className="text-[9px] sm:text-[10px] text-slate-500 mb-0.5 font-medium">
-              {shortLabel}
-            </div>
-            <div className="font-mono text-sm sm:text-base text-slate-200 tabular-nums">
-              {playerStats[key]}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ExodusPlayerCard({ player }) {
+function MoverPlayerCard({ player }) {
   const heroStats = EXODUS_HERO_STATS[player.group] || EXODUS_HERO_STATS.hitting;
+  const tone = SCORE_TONE_STYLES[player.scoreTone] || SCORE_TONE_STYLES.neutral;
 
   return (
-    <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-slate-900 via-slate-950 to-black shadow-2xl shadow-black/30 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/30">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_45%)] pointer-events-none" />
+    <div className={`group relative overflow-hidden rounded-2xl sm:rounded-3xl border shadow-xl shadow-black/25 transition-all duration-300 hover:-translate-y-0.5 ${tone.card}`}>
+      <div className={`absolute inset-0 pointer-events-none ${tone.glow}`} />
 
-      <div className="relative p-5 border-b border-white/5">
-        <div className="flex items-start gap-4">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-2xl bg-emerald-500/20 blur-xl" />
+      <div className="relative p-4 sm:p-5 border-b border-white/5">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div className="relative flex-shrink-0">
+            <div className={`absolute inset-0 rounded-xl sm:rounded-2xl blur-xl ${tone.photo}`} />
             <img
               src={player.photo}
               alt={player.fullName}
-              className="relative w-16 h-16 rounded-2xl object-cover border border-white/10 shadow-lg"
+              className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl object-cover border border-white/10 shadow-lg"
               onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
             />
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-white truncate">{player.fullName}</h2>
-              <div className="px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-[10px] font-medium uppercase tracking-wider text-rose-300">
-                EXODUS
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <Link
+                  to={`/player/${player.playerId}`}
+                  className="text-base sm:text-lg font-bold text-white truncate block hover:text-emerald-400 transition-colors"
+                >
+                  {player.fullName}
+                </Link>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-0.5">
+                  2025 → 2026 YoY
+                </div>
+              </div>
+              <div className={`flex-shrink-0 px-2.5 py-1 rounded-xl border text-center ${tone.badge}`}>
+                <div className="text-[9px] font-semibold uppercase tracking-wider opacity-80">Score</div>
+                <div className="text-sm sm:text-base font-black tabular-nums leading-tight">
+                  {formatDeltaScore(player.deltaScore ?? 0)}
+                </div>
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-3 text-sm">
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-xs sm:text-sm">
               <div className="flex items-center gap-2 min-w-0">
                 {player.teams2025.map((t, i) => (
                   <img
                     key={i}
                     src={t.logoDark}
                     alt={t.name}
-                    className="w-9 h-9 object-contain flex-shrink-0"
+                    className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0"
                     onError={(e) => (e.target.style.display = 'none')}
                   />
                 ))}
                 <span className="truncate text-slate-300 font-medium">{getTeamNames(player.teams2025)}</span>
               </div>
 
-              <div className="w-7 h-7 rounded-full bg-slate-800 border border-white/5 flex items-center justify-center flex-shrink-0">
+              <div className="hidden sm:flex w-7 h-7 rounded-full bg-slate-800 border border-white/5 items-center justify-center flex-shrink-0">
                 <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
               </div>
+              <div className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500">→</div>
 
               <div className="flex items-center gap-2 min-w-0">
                 {player.teams2026.map((t, i) => (
@@ -309,19 +216,19 @@ function ExodusPlayerCard({ player }) {
                     key={i}
                     src={t.logoDark}
                     alt={t.name}
-                    className="w-9 h-9 object-contain flex-shrink-0"
+                    className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0"
                     onError={(e) => (e.target.style.display = 'none')}
                   />
                 ))}
-                <span className="truncate font-medium text-emerald-300">{getTeamNames(player.teams2026)}</span>
+                <span className="truncate font-medium text-slate-200">{getTeamNames(player.teams2026)}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="p-5">
-        <div className="grid grid-cols-4 gap-3">
+      <div className="p-4 sm:p-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {heroStats.map((k) => {
             const prev = Number(player.statsPrev?.[k] ?? 0);
             const curr = Number(player.statsCurrent?.[k] ?? 0);
@@ -333,7 +240,7 @@ function ExodusPlayerCard({ player }) {
             return (
               <div
                 key={k}
-                className={`group relative overflow-hidden rounded-2xl border transition-all duration-300 ${
+                className={`relative overflow-hidden rounded-xl sm:rounded-2xl border transition-all duration-300 ${
                   improved
                     ? 'border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.10] via-slate-900 to-slate-950'
                     : declined
@@ -341,18 +248,13 @@ function ExodusPlayerCard({ player }) {
                     : 'border-white/5 bg-gradient-to-b from-slate-900 to-slate-950'
                 }`}
               >
-                <div
-                  className={`absolute -top-6 -right-6 w-20 h-20 rounded-full blur-3xl opacity-20 ${
-                    improved ? 'bg-emerald-400' : declined ? 'bg-red-400' : 'bg-slate-500'
-                  }`}
-                />
-                <div className="relative p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                <div className="relative p-2.5 sm:p-3">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       {HERO_LABELS[k] || k.toUpperCase()}
                     </div>
                     <div
-                      className={`flex items-center justify-center rounded-full border w-5 h-5 ${
+                      className={`flex items-center justify-center rounded-full border w-4 h-4 sm:w-5 sm:h-5 ${
                         improved
                           ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
                           : declined
@@ -361,174 +263,27 @@ function ExodusPlayerCard({ player }) {
                       }`}
                     >
                       {improved ? (
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 3l5 6h-3v8H8V9H5l5-6z" clipRule="evenodd" />
                         </svg>
                       ) : declined ? (
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 17l-5-6h3V3h4v8h3l-5 6z" clipRule="evenodd" />
                         </svg>
                       ) : (
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                        <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-slate-500" />
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-4">
-                    <div className="text-2xl font-black tracking-tight text-white leading-none">
+                  <div className="mt-2 sm:mt-3">
+                    <div className="text-lg sm:text-2xl font-black tracking-tight text-white leading-none">
                       {player.statsCurrent?.[k] ?? '—'}
                     </div>
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="text-[11px] text-slate-500">Prev: {player.statsPrev?.[k] ?? '—'}</div>
+                    <div className="mt-1.5 sm:mt-2 flex items-center justify-between gap-1">
+                      <div className="text-[10px] sm:text-[11px] text-slate-500 truncate">Prev: {player.statsPrev?.[k] ?? '—'}</div>
                       <div
-                        className={`text-[11px] font-semibold tabular-nums ${
-                          improved ? 'text-emerald-400' : declined ? 'text-red-400' : 'text-slate-500'
-                        }`}
-                      >
-                        {improved
-                          ? `+${(curr - prev).toFixed(isLowerBetter ? 2 : 3)}`
-                          : declined
-                          ? `${(curr - prev).toFixed(isLowerBetter ? 2 : 3)}`
-                          : '±0.000'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AcquisitionPlayerCard({ player }) {
-  const heroStats = EXODUS_HERO_STATS[player.group] || EXODUS_HERO_STATS.hitting;
-
-  return (
-    <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-slate-900 via-slate-950 to-black shadow-2xl shadow-black/30 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/30">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_45%)] pointer-events-none" />
-
-      <div className="relative p-5 border-b border-white/5">
-        <div className="flex items-start gap-4">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-2xl bg-emerald-500/20 blur-xl" />
-            <img
-              src={player.photo}
-              alt={player.fullName}
-              className="relative w-16 h-16 rounded-2xl object-cover border border-white/10 shadow-lg"
-              onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-            />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-white truncate">{player.fullName}</h2>
-              <div className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium uppercase tracking-wider text-emerald-300">
-                ACQUIRED
-              </div>
-            </div>
-
-            <div className="mt-3 flex items-center gap-3 text-sm">
-              <div className="flex items-center gap-2 min-w-0">
-                {player.teams2025.map((t, i) => (
-                  <img
-                    key={i}
-                    src={t.logoDark}
-                    alt={t.name}
-                    className="w-9 h-9 object-contain flex-shrink-0"
-                    onError={(e) => (e.target.style.display = 'none')}
-                  />
-                ))}
-                <span className="truncate text-slate-300 font-medium">{getTeamNames(player.teams2025)}</span>
-              </div>
-
-              <div className="w-7 h-7 rounded-full bg-slate-800 border border-white/5 flex items-center justify-center flex-shrink-0">
-                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </div>
-
-              <div className="flex items-center gap-2 min-w-0">
-                {player.teams2026.map((t, i) => (
-                  <img
-                    key={i}
-                    src={t.logoDark}
-                    alt={t.name}
-                    className="w-9 h-9 object-contain flex-shrink-0"
-                    onError={(e) => (e.target.style.display = 'none')}
-                  />
-                ))}
-                <span className="truncate font-medium text-emerald-300">{getTeamNames(player.teams2026)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-5">
-        <div className="grid grid-cols-4 gap-3">
-          {heroStats.map((k) => {
-            const prev = Number(player.statsPrev?.[k] ?? 0);
-            const curr = Number(player.statsCurrent?.[k] ?? 0);
-
-            const isLowerBetter = LOWER_IS_BETTER.has(k);
-            const improved = isLowerBetter ? curr < prev : curr > prev;
-            const declined = isLowerBetter ? curr > prev : curr < prev;
-
-            return (
-              <div
-                key={k}
-                className={`group relative overflow-hidden rounded-2xl border transition-all duration-300 ${
-                  improved
-                    ? 'border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.10] via-slate-900 to-slate-950'
-                    : declined
-                    ? 'border-red-500/20 bg-gradient-to-b from-red-500/[0.08] via-slate-900 to-slate-950'
-                    : 'border-white/5 bg-gradient-to-b from-slate-900 to-slate-950'
-                }`}
-              >
-                <div
-                  className={`absolute -top-6 -right-6 w-20 h-20 rounded-full blur-3xl opacity-20 ${
-                    improved ? 'bg-emerald-400' : declined ? 'bg-red-400' : 'bg-slate-500'
-                  }`}
-                />
-                <div className="relative p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                      {HERO_LABELS[k] || k.toUpperCase()}
-                    </div>
-                    <div
-                      className={`flex items-center justify-center rounded-full border w-5 h-5 ${
-                        improved
-                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                          : declined
-                          ? 'border-red-500/20 bg-red-500/10 text-red-400'
-                          : 'border-slate-700 bg-slate-800 text-slate-500'
-                      }`}
-                    >
-                      {improved ? (
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 3l5 6h-3v8H8V9H5l5-6z" clipRule="evenodd" />
-                        </svg>
-                      ) : declined ? (
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 17l-5-6h3V3h4v8h3l-5 6z" clipRule="evenodd" />
-                        </svg>
-                      ) : (
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="text-2xl font-black tracking-tight text-white leading-none">
-                      {player.statsCurrent?.[k] ?? '—'}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="text-[11px] text-slate-500">Prev: {player.statsPrev?.[k] ?? '—'}</div>
-                      <div
-                        className={`text-[11px] font-semibold tabular-nums ${
+                        className={`text-[10px] sm:text-[11px] font-semibold tabular-nums flex-shrink-0 ${
                           improved ? 'text-emerald-400' : declined ? 'text-red-400' : 'text-slate-500'
                         }`}
                       >
@@ -552,10 +307,8 @@ function AcquisitionPlayerCard({ player }) {
 
 // ─── Main component ───────────────────────────────────────────────────────
 export default function StatsApp() {
-  const [playerName, setPlayerName] = useState('Aaron Judge');
-  const [season, setSeason] = useState('2026');
-  const [statType, setStatType] = useState('hitting');
-  const [playerData, setPlayerData] = useState(null);
+  const [playerName, setPlayerName] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('search');
@@ -588,41 +341,20 @@ export default function StatsApp() {
     localStorage.setItem('mlbWatchlist', JSON.stringify(watchlist));
   }, [watchlist]);
 
-  const fetchPlayerStats = async (nameOverride) => {
+  const searchPlayers = async (nameOverride) => {
     const name = (nameOverride ?? playerName).trim();
     if (!name) return;
     setIsLoading(true);
     setError(null);
-    setPlayerData(null);
+    setSearchResults([]);
     try {
       const searchRes = await fetch(
-        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}`
+        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=1&hydrate=currentTeam`,
       );
+      if (!searchRes.ok) throw new Error(`HTTP ${searchRes.status}`);
       const searchData = await searchRes.json();
-      if (!searchData.people?.length) throw new Error(`No player found matching "${name}"`);
-
-      const player = searchData.people[0];
-      const playerId = player.id;
-
-      const statsRes = await fetch(
-        `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=season&season=${season}&group=${statType}`
-      );
-      const statsData = await statsRes.json();
-
-      if (!statsData.stats?.[0]?.splits?.length)
-        throw new Error(`No ${statType} stats for ${player.fullName} in ${season}`);
-
-      const split = statsData.stats[0].splits[0];
-      setPlayerData({
-        id: playerId,
-        fullName: player.fullName ?? name,
-        stats: split.stat ?? {},
-        team: split.team?.name ?? 'N/A',
-        teamId: split.team?.id,
-        position: player.primaryPosition?.abbreviation ?? '',
-        headshot: playerHeadshotUrl(playerId),
-      });
-      setActiveTab('search');
+      if (!searchData.people?.length) throw new Error(`No players found matching "${name}"`);
+      setSearchResults(sortSearchResults(searchData.people).map(mapSearchPerson));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -687,7 +419,9 @@ export default function StatsApp() {
         })
         .filter(Boolean);
 
-      setExodusResults(movers);
+      const scored = await enrichMoversWithDeltaScores(movers);
+      scored.sort((a, b) => (a.deltaScore ?? 0) - (b.deltaScore ?? 0));
+      setExodusResults(scored);
     } catch (err) {
       console.error(err);
     } finally {
@@ -730,19 +464,9 @@ export default function StatsApp() {
         })
         .filter(Boolean);
 
-      // Sort: hitters by OPS, pitchers by ERA improvement signal (rough)
-      acquired.sort((a, b) => {
-        if (a.group === 'pitching' || b.group === 'pitching') {
-          const aEra = Number(a.statsCurrent?.era ?? 99);
-          const bEra = Number(b.statsCurrent?.era ?? 99);
-          return aEra - bEra;
-        }
-        const aOps = Number(a.statsCurrent?.ops ?? 0);
-        const bOps = Number(b.statsCurrent?.ops ?? 0);
-        return bOps - aOps;
-      });
-
-      setAcquisitionResults(acquired);
+      const scored = await enrichMoversWithDeltaScores(acquired);
+      scored.sort((a, b) => (b.deltaScore ?? 0) - (a.deltaScore ?? 0));
+      setAcquisitionResults(scored);
     } catch (err) {
       console.error(err);
     } finally {
@@ -865,9 +589,6 @@ export default function StatsApp() {
     }
   };
 
-  const heroKeys = statType === 'hitting' ? HITTING_HERO : PITCHING_HERO;
-  const statGroups = statType === 'hitting' ? HITTING_GROUPS : PITCHING_GROUPS;
-
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       <div className="mb-6">
@@ -893,52 +614,24 @@ export default function StatsApp() {
       {/* PLAYER SEARCH TAB */}
       {activeTab === 'search' && (
         <div className="space-y-6">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4">
-              <div className="sm:col-span-5">
-                <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">PLAYER NAME</label>
-                <input
-                  type="text"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && fetchPlayerStats()}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                  placeholder="Aaron Judge, Shohei Ohtani…"
-                />
-              </div>
-              <div className="sm:col-span-3">
-                <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">SEASON</label>
-                <Select
-                  value={season}
-                  onChange={setSeason}
-                  options={SEASON_OPTIONS}
-                  buttonClassName="border-slate-600 py-3"
-                />
-              </div>
-              <div className="sm:col-span-4">
-                <label className="text-xs text-slate-400 block mb-1.5 font-medium tracking-wide">STAT GROUP</label>
-                <div className="flex bg-slate-800 border border-slate-600 rounded-2xl p-1">
-                  <SegmentedControl
-                    value={statType}
-                    onChange={setStatType}
-                    variant="emerald"
-                    className="flex-1"
-                    optionClassName="flex-1"
-                    options={[
-                      { value: 'hitting', label: 'hitting' },
-                      { value: 'pitching', label: 'pitching' },
-                    ]}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchPlayers()}
+                className="flex-1 bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                placeholder="Search players…"
+              />
               <button
-                onClick={() => fetchPlayerStats()}
-                disabled={isLoading}
-                className="px-8 py-3 bg-white hover:bg-slate-100 text-slate-900 font-semibold rounded-2xl text-sm active:scale-[0.985] disabled:opacity-50 transition-all"
+                type="button"
+                onClick={() => searchPlayers()}
+                disabled={isLoading || !playerName.trim()}
+                aria-label="Search players"
+                className="w-11 h-11 flex items-center justify-center bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0"
               >
-                {isLoading ? 'Loading…' : 'Search Stats'}
+                <i className={`fa-solid fa-magnifying-glass text-sm ${isLoading ? 'animate-pulse' : ''}`} />
               </button>
             </div>
           </div>
@@ -949,25 +642,26 @@ export default function StatsApp() {
             </div>
           )}
 
-          {playerData && (
+          {isLoading && (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {!isLoading && searchResults.length > 0 && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
-              <PlayerHeader
-                playerData={playerData}
-                season={season}
-                isWatched={watchlist.some((p) => p.id === playerData.id)}
-                isWatchAnimating={watchAnimId === playerData.id}
-                onToggleWatch={toggleWatchlist}
-              />
-              <div className="divide-y divide-slate-800">
-                {statGroups.map((group) => (
-                  <StatGroup
-                    key={group.label}
-                    label={group.label}
-                    stats={group.stats}
-                    playerStats={playerData.stats}
-                  />
-                ))}
+              <div className="px-4 py-3 border-b border-slate-800 text-xs text-slate-500">
+                {searchResults.length} player{searchResults.length !== 1 ? 's' : ''} found · active players first
               </div>
+              {searchResults.map((player) => (
+                <PlayerSearchRow
+                  key={player.id}
+                  player={player}
+                  isWatched={watchlist.some((p) => p.id === player.id)}
+                  isWatchAnimating={watchAnimId === player.id}
+                  onToggleWatch={toggleWatchlist}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -1013,16 +707,12 @@ export default function StatsApp() {
                     <div className="text-xs text-slate-400 truncate">{player.team}</div>
                   </div>
                   <div className="flex flex-col gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => {
-                        setPlayerName(player.fullName);
-                        setActiveTab('search');
-                        setTimeout(() => fetchPlayerStats(player.fullName), 50);
-                      }}
-                      className="text-xs px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors"
+                    <Link
+                      to={`/player/${player.id}`}
+                      className="text-xs px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors text-center"
                     >
                       View
-                    </button>
+                    </Link>
                     <button
                       onClick={() => removeFromWatchlist(player.id)}
                       className="text-xs px-2 py-0.5 text-red-400 hover:text-red-300 transition-colors text-center"
@@ -1159,7 +849,7 @@ export default function StatsApp() {
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">Team Exodus Analyzer</h3>
             <p className="text-sm text-slate-400 mb-4">
-              Players who left after 2025 — hitters AND pitchers — and how they’re performing in 2026.
+              Players who left after 2025 — sorted by biggest decline first. Score blends wRC+, WAR, Statcast skills, and defense (0 = same, + = better, − = worse).
             </p>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1 w-full">
@@ -1184,9 +874,9 @@ export default function StatsApp() {
           </div>
 
           {exodusResults.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {exodusResults.map((player) => (
-                <ExodusPlayerCard key={player.playerId} player={player} />
+                <MoverPlayerCard key={player.playerId} player={player} />
               ))}
             </div>
           )}
@@ -1205,7 +895,7 @@ export default function StatsApp() {
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">Team Acquisitions Analyzer</h3>
             <p className="text-sm text-slate-400 mb-4">
-              Players added for 2026 (not on this team in 2025) and how they’re performing now.
+              Players added for 2026 — sorted by biggest improvement first. Same YoY score as Exodus (green = up, gray = flat, red = down).
             </p>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1 w-full">
@@ -1230,9 +920,9 @@ export default function StatsApp() {
           </div>
 
           {acquisitionResults.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {acquisitionResults.map((player) => (
-                <AcquisitionPlayerCard key={player.playerId} player={player} />
+                <MoverPlayerCard key={player.playerId} player={player} />
               ))}
             </div>
           )}
