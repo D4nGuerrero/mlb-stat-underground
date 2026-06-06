@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { resolveAssetUrl } from '../utils/baseUrl.js';
 
 function HonorBadge({ badge }) {
-  const [useFallback, setUseFallback] = useState(!badge.image);
+  const imageSrc = resolveAssetUrl(badge.image);
+  const [useFallback, setUseFallback] = useState(!imageSrc);
 
-  if (!useFallback && badge.image) {
+  if (!useFallback && imageSrc) {
     return (
       <img
-        src={badge.image}
+        src={imageSrc}
         alt={badge.alt}
         title={badge.alt}
         className="inline-block h-4 w-4 md:h-[18px] md:w-[18px] object-contain shrink-0"
