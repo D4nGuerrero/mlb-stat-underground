@@ -32,6 +32,34 @@ body {
   100% { transform: scale(1); }
 }
 
+.nav-tagline-marquee {
+  overflow: hidden;
+  width: 5.5rem;
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+.nav-tagline-track {
+  display: flex;
+  width: max-content;
+  animation: navTaglineScroll 6s linear infinite;
+}
+
+.nav-tagline-track span {
+  flex-shrink: 0;
+  padding-right: 1.25rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #10b981;
+  white-space: nowrap;
+}
+
+@keyframes navTaglineScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 .linescore-table {
   border-collapse: collapse;
 }
