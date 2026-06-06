@@ -20,17 +20,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
+          cache: "npm"
+
+      # Critical fix for Rolldown native binding issue
+      - name: Clean install dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm ci
+
       - name: Build
         run: npm run build
+
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
