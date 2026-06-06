@@ -1,18 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl } from '../components/ui';
 
 const SEASON = new Date().getFullYear();
-const SEASON_OPTIONS = [SEASON, SEASON - 1, SEASON - 2, SEASON - 3, SEASON - 4].map((y) => ({
-  value: String(y),
-  label: String(y),
-}));
+const SEASON_OPTIONS = Array.from({ length: SEASON - 2002 + 1 }, (_, i) => {
+  const y = SEASON - i;
+  return { value: String(y), label: String(y) };
+});
+
+const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
+
+const localDateKey = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmtDate = (d) => {
   const dt = new Date(d + 'T00:00:00');
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+const fmtGameTime = (gameDate) => {
+  if (!gameDate) return 'TBD';
+  return new Date(gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 };
 const fmt = (v, dec = 3) => {
   if (v == null || v === '') return '–';
@@ -94,15 +107,17 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
   });
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto -mx-1 px-1 scrollbar-thin">
+
+      {/* TEAM STATS TABLE */}
+      <table className="w-full text-sm min-w-[640px]">
         <thead>
-          <tr className="border-b border-slate-700">
-            <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs sticky left-0 bg-slate-900 min-w-[140px]">Player</th>
+          <tr className="border-b border-slate-700/60">
+            <th className="text-left px-3 py-2.5 text-slate-400 font-medium text-xs sticky left-0 bg-[#121827] z-10 min-w-[148px]">Player</th>
             {cols.map((c) => (
               <th
                 key={c.key}
-                className={`px-2 py-2 text-xs font-medium cursor-pointer select-none whitespace-nowrap text-right ${sortCol === c.key ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`px-2 py-2.5 text-xs font-medium cursor-pointer select-none whitespace-nowrap text-right ${sortCol === c.key ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
                 onClick={() => handleSort(c.key)}
               >
                 {c.label}
@@ -113,24 +128,19 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
         </thead>
         <tbody>
           {sorted.map((row, i) => {
-            const person = row.person ?? row;
+            const person = row.player ?? row.person ?? row;
+            const playerId = person?.[idKey] ?? person?.id;
+            const pos = row.position?.abbreviation ?? row.position?.name ?? person?.primaryPosition?.abbreviation;
             return (
-              <tr key={person?.[idKey] ?? i} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-                <td className="px-3 py-2 sticky left-0 bg-slate-900">
-                  <div className="flex items-center gap-2">
-                    <img
-                      src={playerHeadshotUrl(person?.id)}
-                      alt=""
-                      className="w-7 h-7 rounded-lg object-cover border border-slate-700 flex-shrink-0"
-                      onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-                    />
-                    <div>
-                      <Link to={`/player/${person?.id}`} className="font-medium hover:text-emerald-400 transition-colors text-xs leading-tight block">
+              <tr key={playerId ?? i} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
+                <td className="px-3 py-2 sticky left-0 bg-[#121827] z-10">
+                  <div className="flex items-center gap-2.5">
+                    
+                    <div className="min-w-0">
+                      <Link to={`/player/${playerId}`} className="font-medium hover:text-emerald-400 transition-colors text-xs sm:text-sm leading-tight block truncate">
                         {person?.[nameKey] ?? person?.fullName ?? '—'}
                       </Link>
-                      {row.position && (
-                        <span className="text-[10px] text-slate-500">{row.position?.abbreviation ?? row.position}</span>
-                      )}
+                      {pos && <span className="text-[10px] text-slate-500">{pos}</span>}
                     </div>
                   </div>
                 </td>
@@ -161,13 +171,16 @@ function StatsTab({ teamId, season }) {
   const groupMap = { batting: 'hitting', pitching: 'pitching', fielding: 'fielding' };
   const colsMap = { batting: BAT_COLS, pitching: PITCH_COLS, fielding: FIELD_COLS };
 
+  useEffect(() => {
+    setData({ batting: null, pitching: null, fielding: null });
+  }, [teamId, season]);
+
   const fetchStats = useCallback(async (group) => {
-    if (data[group]) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${groupMap[group]}&season=${season}&teamId=${teamId}&playerPool=all&sportId=1&limit=50&hydrate=person,team`
+        `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${groupMap[group]}&season=${season}&teamId=${teamId}&playerPool=all&sportId=1&limit=200&hydrate=player,team`
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
@@ -178,9 +191,12 @@ function StatsTab({ teamId, season }) {
     } finally {
       setLoading(false);
     }
-  }, [teamId, season, data]);
+  }, [teamId, season]);
 
-  useEffect(() => { fetchStats(sub); }, [sub]);
+  useEffect(() => {
+    if (data[sub] != null) return;
+    fetchStats(sub);
+  }, [sub, teamId, season, data, fetchStats]);
 
   // top leader in each key category
   const leaderStats = sub === 'batting'
@@ -216,33 +232,34 @@ function StatsTab({ teamId, season }) {
 
   return (
     <div>
-      {/* Sub-tabs */}
-      <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit mb-5">
-        {['batting', 'pitching', 'fielding'].map((s) => (
-          <button
-            key={s}
-            onClick={() => setSub(s)}
-            className={`px-4 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all ${sub === s ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'}`}
-          >
-            {s}
-          </button>
-        ))}
+      <div className="flex flex-wrap gap-2 mb-5">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+          <SegmentedControl
+            value={sub}
+            onChange={setSub}
+            size="sm"
+            options={[
+              { value: 'batting', label: 'Batting' },
+              { value: 'pitching', label: 'Pitching' },
+              { value: 'fielding', label: 'Fielding' },
+            ]}
+          />
+        </div>
       </div>
 
-      {/* Leader tiles */}
       {leaderStats.length > 0 && rows.length > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-5">
           {leaderStats.map(({ label, key, dec }) => {
             const leader = getLeader(key, key === 'era' || key === 'whip');
-            const person = leader?.person;
+            const person = leader?.player ?? leader?.person;
             const val = leader?.stat?.[key];
             return (
-              <div key={key} className="bg-slate-800/60 border border-slate-700 rounded-2xl p-3 text-center">
-                <div className="text-[10px] text-slate-500 font-medium mb-1.5">{label} Leader</div>
+              <div key={key} className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-3 text-center">
+                <div className="text-[10px] text-slate-500 font-medium mb-1.5">{label}</div>
                 <img
                   src={playerHeadshotUrl(person?.id)}
                   alt=""
-                  className="w-10 h-10 rounded-xl object-cover border border-slate-700 mx-auto mb-1.5"
+                  className="w-11 h-11 rounded-xl object-cover border border-slate-700 mx-auto mb-1.5 bg-slate-800"
                   onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
                 />
                 <div className="font-display text-lg tabular-nums text-emerald-400 leading-none">
@@ -258,12 +275,12 @@ function StatsTab({ teamId, season }) {
       {loading && <Spinner />}
       {error && <div className="py-8 text-center text-red-400 text-sm">{error}</div>}
       {!loading && !error && rows.length > 0 && (
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden">
+        <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
           <SortableTable cols={colsMap[sub]} rows={rows} />
         </div>
       )}
-      {!loading && !error && rows.length === 0 && (
-        <div className="py-12 text-center text-slate-500 text-sm">No stats available.</div>
+      {!loading && !error && rows.length === 0 && data[sub] != null && (
+        <div className="py-12 text-center text-slate-500 text-sm">No stats available for {season}.</div>
       )}
     </div>
   );
@@ -272,74 +289,78 @@ function StatsTab({ teamId, season }) {
 // ─── Schedule Tab ─────────────────────────────────────────────────────────────
 function ScheduleTab({ teamId, season }) {
   const navigate = useNavigate();
-  const [games, setGames] = useState(null);
+  const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [view, setView] = useState('list'); // 'list' | 'month'
+  const [view, setView] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const gameRefs = useRef({});
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setGames([]);
+    setSelectedMonth('');
     (async () => {
       try {
         const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/schedule?teamId=${teamId}&season=${season}&sportId=1&gameType=R&hydrate=team(record),linescore`
+          `https://statsapi.mlb.com/api/v1/schedule?teamId=${teamId}&season=${season}&sportId=1&gameType=R&hydrate=team,linescore`
         );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        const allGames = (json.dates ?? []).flatMap((d) => d.games ?? []);
+        const allGames = (json.dates ?? [])
+          .flatMap((d) => d.games ?? [])
+          .sort((a, b) => new Date(a.officialDate ?? a.gameDate) - new Date(b.officialDate ?? b.gameDate));
         setGames(allGames);
-      } catch (e) { setError(e.message); }
-      finally { setLoading(false); }
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [teamId, season]);
-
-  useEffect(() => {
-    if (view !== 'list') return;
-    if (!games?.length) return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const idx = games.findIndex((g) => {
-      const d = new Date((g.officialDate ?? g.gameDate ?? '') + 'T00:00:00');
-      d.setHours(0, 0, 0, 0);
-      return d >= today;
-    });
-    const target = idx >= 0 ? games[idx] : games[games.length - 1];
-    const el = target?.gamePk ? gameRefs.current[target.gamePk] : null;
-    if (el?.scrollIntoView) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [games, view]);
-
-  if (loading) return <Spinner />;
-  if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const monthLabel = (d) => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const gamesByMonth = (() => {
+  const gamesByMonth = useMemo(() => {
     const map = {};
-    for (const g of (games ?? [])) {
-      const d = new Date((g.officialDate ?? g.gameDate ?? '') + 'T00:00:00');
+    for (const g of games) {
+      const dateStr = g.officialDate ?? (g.gameDate ? g.gameDate.split('T')[0] : '');
+      if (!dateStr) continue;
+      const d = new Date(`${dateStr}T12:00:00`);
       const k = monthKey(d);
       (map[k] = map[k] ?? []).push(g);
     }
-    Object.values(map).forEach((arr) => arr.sort((a, b) => new Date(a.gameDate) - new Date(b.gameDate)));
+    Object.values(map).forEach((arr) => {
+      arr.sort((a, b) => new Date(a.officialDate ?? a.gameDate) - new Date(b.officialDate ?? b.gameDate));
+    });
     return map;
-  })();
+  }, [games]);
 
-  const months = Object.keys(gamesByMonth).sort();
-  const defaultMonth = (() => {
+  const months = useMemo(() => Object.keys(gamesByMonth).sort(), [gamesByMonth]);
+
+  useEffect(() => {
+    if (!months.length || selectedMonth) return;
     const now = new Date();
     const k = monthKey(now);
-    return months.includes(k) ? k : (months[0] ?? k);
-  })();
+    setSelectedMonth(months.includes(k) ? k : months[0]);
+  }, [months, selectedMonth]);
 
-  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
+  useEffect(() => {
+    if (view !== 'list' || !games.length) return;
+    const todayKey = localDateKey(new Date());
+    const idx = games.findIndex((g) => (g.officialDate ?? g.gameDate?.split('T')[0] ?? '') >= todayKey);
+    const target = idx >= 0 ? games[idx] : games[games.length - 1];
+    const el = target?.gamePk ? gameRefs.current[target.gamePk] : null;
+    el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [games, view]);
 
   const buildMonthGrid = (monthStr) => {
     const [yy, mm] = monthStr.split('-').map((x) => Number(x));
     const first = new Date(yy, mm - 1, 1);
     const start = new Date(first);
-    start.setDate(first.getDate() - ((first.getDay() + 6) % 7)); // Monday start
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
     const days = [];
     for (let i = 0; i < 42; i++) {
       const d = new Date(start);
@@ -350,27 +371,32 @@ function ScheduleTab({ teamId, season }) {
     const byDate = {};
     for (const g of gamesForMonth) {
       const k = g.officialDate ?? (g.gameDate ? g.gameDate.split('T')[0] : '');
-      (byDate[k] = byDate[k] ?? []).push(g);
+      if (k) (byDate[k] = byDate[k] ?? []).push(g);
     }
     return { days, byDate, monthDate: first };
   };
 
+  if (loading) return <Spinner />;
+  if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
+
+  const todayStr = localDateKey(new Date());
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
           <SegmentedControl
             value={view}
             onChange={setView}
             size="sm"
             options={[
-              { value: 'list', label: 'List' },
               { value: 'month', label: 'Monthly' },
+              { value: 'list', label: 'List' },
             ]}
           />
         </div>
 
-        {view === 'month' && (
+        {view === 'month' && months.length > 0 && (
           <Select
             value={selectedMonth}
             onChange={setSelectedMonth}
@@ -378,15 +404,18 @@ function ScheduleTab({ teamId, season }) {
               const [yy, mm] = m.split('-').map((x) => Number(x));
               return { value: m, label: monthLabel(new Date(yy, mm - 1, 1)) };
             })}
-            buttonClassName="bg-slate-900"
+            buttonClassName="bg-slate-900 min-w-[140px]"
           />
         )}
       </div>
 
-      {(games ?? []).length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No schedule found.</div>}
-      {view === 'list' && (
+      {games.length === 0 && (
+        <div className="py-12 text-center text-slate-500 text-sm">No schedule found for {season}.</div>
+      )}
+
+      {view === 'list' && games.length > 0 && (
         <div className="space-y-1">
-          {(games ?? []).map((g) => {
+          {games.map((g) => {
             const home = g.teams?.home;
             const away = g.teams?.away;
             const isFinal = g.status?.abstractGameState === 'Final';
@@ -395,27 +424,31 @@ function ScheduleTab({ teamId, season }) {
             const awayWin = isFinal && away?.score > home?.score;
             const isHome = home?.team?.id?.toString() === teamId?.toString();
             const opp = isHome ? away : home;
+            const dateStr = g.officialDate ?? g.gameDate?.split('T')[0];
+            const isToday = dateStr === todayStr;
             return (
               <div
                 key={g.gamePk}
                 ref={(el) => { if (el) gameRefs.current[g.gamePk] = el; }}
-                className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl"
+                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? 'bg-emerald-500/[0.06] border-emerald-500/20' : ''}`}
                 onClick={() => navigate(`/game/${g.gamePk}`)}
               >
-                <div className="w-16 text-xs text-slate-500 flex-shrink-0">{fmtDate(g.officialDate)}</div>
-                <div className="w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
-                <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-6 h-6 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
+                <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">{fmtDate(dateStr)}</div>
+                <div className="w-5 sm:w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
+                <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
                 <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name}</div>
                 <div className="text-right flex-shrink-0 text-sm">
                   {isFinal ? (
-                    <span className={`font-semibold ${isHome ? (homeWin ? 'text-emerald-400' : 'text-red-400') : (awayWin ? 'text-emerald-400' : 'text-red-400')}`}>
+                    <span className={`font-semibold tabular-nums ${isHome ? (homeWin ? 'text-emerald-400' : 'text-red-400') : (awayWin ? 'text-emerald-400' : 'text-red-400')}`}>
                       {isHome ? (homeWin ? 'W' : 'L') : (awayWin ? 'W' : 'L')}{' '}
                       {isHome ? `${home?.score}-${away?.score}` : `${away?.score}-${home?.score}`}
                     </span>
                   ) : isLive ? (
-                    <span className="text-yellow-400 text-xs font-medium">LIVE</span>
+                    <span className="text-yellow-400 text-xs font-bold">LIVE</span>
                   ) : (
-                    <span className="text-slate-500 text-xs">{g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '–'}</span>
+                    <span className="text-slate-500 text-xs">
+                      {g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'TBD'}
+                    </span>
                   )}
                 </div>
               </div>
@@ -424,72 +457,86 @@ function ScheduleTab({ teamId, season }) {
         </div>
       )}
 
-      {view === 'month' && months.length > 0 && (() => {
+      {view === 'month' && months.length > 0 && selectedMonth && (() => {
         const { days, byDate, monthDate } = buildMonthGrid(selectedMonth);
         const monthIdx = monthDate.getMonth();
-        const todayStr = new Date().toISOString().split('T')[0];
 
         return (
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
-            <div className="grid grid-cols-7 border-b border-slate-800">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-                <div key={d} className="px-2 py-2 text-[10px] font-semibold tracking-wider text-slate-500 text-center">
-                  {d}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7">
-              {days.map((d) => {
-                const inMonth = d.getMonth() === monthIdx;
-                const key = d.toISOString().split('T')[0];
-                const dayGames = byDate[key] ?? [];
-                const isToday = key === todayStr;
-                return (
-                  <div
-                    key={key}
-                    className={`min-h-[92px] border-b border-r border-slate-800/50 p-2 ${inMonth ? '' : 'opacity-40'} ${isToday ? 'bg-emerald-500/[0.06]' : ''}`}
-                  >
-                    <div className={`text-[11px] font-mono ${isToday ? 'text-emerald-300' : 'text-slate-400'}`}>
-                      {d.getDate()}
-                    </div>
-                    <div className="mt-1 space-y-1">
-                      {dayGames.slice(0, 2).map((g) => {
-                        const home = g.teams?.home;
-                        const away = g.teams?.away;
-                        const isHome = home?.team?.id?.toString() === teamId?.toString();
-                        const opp = isHome ? away : home;
-                        const isFinal = g.status?.abstractGameState === 'Final';
-                        const isLive = g.status?.abstractGameState === 'Live';
-                        return (
-                          <button
-                            key={g.gamePk}
-                            onClick={() => navigate(`/game/${g.gamePk}`)}
-                            className="w-full flex items-center gap-1.5 bg-slate-800/40 hover:bg-slate-800/70 border border-slate-700/40 rounded-xl px-2 py-1 transition-colors"
-                            title={opp?.team?.name ?? 'Game'}
-                          >
-                            <img
-                              src={teamLogoUrl(opp?.team?.id)}
-                              alt=""
-                              className="w-4 h-4 object-contain"
-                              onError={(e) => (e.target.style.display = 'none')}
-                            />
-                            <span className="text-[10px] text-slate-300 truncate flex-1 text-left">
-                              {opp?.team?.abbreviation ?? opp?.team?.name?.split(' ').pop() ?? '—'}
-                            </span>
-                            {isLive && <span className="text-[9px] font-bold text-yellow-300">LIVE</span>}
-                            {isFinal && <span className="text-[9px] font-bold text-slate-400">F</span>}
-                          </button>
-                        );
-                      })}
-                      {dayGames.length > 2 && (
-                        <div className="text-[9px] text-slate-500">
-                          +{dayGames.length - 2} more
-                        </div>
-                      )}
-                    </div>
+          <div className="border border-slate-700/60 rounded-2xl overflow-hidden overflow-x-auto">
+            <div className="min-w-[320px]">
+              <div className="grid grid-cols-7 border-b border-slate-800/60">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                  <div key={d} className="px-1 sm:px-2 py-2 text-[9px] sm:text-[10px] font-semibold tracking-wider text-slate-500 text-center">
+                    {d}
                   </div>
-                );
-              })}
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {days.map((d) => {
+                  const inMonth = d.getMonth() === monthIdx;
+                  const key = localDateKey(d);
+                  const dayGames = byDate[key] ?? [];
+                  const isToday = key === todayStr;
+                  return (
+                    <div
+                      key={key}
+                      className={`min-h-[108px] sm:min-h-[128px] border-b border-r border-slate-800/50 p-1 sm:p-1.5 flex flex-col ${inMonth ? '' : 'opacity-35'} ${isToday ? 'bg-emerald-500/[0.06]' : ''}`}
+                    >
+                      <div className={`text-[10px] sm:text-[11px] font-mono leading-none mb-1 ${isToday ? 'text-emerald-300' : 'text-slate-400'}`}>
+                        {d.getDate()}
+                      </div>
+                      <div className="flex-1 flex flex-col gap-1">
+                        {dayGames.slice(0, 2).map((g) => {
+                          const home = g.teams?.home;
+                          const away = g.teams?.away;
+                          const isHome = home?.team?.id?.toString() === teamId?.toString();
+                          const opp = isHome ? away : home;
+                          const isFinal = g.status?.abstractGameState === 'Final';
+                          const isLive = g.status?.abstractGameState === 'Live';
+                          const homeWin = isFinal && home?.score > away?.score;
+                          const awayWin = isFinal && away?.score > home?.score;
+                          const won = isHome ? homeWin : awayWin;
+                          const timeLabel = isLive
+                            ? 'LIVE'
+                            : fmtGameTime(g.gameDate);
+                          return (
+                            <button
+                              key={g.gamePk}
+                              type="button"
+                              onClick={() => navigate(`/game/${g.gamePk}`)}
+                              className={`w-full flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[44px] sm:min-h-[52px] rounded-lg px-1 py-1 transition-colors ${
+                                isFinal
+                                  ? won
+                                    ? 'bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25'
+                                    : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/25'
+                                  : isLive
+                                  ? 'bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30'
+                                  : 'bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/50'
+                              }`}
+                              title={`${isHome ? 'vs' : '@'} ${opp?.team?.name ?? 'Opponent'} · ${timeLabel}`}
+                            >
+                              <img
+                                src={teamLogoUrl(opp?.team?.id)}
+                                alt={opp?.team?.name ?? 'Opponent'}
+                                className="w-9 h-9 sm:w-11 sm:h-11 object-contain flex-shrink-0 drop-shadow-sm"
+                                onError={(e) => (e.target.style.display = 'none')}
+                              />
+                              <span className={`text-[9px] sm:text-[10px] font-semibold tabular-nums leading-none ${
+                                isLive ? 'text-yellow-300' : isFinal ? 'text-slate-400' : 'text-slate-400'
+                              }`}>
+                                {timeLabel}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {dayGames.length > 2 && (
+                          <div className="text-[8px] sm:text-[9px] text-slate-500 text-center">+{dayGames.length - 2}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         );
@@ -538,10 +585,17 @@ function RosterTab({ teamId, season }) {
                 to={`/player/${p.person.id}`}
                 className="flex items-center gap-3 bg-slate-800/40 hover:bg-slate-800/70 border border-slate-700/40 rounded-2xl px-3 py-2.5 transition-colors"
               >
-                <img src={playerHeadshotUrl(p.person.id)} alt="" className="w-10 h-10 rounded-xl object-cover border border-slate-700 flex-shrink-0" onError={(e) => (e.target.src = FALLBACK_HEADSHOT)} />
+                <img
+                  src={playerHeadshotUrl(p.person.id)}
+                  alt=""
+                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover border border-slate-700 flex-shrink-0 bg-slate-800"
+                  onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{p.person.fullName}</div>
-                  <div className="text-xs text-slate-500">{p.person?.primaryPosition?.abbreviation} · #{p.jerseyNumber ?? '—'}</div>
+                  <div className="text-xs text-slate-500">
+                    {p.position?.abbreviation ?? p.person?.primaryPosition?.abbreviation ?? '—'} · #{p.jerseyNumber ?? '—'}
+                  </div>
                 </div>
               </Link>
             ))}
@@ -619,10 +673,10 @@ function SplitsTab({ teamId, season }) {
   const SPLIT_LABELS = { vl: 'vs LHP', vr: 'vs RHP', h: 'Home', a: 'Away' };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto -mx-1 px-1">
+      <table className="w-full text-sm min-w-[520px]">
         <thead>
-          <tr className="border-b border-slate-700">
+          <tr className="border-b border-slate-700/60">
             <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Split</th>
             {['G', 'AB', 'H', 'HR', 'RBI', 'AVG', 'OBP', 'SLG', 'OPS'].map((c) => (
               <th key={c} className="px-2 py-2 text-xs font-medium text-slate-400 text-right">{c}</th>
@@ -693,24 +747,33 @@ function InjuriesTab({ teamId, season }) {
 
 // ─── Transactions Tab ─────────────────────────────────────────────────────────
 function TransactionsTab({ teamId }) {
-  const [txns, setTxns] = useState(null);
+  const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     (async () => {
       try {
         const today = new Date();
         const start = new Date(today);
-        start.setDate(today.getDate() - 60);
-        const fmt2 = (d) => d.toISOString().split('T')[0];
+        start.setDate(today.getDate() - 120);
+        const fmt2 = (d) => localDateKey(d);
         const res = await fetch(
           `https://statsapi.mlb.com/api/v1/transactions?teamId=${teamId}&startDate=${fmt2(start)}&endDate=${fmt2(today)}&sportId=1`
         );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        setTxns(json.transactions ?? []);
-      } catch (e) { setError(e.message); }
-      finally { setLoading(false); }
+        const sorted = [...(json.transactions ?? [])].sort(
+          (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
+        );
+        setTxns(sorted);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [teamId]);
 
@@ -719,14 +782,20 @@ function TransactionsTab({ teamId }) {
 
   return (
     <div className="space-y-1">
-      {(txns ?? []).length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No recent transactions.</div>}
-      {(txns ?? []).map((t, i) => (
-        <div key={t.id ?? i} className="flex items-start gap-3 px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors rounded-xl">
-          <div className="w-20 text-xs text-slate-500 flex-shrink-0 pt-0.5">{t.date ? fmtDate(t.date) : '—'}</div>
+      {txns.length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No recent transactions.</div>}
+      {txns.map((t, i) => (
+        <div key={t.id ?? `${t.date}-${t.person?.id}-${i}`} className="flex items-start gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors rounded-xl">
+          <div className="w-16 sm:w-20 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{t.date ? fmtDate(t.date) : '—'}</div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium">{t.person?.fullName ?? '—'}</div>
+            <div className="text-sm font-medium">
+              {t.person?.id ? (
+                <Link to={`/player/${t.person.id}`} className="hover:text-emerald-400 transition-colors">
+                  {t.person?.fullName ?? '—'}
+                </Link>
+              ) : (t.person?.fullName ?? '—')}
+            </div>
             <div className="text-xs text-slate-400 mt-0.5">{t.typeDesc ?? t.description ?? '—'}</div>
-            {t.description && t.typeDesc && (
+            {t.description && t.typeDesc && t.description !== t.typeDesc && (
               <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
             )}
           </div>
@@ -741,6 +810,7 @@ export default function TeamPage() {
   const { teamId } = useParams();
   const navigate = useNavigate();
   const [teamInfo, setTeamInfo] = useState(null);
+  const [teamRecord, setTeamRecord] = useState(null);
   const [season, setSeason] = useState(SEASON.toString());
   const [activeTab, setActiveTab] = useState('stats');
   const [favoriteTeams, setFavoriteTeams] = useState(() => {
@@ -758,14 +828,24 @@ export default function TeamPage() {
   }, [favoriteTeams]);
 
   useEffect(() => {
-    fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}?hydrate=division,league`)
+    fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}?hydrate=division,league,venue`)
       .then((r) => r.json())
       .then((json) => setTeamInfo(json.teams?.[0] ?? null))
       .catch(() => {});
   }, [teamId]);
 
   useEffect(() => {
-    // keep state in sync when navigating between teams
+    fetch(`https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`)
+      .then((r) => r.json())
+      .then((json) => {
+        const records = (json.records ?? []).flatMap((r) => r.teamRecords ?? []);
+        const rec = records.find((r) => r.team?.id === Number(teamId));
+        setTeamRecord(rec?.leagueRecord ?? rec?.records?.splitRecords?.[0] ?? null);
+      })
+      .catch(() => setTeamRecord(null));
+  }, [teamId, season]);
+
+  useEffect(() => {
     try {
       setFavoriteTeams(JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]'));
     } catch {
@@ -783,80 +863,109 @@ export default function TeamPage() {
     { key: 'stats', label: 'Stats' },
     { key: 'schedule', label: 'Schedule' },
     { key: 'roster', label: 'Roster' },
-    { key: 'depth', label: 'Depth Chart' },
+    { key: 'depth', label: 'Depth' },
     { key: 'splits', label: 'Splits' },
     { key: 'injuries', label: 'Injuries' },
-    { key: 'transactions', label: 'Transactions' },
+    { key: 'transactions', label: 'Moves' },
   ];
 
-  return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-      {/* Back button */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-5"
-      >
-        ← Back
-      </button>
+  const recordText = teamRecord
+    ? `${teamRecord.wins ?? 0}–${teamRecord.losses ?? 0}`
+    : null;
 
-      {/* Team header */}
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
-        <div className="flex items-center gap-5">
+  return (
+    <div className="max-w-4xl mx-auto sm:px-6 sm:py-8">
+      
+
+      <div className="bg-[#121827] border border-slate-700/60 sm:rounded-2xl overflow-hidden">
+        <div className="relative h-[180px] sm:h-[240px] overflow-hidden px-5 sm:px-8 py-5 sm:py-6 flex flex-col">
+          {/* TEAM BANNER */}
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-[#121827]" />
           <img
             src={teamLogoUrl(teamId)}
-            alt={teamInfo?.name}
-            className="w-20 h-20 sm:w-24 sm:h-24 object-contain flex-shrink-0"
+            alt=""
+            className="absolute -right-4 sm:right-6 top-1/2 -translate-y-1/2 w-36 sm:w-52 h-36 sm:h-52 object-contain opacity-[0.12] pointer-events-none"
             onError={(e) => (e.target.style.display = 'none')}
           />
-          <div className="flex-1 min-w-0">
-            <div className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-0.5">
-              {teamInfo?.league?.name} · {teamInfo?.division?.name}
-            </div>
-            <h1 className="font-display text-3xl sm:text-4xl tracking-tighter">
-              {teamInfo?.name ?? `Team #${teamId}`}
-            </h1>
-            {teamInfo?.record && (
-              <div className="text-emerald-400 font-semibold mt-1">
-                {teamInfo.record.wins}–{teamInfo.record.losses}
-              </div>
-            )}
-          </div>
-          <div className="flex-shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/80 pointer-events-none" />
+
+          <div className="relative flex items-center justify-between gap-3 mb-auto">
+           
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Select
+                value={season}
+                onChange={setSeason}
+                options={SEASON_OPTIONS}
+                buttonClassName="bg-slate-900/80 border-slate-600/80 text-xs sm:text-sm min-w-[88px]"
+              />
               <button
+                type="button"
                 onClick={toggleFavorite}
-                className={`px-4 py-2 rounded-2xl text-sm font-semibold border transition-all active:scale-[0.985] ${
+                className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all active:scale-[0.985] ${
                   isFavorite
                     ? 'bg-yellow-400/15 hover:bg-yellow-400/20 text-yellow-300 border-yellow-400/30'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-600/80'
                 }`}
                 title={isFavorite ? 'Unfavorite team' : 'Favorite team'}
               >
-                {isFavorite ? '★ Favorited' : '☆ Favorite'}
+                {isFavorite ? '★' : '☆'}
+                <span className="hidden sm:inline ml-1">{isFavorite ? 'Favorited' : 'Favorite'}</span>
               </button>
-              <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} />
+            </div>
+          </div>
+
+          <div className="relative flex items-end gap-4 sm:gap-5 mt-4">
+            <img
+              src={teamLogoUrl(teamId)}
+              alt={teamInfo?.name}
+              className="w-16 h-16 sm:w-24 sm:h-24 object-contain flex-shrink-0 drop-shadow-lg"
+              onError={(e) => (e.target.style.display = 'none')}
+            />
+            <div className="pb-1 min-w-0">
+              <h1
+                className="text-2xl sm:text-4xl font-bold text-white leading-none mb-1.5 truncate"
+                style={HERO_TEXT_SHADOW}
+              >
+                {teamInfo?.name ?? `Team #${teamId}`}
+              </h1>
+              {recordText && (
+                <div className="text-emerald-300 font-semibold text-sm sm:text-base" style={HERO_TEXT_SHADOW}>
+                  {recordText}
+                  <span className="text-slate-400 font-normal text-xs sm:text-sm ml-2">{season} Regular Season</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
 
-      <TabBar
-        className="mb-6"
-        listClassName="overflow-x-auto scrollbar-none"
-        tabs={TABS}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-      />
+        <div className="px-5 sm:px-8 py-4 border-b border-slate-700/50 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          {[
+            { label: 'League', value: teamInfo?.league?.name ?? '—' },
+            { label: 'Division', value: teamInfo?.division?.name ?? '—' },
+            { label: 'Ballpark', value: (typeof teamInfo?.venue === 'string' ? teamInfo.venue : teamInfo?.venue?.name) ?? '—' },
+            { label: 'Est.', value: teamInfo?.firstYearOfPlay ?? '—' },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
+              <div className="text-sm font-semibold text-slate-200 truncate">{value}</div>
+            </div>
+          ))}
+        </div>
 
-      {/* Tab content */}
-      <div>
-        {activeTab === 'stats' && <StatsTab teamId={teamId} season={season} />}
-        {activeTab === 'schedule' && <ScheduleTab teamId={teamId} season={season} />}
-        {activeTab === 'roster' && <RosterTab teamId={teamId} season={season} />}
-        {activeTab === 'depth' && <DepthChartTab teamId={teamId} season={season} />}
-        {activeTab === 'splits' && <SplitsTab teamId={teamId} season={season} />}
-        {activeTab === 'injuries' && <InjuriesTab teamId={teamId} season={season} />}
-        {activeTab === 'transactions' && <TransactionsTab teamId={teamId} />}
+        <div className="px-5 sm:px-8 py-5 sm:py-6">
+          <TabBar variant="page" tabs={TABS} activeKey={activeTab} onChange={setActiveTab}>
+            {(key) => {
+              if (key === 'stats') return <StatsTab teamId={teamId} season={season} />;
+              if (key === 'schedule') return <ScheduleTab teamId={teamId} season={season} />;
+              if (key === 'roster') return <RosterTab teamId={teamId} season={season} />;
+              if (key === 'depth') return <DepthChartTab teamId={teamId} season={season} />;
+              if (key === 'splits') return <SplitsTab teamId={teamId} season={season} />;
+              if (key === 'injuries') return <InjuriesTab teamId={teamId} season={season} />;
+              if (key === 'transactions') return <TransactionsTab teamId={teamId} />;
+              return null;
+            }}
+          </TabBar>
+        </div>
       </div>
     </div>
   );

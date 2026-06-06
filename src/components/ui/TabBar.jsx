@@ -1,5 +1,22 @@
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
 
+const VARIANTS = {
+  contained: {
+    list: 'flex flex-wrap gap-1 bg-slate-900 border border-slate-700 rounded-2xl p-1',
+    tab: 'px-3 sm:px-4 py-2 rounded-xl',
+    active: 'bg-white text-slate-900 shadow-sm',
+    inactive: 'text-slate-400 hover:text-white',
+    transition: 'transition-all',
+  },
+  page: {
+    list: 'flex gap-1 border-b border-slate-700/60 mb-6  scrollbar-none',
+    tab: 'px-4 sm:px-5 py-2.5 rounded-t-xl',
+    active: 'bg-slate-800 text-white border-b-2 border-emerald-400 -mb-px',
+    inactive: 'text-slate-400 hover:text-white hover:bg-slate-800/40',
+    transition: 'transition-colors',
+  },
+};
+
 export default function TabBar({
   tabs,
   activeKey,
@@ -10,43 +27,28 @@ export default function TabBar({
   variant = 'contained',
   children,
 }) {
+  const styles = VARIANTS[variant] ?? VARIANTS.contained;
   const activeIndex = Math.max(0, tabs.findIndex((t) => t.key === activeKey));
-
-  const containedActive = 'bg-white text-slate-900 shadow-sm';
-  const containedInactive = 'text-slate-400 hover:text-white';
-  const standaloneActive = 'bg-white text-slate-900 shadow-sm';
-  const standaloneInactive = 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700';
-
-  const activeStyle = variant === 'standalone' ? standaloneActive : containedActive;
-  const inactiveStyle = variant === 'standalone' ? standaloneInactive : containedInactive;
 
   const handleChange = (index) => {
     const tab = tabs[index];
     if (tab) onChange(tab.key);
   };
 
+  const tabClasses = (selected) =>
+    [
+      `${styles.tab} text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0 focus:outline-none`,
+      styles.transition,
+      selected ? styles.active : styles.inactive,
+      tabClassName,
+    ].join(' ');
+
   if (children) {
     return (
       <TabGroup selectedIndex={activeIndex} onChange={handleChange}>
-        <TabList
-          className={[
-            variant === 'contained'
-              ? 'flex gap-1 bg-slate-900 border border-slate-700 rounded-2xl p-1'
-              : 'flex gap-2 overflow-x-auto pb-1',
-            listClassName,
-          ].join(' ')}
-        >
+        <TabList className={[styles.list, listClassName].filter(Boolean).join(' ')}>
           {tabs.map((tab) => (
-            <Tab
-              key={tab.key}
-              className={({ selected }) =>
-                [
-                  'px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 focus:outline-none',
-                  selected ? activeStyle : inactiveStyle,
-                  tabClassName,
-                ].join(' ')
-              }
-            >
+            <Tab key={tab.key} className={({ selected }) => tabClasses(selected)}>
               {tab.label}
             </Tab>
           ))}
@@ -64,25 +66,9 @@ export default function TabBar({
 
   return (
     <TabGroup selectedIndex={activeIndex} onChange={handleChange} className={className}>
-      <TabList
-        className={[
-          variant === 'contained'
-            ? 'flex flex-wrap gap-1 bg-slate-900 border border-slate-700 rounded-2xl p-1 w-fit'
-            : 'flex gap-2 overflow-x-auto pb-1',
-          listClassName,
-        ].join(' ')}
-      >
+      <TabList className={[styles.list, listClassName].filter(Boolean).join(' ')}>
         {tabs.map((tab) => (
-          <Tab
-            key={tab.key}
-            className={({ selected }) =>
-              [
-                'px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 focus:outline-none',
-                selected ? activeStyle : inactiveStyle,
-                tabClassName,
-              ].join(' ')
-            }
-          >
+          <Tab key={tab.key} className={({ selected }) => tabClasses(selected)}>
             {tab.label}
           </Tab>
         ))}
