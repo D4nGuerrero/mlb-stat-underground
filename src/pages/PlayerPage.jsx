@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Tab } from '@headlessui/react';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl } from '../utils/mlbHelpers';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
 import SeasonYearLabel from '../components/SeasonYearLabel';
-import { SegmentedControl, Select } from '../components/ui';
+import { SegmentedControl, Select, TabBar } from '../components/ui';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -412,6 +411,7 @@ export default function PlayerPage() {
   const [splitSeason, setSplitSeason] = useState(CURRENT_YEAR);
   const [splitRows, setSplitRows] = useState([]);
   const [splitLoading, setSplitLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('career');
 
   const isPitcher =
     playerInfo?.primaryPosition?.abbreviation === 'P' ||
@@ -580,7 +580,12 @@ export default function PlayerPage() {
     { value: 'fielding', label: 'Fielding' },
   ];
 
-  const tabs = ['Career', 'Game Logs', 'Splits', 'Batter vs. Pitcher'];
+  const PLAYER_TABS = [
+    { key: 'career', label: 'Career' },
+    { key: 'gamelogs', label: 'Game Logs' },
+    { key: 'splits', label: 'Splits' },
+    { key: 'bvp', label: 'Batter vs. Pitcher' },
+  ];
 
   return (
     <div className="max-w-4xl mx-auto  sm:px-6  sm:py-8">
@@ -655,116 +660,107 @@ export default function PlayerPage() {
           </div>
 
           <div className="px-5 sm:px-8 py-5 sm:py-6">
-            <Tab.Group>
-              <Tab.List className="flex gap-1  border-b border-slate-700/60 mb-6 scrollbar-none">
-                {tabs.map((tab) => (
-                  <Tab
-                    key={tab}
-                    className={({ selected }) =>
-                      [
-                        'px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap rounded-t-xl transition-colors focus:outline-none',
-                        selected
-                          ? 'bg-slate-800 text-white border-b-2 border-emerald-400 -mb-px'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800/40',
-                      ].join(' ')
-                    }
-                  >
-                    {tab}
-                  </Tab>
-                ))}
-              </Tab.List>
-
-              <Tab.Panels>
-                <Tab.Panel>
-                  <div className="flex flex-wrap gap-3 items-center mb-5">
-                    <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-                      <SegmentedControl
-                        value={careerLevel}
-                        onChange={setCareerLevel}
-                        size="sm"
-                        options={[
-                          { value: 'mlb', label: 'MLB' },
-                          { value: 'minors', label: 'Minors' },
-                        ]}
+            <TabBar variant="page" tabs={PLAYER_TABS} activeKey={activeTab} onChange={setActiveTab}>
+              {(key) => {
+                if (key === 'career') {
+                  return (
+                    <>
+                      <div className="flex flex-wrap gap-3 items-center mb-5">
+                        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+                          <SegmentedControl
+                            value={careerLevel}
+                            onChange={setCareerLevel}
+                            size="sm"
+                            options={[
+                              { value: 'mlb', label: 'MLB' },
+                              { value: 'minors', label: 'Minors' },
+                            ]}
+                          />
+                        </div>
+                        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+                          <SegmentedControl
+                            value={careerGroup}
+                            onChange={setCareerGroup}
+                            size="sm"
+                            options={careerGroupOptions}
+                          />
+                        </div>
+                        <Select
+                          value={careerGameType}
+                          onChange={setCareerGameType}
+                          options={CAREER_GAME_TYPE_OPTIONS}
+                          className="w-56"
+                        />
+                      </div>
+                      <StatsTable
+                        cols={displayCols}
+                        rows={careerRows}
+                        labelKey="season"
+                        highlightCareerHighs
+                        emptyMessage="No career stats available for this selection."
                       />
-                    </div>
-                    <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-                      <SegmentedControl
-                        value={careerGroup}
-                        onChange={setCareerGroup}
-                        size="sm"
-                        options={careerGroupOptions}
+                    </>
+                  );
+                }
+                if (key === 'gamelogs') {
+                  return (
+                    <>
+                      <FilterBar
+                        level={logLevel}
+                        onLevelChange={setLogLevel}
+                        period={logPeriod}
+                        onPeriodChange={setLogPeriod}
+                        season={logSeason}
+                        onSeasonChange={setLogSeason}
+                        group={logGroup}
+                        onGroupChange={setLogGroup}
                       />
-                    </div>
-                    <Select
-                      value={careerGameType}
-                      onChange={setCareerGameType}
-                      options={CAREER_GAME_TYPE_OPTIONS}
-                      className="w-56"
-                    />
-                  </div>
-                  <StatsTable
-                    cols={displayCols}
-                    rows={careerRows}
-                    labelKey="season"
-                    highlightCareerHighs
-                    emptyMessage="No career stats available for this selection."
-                  />
-                </Tab.Panel>
-
-                <Tab.Panel>
-                  <FilterBar
-                    level={logLevel}
-                    onLevelChange={setLogLevel}
-                    period={logPeriod}
-                    onPeriodChange={setLogPeriod}
-                    season={logSeason}
-                    onSeasonChange={setLogSeason}
-                    group={logGroup}
-                    onGroupChange={setLogGroup}
-                  />
-                  {gameLogLoading ? (
-                    <div className="flex justify-center py-12">
-                      <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : (
-                    <GameLogTable
-                      cols={gameLogCols}
-                      rows={gameLogRows}
-                      emptyMessage={`No game logs for ${logSeason} ${PERIOD_OPTIONS.find((p) => p.value === logPeriod)?.label ?? ''}.`}
-                    />
-                  )}
-                </Tab.Panel>
-
-                <Tab.Panel>
-                  <FilterBar
-                    level={splitLevel}
-                    onLevelChange={setSplitLevel}
-                    period={splitPeriod}
-                    onPeriodChange={setSplitPeriod}
-                    season={splitSeason}
-                    onSeasonChange={setSplitSeason}
-                  />
-                  {splitLoading ? (
-                    <div className="flex justify-center py-12">
-                      <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : (
-                    <StatsTable
-                      cols={isPitcher ? pitchCols : hitCols}
-                      rows={splitRows}
-                      emptyMessage={`No splits for ${splitSeason} ${PERIOD_OPTIONS.find((p) => p.value === splitPeriod)?.label ?? ''}.`}
-                    />
-                  )}
-                </Tab.Panel>
-
-                <Tab.Panel>
+                      {gameLogLoading ? (
+                        <div className="flex justify-center py-12">
+                          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <GameLogTable
+                          cols={gameLogCols}
+                          rows={gameLogRows}
+                          emptyMessage={`No game logs for ${logSeason} ${PERIOD_OPTIONS.find((p) => p.value === logPeriod)?.label ?? ''}.`}
+                        />
+                      )}
+                    </>
+                  );
+                }
+                if (key === 'splits') {
+                  return (
+                    <>
+                      <FilterBar
+                        level={splitLevel}
+                        onLevelChange={setSplitLevel}
+                        period={splitPeriod}
+                        onPeriodChange={setSplitPeriod}
+                        season={splitSeason}
+                        onSeasonChange={setSplitSeason}
+                      />
+                      {splitLoading ? (
+                        <div className="flex justify-center py-12">
+                          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <StatsTable
+                          cols={isPitcher ? pitchCols : hitCols}
+                          rows={splitRows}
+                          emptyMessage={`No splits for ${splitSeason} ${PERIOD_OPTIONS.find((p) => p.value === splitPeriod)?.label ?? ''}.`}
+                        />
+                      )}
+                    </>
+                  );
+                }
+                return (
                   <div className="text-slate-500 text-sm text-center py-12 border border-dashed border-slate-700 rounded-2xl">
                     Batter vs. Pitcher matchup data coming soon.
                   </div>
-                </Tab.Panel>
-              </Tab.Panels>
-            </Tab.Group>
+                );
+              }}
+            </TabBar>
           </div>
         </div>
       )}

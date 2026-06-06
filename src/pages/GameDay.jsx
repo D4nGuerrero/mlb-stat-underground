@@ -1339,7 +1339,7 @@ export default function GamePage() {
         {/* Tab nav */}
         <TabBar
           className="mb-4"
-          variant="standalone"
+          variant="page"
           tabs={tabList}
           activeKey={currentTab}
           onChange={setActiveTab}
