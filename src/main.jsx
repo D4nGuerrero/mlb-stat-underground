@@ -3,11 +3,12 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
+import { routerBasename } from './utils/baseUrl.js';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter basenam="/mlb-stat-underground">
+    <BrowserRouter basename={routerBasename()}>
       <ThemeProvider>
         <App />
       </ThemeProvider>

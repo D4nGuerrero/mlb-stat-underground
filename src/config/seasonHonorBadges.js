@@ -2,7 +2,7 @@
  * Season honor badges shown in the Career tab year column.
  *
  * To use custom images: drop files in public/badges/ and set `image` to the path
- * (e.g. '/badges/mvp.png'). Supported formats: png, svg, webp.
+ * (e.g. '/badges/mvp.png'). Paths are resolved via resolveAssetUrl() for GitHub Pages.
  * If `image` is null or the file fails to load, the text `label` is shown instead.
  */
 export const SEASON_HONOR_BADGES = [
