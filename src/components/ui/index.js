@@ -4,3 +4,4 @@ export { default as TabBar } from './TabBar';
 export { default as Modal } from './Modal';
 export { default as Collapsible } from './Collapsible';
 export { default as TeamPicker } from './TeamPicker';
+export { default as SwipeableCarousel } from './SwipeableCarousel';

@@ -1,11 +1,50 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl } from '../utils/mlbHelpers';
-import { SegmentedControl } from '../components/ui';
+import { SegmentedControl, SwipeableCarousel } from '../components/ui';
 
-export default function GameDay() {
+const MIN_DATE = new Date('2024-03-01');
+const WINDOW_PAST = 60;
+const FUTURE_DAYS = 180;
+
+const startOfDay = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const addDays = (date, offset) => {
+  const d = startOfDay(date);
+  d.setDate(d.getDate() + offset);
+  return d;
+};
+
+const isSameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
+
+const buildDateRange = (min, max) => {
+  const dates = [];
+  let cursor = startOfDay(min);
+  const end = startOfDay(max);
+  while (cursor <= end) {
+    dates.push(new Date(cursor));
+    cursor = addDays(cursor, 1);
+  }
+  return dates;
+};
+
+const getMaxDate = () => addDays(new Date(), FUTURE_DAYS);
+
+const computeDateWindow = (center, maxDate) => {
+  const start = addDays(center, -WINDOW_PAST);
+  const clampedStart = start < MIN_DATE ? MIN_DATE : start;
+  const end = addDays(center, FUTURE_DAYS);
+  const clampedEnd = end > maxDate ? maxDate : end;
+  return buildDateRange(clampedStart, clampedEnd);
+};
+
+export default function Scores() {
   const navigate = useNavigate();
   const location = useLocation();
   const [favoriteTeams, setFavoriteTeams] = useState(() => {
@@ -15,18 +54,28 @@ export default function GameDay() {
       return [];
     }
   });
-  const [games, setGames] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [gamesMap, setGamesMap] = useState({});
+  const gamesCacheRef = useRef({});
+  const [loadingDates, setLoadingDates] = useState(() => new Set());
   const [liveCount, setLiveCount] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(() => {
+  const maxDate = useMemo(() => getMaxDate(), []);
+  const initialCenter = useMemo(() => {
     const rd = location.state?.returnDate;
-    return rd ? new Date(rd) : new Date();
+    return rd ? startOfDay(new Date(rd)) : startOfDay(new Date());
+  }, [location.state?.returnDate]);
+  const [dates, setDates] = useState(() => computeDateWindow(initialCenter, getMaxDate()));
+  const [selectedIndex, setSelectedIndex] = useState(() => {
+    const windowDates = computeDateWindow(initialCenter, getMaxDate());
+    const idx = windowDates.findIndex((d) => isSameDay(d, initialCenter));
+    return idx >= 0 ? idx : 0;
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isInitialReady, setIsInitialReady] = useState(false);
   const [viewMode, setViewMode] = useState('card'); // 'card' | 'list' | 'grid'
+  const carouselRef = useRef(null);
+  const carouselStartIndex = useRef(selectedIndex);
 
-  // Touch swipe tracking
-  const touchStartX = useRef(null);
+  const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
 
   const getDateStr = (date) => {
     const d = new Date(date);
@@ -43,55 +92,133 @@ export default function GameDay() {
     });
   };
 
-  const changeDay = (offset, base = selectedDate) => {
-    const d = new Date(base);
-    d.setDate(d.getDate() + offset);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    if (d > today) return;
-    setSelectedDate(d);
-    loadGames(false, d);
-  };
+  const isToday = (date) => isSameDay(date, new Date());
+  const isAtMinDate = isSameDay(selectedDate, MIN_DATE);
+  const isAtMaxDate = isSameDay(selectedDate, maxDate);
 
-  const isToday = (date) => {
-    const d = new Date(date);
-    const today = new Date();
-    return (
-      d.getDate() === today.getDate() &&
-      d.getMonth() === today.getMonth() &&
-      d.getFullYear() === today.getFullYear()
-    );
-  };
+  const fetchGamesForDate = useCallback(async (date, { force = false } = {}) => {
+    if (!date) return;
+    const dateStr = getDateStr(date);
 
-  const loadGames = async (manual = false, dateToUse = null) => {
-    if (manual) {
-      setIsRefreshing(true);
-      setTimeout(() => setIsRefreshing(false), 600);
-    }
+    if (!force && gamesCacheRef.current[dateStr]) return gamesCacheRef.current[dateStr];
 
+    setLoadingDates((prev) => new Set(prev).add(dateStr));
     try {
-      const dateToFetch = dateToUse || selectedDate;
-      const dateStr = getDateStr(dateToFetch);
       const res = await fetch(
         `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
       );
       const data = await res.json();
       const dayGames = data.dates?.[0]?.games || [];
-      setGames(dayGames);
-      setLiveCount(dayGames.filter((g) => g.status.abstractGameState === 'Live').length);
+      gamesCacheRef.current[dateStr] = dayGames;
+      setGamesMap((prev) => ({ ...prev, [dateStr]: dayGames }));
+      if (isSameDay(date, selectedDate)) {
+        setLiveCount(dayGames.filter((g) => g.status.abstractGameState === 'Live').length);
+      }
+      return dayGames;
     } catch (err) {
       console.error(err);
+      return [];
     } finally {
-      setIsLoading(false);
+      setLoadingDates((prev) => {
+        const next = new Set(prev);
+        next.delete(dateStr);
+        return next;
+      });
     }
+  }, [selectedDate]);
+
+  const prefetchAroundIndex = useCallback((index) => {
+    [index, index - 1, index + 1].forEach((i) => {
+      if (i >= 0 && i < dates.length) fetchGamesForDate(dates[i]);
+    });
+  }, [dates, fetchGamesForDate]);
+
+  const handleCarouselSelect = useCallback((index) => {
+    setSelectedIndex(index);
+    const date = dates[index];
+    if (date) {
+      const cached = gamesCacheRef.current[getDateStr(date)];
+      if (cached) {
+        setLiveCount(cached.filter((g) => g.status.abstractGameState === 'Live').length);
+      }
+    }
+    prefetchAroundIndex(index);
+  }, [dates, prefetchAroundIndex]);
+
+  const goToPrevDay = () => {
+    if (selectedIndex > 0) {
+      carouselRef.current?.scrollPrev();
+      return;
+    }
+    if (isAtMinDate) return;
+    const newStart = addDays(dates[0], -30);
+    const clampedStart = newStart < MIN_DATE ? MIN_DATE : newStart;
+    if (isSameDay(clampedStart, dates[0])) return;
+    const newDates = buildDateRange(clampedStart, dates[dates.length - 1]);
+    const shift = newDates.length - dates.length;
+    setDates(newDates);
+    setSelectedIndex(shift);
+    requestAnimationFrame(() => carouselRef.current?.scrollTo(shift, true));
+    prefetchAroundIndex(shift);
+  };
+
+  const goToNextDay = () => {
+    if (selectedIndex < dates.length - 1) {
+      carouselRef.current?.scrollNext();
+      return;
+    }
+    if (isAtMaxDate) return;
+    const newEnd = addDays(dates[dates.length - 1], 30);
+    const clampedEnd = newEnd > maxDate ? maxDate : newEnd;
+    if (isSameDay(clampedEnd, dates[dates.length - 1])) return;
+    const newDates = buildDateRange(dates[0], clampedEnd);
+    setDates(newDates);
+    requestAnimationFrame(() => carouselRef.current?.scrollTo(selectedIndex, false));
+    prefetchAroundIndex(selectedIndex);
+  };
+
+  const handleDatePick = (date) => {
+    const picked = startOfDay(date);
+    if (picked < MIN_DATE || picked > maxDate) return;
+
+    let nextDates = dates;
+    if (picked < dates[0] || picked > dates[dates.length - 1]) {
+      nextDates = computeDateWindow(picked, maxDate);
+      setDates(nextDates);
+    }
+
+    const idx = nextDates.findIndex((d) => isSameDay(d, picked));
+    if (idx < 0) return;
+    setSelectedIndex(idx);
+    requestAnimationFrame(() => carouselRef.current?.scrollTo(idx, true));
+    prefetchAroundIndex(idx);
+  };
+
+  const refreshCurrentDay = async (manual = false) => {
+    if (manual) {
+      setIsRefreshing(true);
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+    await fetchGamesForDate(selectedDate, { force: true });
   };
 
   useEffect(() => {
-    loadGames();
-    const interval = setInterval(() => loadGames(), 60000);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    (async () => {
+      await fetchGamesForDate(dates[selectedIndex]);
+      if (cancelled) return;
+      prefetchAroundIndex(selectedIndex);
+      setIsInitialReady(true);
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isToday(selectedDate)) return undefined;
+    const interval = setInterval(() => fetchGamesForDate(selectedDate, { force: true }), 60000);
+    return () => clearInterval(interval);
+  }, [selectedDate, fetchGamesForDate]);
 
   useEffect(() => {
     // When coming back from TeamPage, favorites may have changed.
@@ -107,8 +234,7 @@ export default function GameDay() {
     return () => window.removeEventListener('focus', refreshFav);
   }, []);
 
-  // Sort: Live → Upcoming → Final
-  const sortedGames = [...games].sort((a, b) => {
+  const sortGames = (games) => [...(games ?? [])].sort((a, b) => {
     const priority = (g) => {
       const state = g.status.abstractGameState;
       if (state === 'Live') return 0;
@@ -131,6 +257,311 @@ export default function GameDay() {
     if (pa === 1) return new Date(a.gameDate) - new Date(b.gameDate);
     return 0;
   });
+
+  const renderGamesForDate = (date, { isActive = false, isAdjacent = false } = {}) => {
+    const dateStr = getDateStr(date);
+    const hasLoaded = Object.prototype.hasOwnProperty.call(gamesMap, dateStr);
+    const games = gamesMap[dateStr];
+    const sortedGames = sortGames(games ?? []);
+
+    if (!hasLoaded) {
+      if (!isActive && !isAdjacent) {
+        return <div className="min-h-[1px]" aria-hidden />;
+      }
+      return (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+
+    if (!games?.length) {
+      return (
+        <div className="border border-dashed border-slate-700 rounded-3xl p-12 text-center text-slate-500">
+          No games scheduled for this date.
+        </div>
+      );
+    }
+
+    if (viewMode === 'list') {
+      return (
+        <div className="divide-y divide-slate-800/60">
+          {sortedGames.map((game) => {
+            const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
+            const isPreview = !isFinal && !isLive;
+            const awayScore = parseInt(game.teams.away.score ?? 0);
+            const homeScore = parseInt(game.teams.home.score ?? 0);
+            const awayWin = isFinal && awayScore > homeScore;
+            const homeWin = isFinal && homeScore > awayScore;
+            const awayRec = game.teams.away.leagueRecord;
+            const homeRec = game.teams.home.leagueRecord;
+            const noHitAlerts = getNoHitAlert(game);
+            return (
+              <div
+                key={game.gamePk}
+                onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
+                className="flex items-center px-4 py-4 cursor-pointer hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors gap-2"
+              >
+                <div className="flex flex-col items-center gap-1 w-[64px] flex-shrink-0">
+                  <img
+                    src={teamLogoUrl(game.teams.away.team.id)}
+                    className="w-14 h-14 object-contain"
+                    alt={game.teams.away.team.abbreviation}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.away.team.id}`); }}
+                  />
+                  {awayRec && (
+                    <span className="text-[10px] text-slate-500 font-mono">{awayRec.wins}-{awayRec.losses}</span>
+                  )}
+                </div>
+                {!isPreview && (
+                  <span className={`font-display text-5xl tabular-nums leading-none mx-1 flex-shrink-0 ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}>
+                    {awayScore}
+                  </span>
+                )}
+                <div className="flex-1 flex flex-col items-center justify-center text-center min-w-0 px-1 gap-1">
+                  {isPostponed ? (
+                    <span className="text-[10px] font-bold text-orange-400 tracking-widest">PPD</span>
+                  ) : isDelayed && isLive ? (
+                    <>
+                      <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
+                      {game.linescore && (
+                        <span className="text-[9px] text-slate-500 font-mono">
+                          {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInning}
+                        </span>
+                      )}
+                    </>
+                  ) : isDelayed ? (
+                    <>
+                      <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
+                      {game.gameDate && (
+                        <span className="text-[9px] text-slate-600 font-mono">
+                          {new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </>
+                  ) : isLive ? (
+                    <>
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-red-400">
+                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />LIVE
+                      </span>
+                      {game.linescore && (
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInning}
+                        </span>
+                      )}
+                    </>
+                  ) : isFinal ? (
+                    <span className="text-xs font-bold text-slate-400 tracking-widest">FINAL</span>
+                  ) : (
+                    <span className="text-xs text-slate-400 font-semibold">
+                      {game.gameDate
+                        ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                        : '—'}
+                    </span>
+                  )}
+                  {isPreview && !isPostponed && (
+                    <div className="text-[10px] text-slate-600">
+                      {game.teams.away.team.abbreviation} @ {game.teams.home.team.abbreviation}
+                    </div>
+                  )}
+                  {noHitAlerts?.map((a) => (
+                    <span key={a.side} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                      {a.label}
+                    </span>
+                  ))}
+                </div>
+                {!isPreview && (
+                  <span className={`font-display text-5xl tabular-nums leading-none mx-1 flex-shrink-0 ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}>
+                    {homeScore}
+                  </span>
+                )}
+                <div className="flex flex-col items-center gap-1 w-[64px] flex-shrink-0">
+                  <img
+                    src={teamLogoUrl(game.teams.home.team.id)}
+                    className="w-14 h-14 object-contain"
+                    alt={game.teams.home.team.abbreviation}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.home.team.id}`); }}
+                  />
+                  {homeRec && (
+                    <span className="text-[10px] text-slate-500 font-mono">{homeRec.wins}-{homeRec.losses}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (viewMode === 'grid') {
+      return (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {sortedGames.map((game) => {
+            const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
+            const awayScore = game.teams.away.score ?? 0;
+            const homeScore = game.teams.home.score ?? 0;
+            const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
+            const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
+            const noHitAlerts = getNoHitAlert(game);
+            return (
+              <div
+                key={game.gamePk}
+                onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
+                className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-3 cursor-pointer transition-all active:scale-[0.97]"
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex gap-1 flex-wrap">
+                    {noHitAlerts?.map((a) => (
+                      <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                        {a.label}
+                      </span>
+                    ))}
+                  </div>
+                  {isPostponed ? (
+                    <span className="text-[10px] font-bold text-orange-400">PPD</span>
+                  ) : isDelayed && !isLive ? (
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] font-bold text-yellow-400">DELAYED</span>
+                      {game.gameDate && <span className="text-[9px] text-slate-600 font-mono">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+                    </div>
+                  ) : isDelayed ? (
+                    <span className="text-[10px] font-bold text-yellow-400">DELAYED</span>
+                  ) : isLive ? (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400">
+                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
+                    </span>
+                  ) : isFinal ? (
+                    <span className="text-[10px] text-slate-500">FINAL</span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {game.gameDate ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <img src={teamLogoUrl(game.teams.away.team.id)} className="w-6 h-6 object-contain" alt="" onError={(e) => (e.target.style.display = 'none')} />
+                    <span className={`text-xs font-medium truncate max-w-[70px] ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-300'}`}>
+                      {game.teams.away.team.name?.split(' ').pop()}
+                    </span>
+                  </div>
+                  <span className={`font-mono text-sm tabular-nums font-bold ${awayWin ? 'text-white' : 'text-slate-400'}`}>
+                    {(isLive || isFinal) ? (game.teams.away.score ?? 0) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <img src={teamLogoUrl(game.teams.home.team.id)} className="w-6 h-6 object-contain" alt="" onError={(e) => (e.target.style.display = 'none')} />
+                    <span className={`text-xs font-medium truncate max-w-[70px] ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-300'}`}>
+                      {game.teams.home.team.name?.split(' ').pop()}
+                    </span>
+                  </div>
+                  <span className={`font-mono text-sm tabular-nums font-bold ${homeWin ? 'text-white' : 'text-slate-400'}`}>
+                    {(isLive || isFinal) ? (game.teams.home.score ?? 0) : '—'}
+                  </span>
+                </div>
+                {isLive && game.linescore && (
+                  <div className="mt-2 pt-2 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono text-center">
+                    {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInningOrdinal} · {game.linescore.outs ?? 0}out
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {sortedGames.map((game) => {
+          const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
+          const awayScore = game.teams.away.score ?? 0;
+          const homeScore = game.teams.home.score ?? 0;
+          const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
+          const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
+          const noHitAlerts = getNoHitAlert(game);
+          return (
+            <div
+              key={game.gamePk}
+              onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
+              className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 active:scale-[0.985]"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] text-slate-600 truncate">{game.venue?.name}</span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {noHitAlerts?.map((a) => (
+                    <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                      {a.label}
+                    </span>
+                  ))}
+                  {isPostponed ? (
+                    <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-400 rounded-lg font-bold">PPD</span>
+                  ) : isDelayed && !isLive ? (
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
+                      {game.gameDate && <span className="text-[9px] text-slate-600 font-mono mt-0.5">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+                    </div>
+                  ) : isDelayed ? (
+                    <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
+                  ) : isLive ? (
+                    <span className="inline-flex items-center gap-x-1 text-xs px-2 py-0.5 bg-red-500/10 text-red-400 rounded-lg">
+                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
+                    </span>
+                  ) : isFinal ? (
+                    <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">FINAL</span>
+                  ) : (
+                    <span className="text-xs text-slate-500">
+                      {game.gameDate
+                        ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                        : '—'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-x-2.5">
+                  <img src={teamLogoUrl(game.teams.away.team.id)} className="w-8 h-8 object-contain" alt={game.teams.away.team.name} onError={(e) => (e.target.style.display = 'none')} />
+                  <div>
+                    <div className={`font-semibold text-sm ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>{game.teams.away.team.name}</div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      {game.teams.away.team.record ? `${game.teams.away.team.record.wins}-${game.teams.away.team.record.losses}` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div className={`font-display text-2xl tabular-nums ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.away.score ?? ''}</div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-x-2.5">
+                  <img src={teamLogoUrl(game.teams.home.team.id)} className="w-8 h-8 object-contain" alt={game.teams.home.team.name} onError={(e) => (e.target.style.display = 'none')} />
+                  <div>
+                    <div className={`font-semibold text-sm ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>{game.teams.home.team.name}</div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      {game.teams.home.team.record ? `${game.teams.home.team.record.wins}-${game.teams.home.team.record.losses}` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div className={`font-display text-2xl tabular-nums ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.home.score ?? ''}</div>
+              </div>
+              {isLive && game.linescore && (
+                <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                  <span className="text-slate-500">{game.linescore.inningHalf === 'Top' ? '▲' : '▼'} {game.linescore.currentInningOrdinal}</span>
+                  <span className="text-slate-500 font-mono">{game.linescore.balls ?? 0}-{game.linescore.strikes ?? 0} · {game.linescore.outs ?? 0} out</span>
+                </div>
+              )}
+              {!isLive && !isFinal && (
+                <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
+                  <span>{game.teams.away.probablePitcher?.fullName?.split(' ').pop() ?? '—'}</span>
+                  <span className="text-slate-700">vs</span>
+                  <span>{game.teams.home.probablePitcher?.fullName?.split(' ').pop() ?? '—'}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   // Helpers
   const getStatusInfo = (game) => {
@@ -207,30 +638,8 @@ export default function GameDay() {
     return alerts.length > 0 ? alerts : null;
   };
 
-  // Swipe handlers
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-  const handleTouchEnd = (e) => {
-    if (touchStartX.current === null) return;
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    touchStartX.current = null;
-    if (Math.abs(dx) < 50) return;
-    if (dx < 0) {
-      // swipe left → next day
-      if (!isToday(selectedDate)) changeDay(1);
-    } else {
-      // swipe right → previous day
-      changeDay(-1);
-    }
-  };
-
   return (
-    <div
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 sm:mb-8">
         <div>
@@ -249,8 +658,13 @@ export default function GameDay() {
       <div className="flex items-center justify-between mb-5 sm:mb-6">
         <div className="flex items-center gap-x-2 sm:gap-x-3">
           <button
-            onClick={() => changeDay(-1)}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-2xl text-slate-400 hover:text-white transition-all active:scale-95"
+            onClick={goToPrevDay}
+            disabled={isAtMinDate}
+            className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center border rounded-2xl transition-all active:scale-95 ${
+              isAtMinDate
+                ? 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white'
+            }`}
           >
             <i className="fa-solid fa-chevron-left" />
           </button>
@@ -258,12 +672,9 @@ export default function GameDay() {
           <div className="relative">
             <DatePicker
               selected={selectedDate}
-              onChange={(date) => {
-                setSelectedDate(date);
-                loadGames(false, date);
-              }}
-              minDate={new Date('2024-03-01')}
-              maxDate={new Date()}
+              onChange={handleDatePick}
+              minDate={MIN_DATE}
+              maxDate={maxDate}
               todayButton="Today"
               customInput={
                 <div className="flex items-center gap-x-2 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-2xl px-3 sm:px-4 py-2 cursor-pointer transition-all">
@@ -280,10 +691,10 @@ export default function GameDay() {
           </div>
 
           <button
-            onClick={() => changeDay(1)}
-            disabled={isToday(selectedDate)}
+            onClick={goToNextDay}
+            disabled={isAtMaxDate}
             className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center border rounded-2xl transition-all active:scale-95 ${
-              isToday(selectedDate)
+              isAtMaxDate
                 ? 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
                 : 'bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white'
             }`}
@@ -293,7 +704,7 @@ export default function GameDay() {
         </div>
 
         <button
-          onClick={() => loadGames(true)}
+          onClick={() => refreshCurrentDay(true)}
           className="flex items-center gap-x-1.5 text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-2xl text-slate-400 hover:text-slate-200 transition-all active:scale-[0.985]"
         >
           <i className={`fa-solid fa-rotate text-xs ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -327,337 +738,38 @@ export default function GameDay() {
           </div>
         </div>
 
-        {isLoading ? (
+        <p className="text-xs text-slate-600 mb-3 px-1 hidden sm:block">
+          Swipe left or right to change days
+        </p>
+
+        {!isInitialReady ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : games.length === 0 ? (
-          <div className="border border-dashed border-slate-700 rounded-3xl p-12 text-center text-slate-500">
-            No games scheduled for this date.
-          </div>
-        ) : viewMode === 'list' ? (
-          /* ── LIST VIEW — MLB-style: logo | score | status | score | logo ── */
-          <div className="divide-y divide-slate-800/60">
-            {sortedGames.map((game) => {
-              const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
-              const isPreview = !isFinal && !isLive;
-              const awayScore = parseInt(game.teams.away.score ?? 0);
-              const homeScore = parseInt(game.teams.home.score ?? 0);
-              const awayWin = isFinal && awayScore > homeScore;
-              const homeWin = isFinal && homeScore > awayScore;
-              const awayRec = game.teams.away.leagueRecord;
-              const homeRec = game.teams.home.leagueRecord;
-              const noHitAlerts = getNoHitAlert(game);
-              return (
-                <div
-                  key={game.gamePk}
-                  onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: selectedDate.toISOString() } })}
-                  className="flex items-center px-4 py-4 cursor-pointer hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors gap-2"
-                >
-                  {/* Away team */}
-                  <div className="flex flex-col items-center gap-1 w-[64px] flex-shrink-0">
-                    <img
-                      src={teamLogoUrl(game.teams.away.team.id)}
-                      className="w-14 h-14 object-contain"
-                      alt={game.teams.away.team.abbreviation}
-                      onClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.away.team.id}`); }}
-                    />
-                    {awayRec && (
-                      <span className="text-[10px] text-slate-500 font-mono">{awayRec.wins}-{awayRec.losses}</span>
-                    )}
-                  </div>
-
-                  {/* Away score */}
-                  {!isPreview && (
-                    <span className={`font-display text-5xl tabular-nums leading-none mx-1 flex-shrink-0 ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}>
-                      {awayScore}
-                    </span>
-                  )}
-
-                  {/* Center status */}
-                  <div className="flex-1 flex flex-col items-center justify-center text-center min-w-0 px-1 gap-1">
-                    {isPostponed ? (
-                      <span className="text-[10px] font-bold text-orange-400 tracking-widest">PPD</span>
-                    ) : isDelayed && isLive ? (
-                      <>
-                        <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
-                        {game.linescore && (
-                          <span className="text-[9px] text-slate-500 font-mono">
-                            {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInning}
-                          </span>
-                        )}
-                      </>
-                    ) : isDelayed ? (
-                      <>
-                        <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
-                        {game.gameDate && (
-                          <span className="text-[9px] text-slate-600 font-mono">
-                            {new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                          </span>
-                        )}
-                      </>
-                    ) : isLive ? (
-                      <>
-                        <span className="flex items-center gap-1 text-[11px] font-bold text-red-400">
-                          <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />LIVE
-                        </span>
-                        {game.linescore && (
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInning}
-                          </span>
-                        )}
-                      </>
-                    ) : isFinal ? (
-                      <span className="text-xs font-bold text-slate-400 tracking-widest">FINAL</span>
-                    ) : (
-                      <span className="text-xs text-slate-400 font-semibold">
-                        {game.gameDate
-                          ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                          : '—'}
-                      </span>
-                    )}
-                    {isPreview && !isPostponed && (
-                      <div className="text-[10px] text-slate-600">
-                        {game.teams.away.team.abbreviation} @ {game.teams.home.team.abbreviation}
-                      </div>
-                    )}
-                    {noHitAlerts?.map((a) => (
-                      <span key={a.side} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                        {a.label}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Home score */}
-                  {!isPreview && (
-                    <span className={`font-display text-5xl tabular-nums leading-none mx-1 flex-shrink-0 ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}>
-                      {homeScore}
-                    </span>
-                  )}
-
-                  {/* Home team */}
-                  <div className="flex flex-col items-center gap-1 w-[64px] flex-shrink-0">
-                    <img
-                      src={teamLogoUrl(game.teams.home.team.id)}
-                      className="w-14 h-14 object-contain"
-                      alt={game.teams.home.team.abbreviation}
-                      onClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.home.team.id}`); }}
-                    />
-                    {homeRec && (
-                      <span className="text-[10px] text-slate-500 font-mono">{homeRec.wins}-{homeRec.losses}</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : viewMode === 'grid' ? (
-          /* ── GRID VIEW — 2-col mobile, 3-col lg ── */
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {sortedGames.map((game) => {
-              const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
-              const awayScore = game.teams.away.score ?? 0;
-              const homeScore = game.teams.home.score ?? 0;
-              const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
-              const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
-              const noHitAlerts = getNoHitAlert(game);
-              return (
-                <div
-                  key={game.gamePk}
-                  onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: selectedDate.toISOString() } })}
-                  className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-3 cursor-pointer transition-all active:scale-[0.97]"
-                >
-                  {/* Status badge */}
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex gap-1 flex-wrap">
-                      {noHitAlerts?.map((a) => (
-                        <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                          {a.label}
-                        </span>
-                      ))}
-                    </div>
-                    {isPostponed ? (
-                      <span className="text-[10px] font-bold text-orange-400">PPD</span>
-                    ) : isDelayed && !isLive ? (
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-bold text-yellow-400">DELAYED</span>
-                        {game.gameDate && <span className="text-[9px] text-slate-600 font-mono">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
-                      </div>
-                    ) : isDelayed ? (
-                      <span className="text-[10px] font-bold text-yellow-400">DELAYED</span>
-                    ) : isLive ? (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400">
-                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
-                      </span>
-                    ) : isFinal ? (
-                      <span className="text-[10px] text-slate-500">FINAL</span>
-                    ) : (
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {game.gameDate ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
-                      </span>
-                    )}
-                  </div>
-                  {/* Away */}
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <img src={teamLogoUrl(game.teams.away.team.id)} className="w-6 h-6 object-contain" alt="" onError={(e) => (e.target.style.display = 'none')} />
-                      <span className={`text-xs font-medium truncate max-w-[70px] ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-300'}`}>
-                        {game.teams.away.team.name?.split(' ').pop()}
-                      </span>
-                    </div>
-                    <span className={`font-mono text-sm tabular-nums font-bold ${awayWin ? 'text-white' : 'text-slate-400'}`}>
-                      {(isLive || isFinal) ? (game.teams.away.score ?? 0) : '—'}
-                    </span>
-                  </div>
-                  {/* Home */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <img src={teamLogoUrl(game.teams.home.team.id)} className="w-6 h-6 object-contain" alt="" onError={(e) => (e.target.style.display = 'none')} />
-                      <span className={`text-xs font-medium truncate max-w-[70px] ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-300'}`}>
-                        {game.teams.home.team.name?.split(' ').pop()}
-                      </span>
-                    </div>
-                    <span className={`font-mono text-sm tabular-nums font-bold ${homeWin ? 'text-white' : 'text-slate-400'}`}>
-                      {(isLive || isFinal) ? (game.teams.home.score ?? 0) : '—'}
-                    </span>
-                  </div>
-                  {/* Live situation */}
-                  {isLive && game.linescore && (
-                    <div className="mt-2 pt-2 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono text-center">
-                      {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInningOrdinal} · {game.linescore.outs ?? 0}out
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         ) : (
-          /* ── CARD VIEW (default) ── */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sortedGames.map((game) => {
-              const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
-              const awayScore = game.teams.away.score ?? 0;
-              const homeScore = game.teams.home.score ?? 0;
-              const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
-              const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
-              const noHitAlerts = getNoHitAlert(game);
-
+          <SwipeableCarousel
+            ref={carouselRef}
+            startIndex={carouselStartIndex.current}
+            selectedIndex={selectedIndex}
+            onSelectedIndexChange={handleCarouselSelect}
+            hideUntilReady
+            slideGap={20}
+            showArrows={false}
+            showDots={false}
+          >
+            {dates.map((date, i) => {
+              const offset = Math.abs(i - selectedIndex);
+              const isActive = offset === 0;
+              const isAdjacent = offset === 1;
               return (
-                <div
-                  key={game.gamePk}
-                  onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: selectedDate.toISOString() } })}
-                  className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 active:scale-[0.985]"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] text-slate-600 truncate">
-                      {game.venue?.name}
-                    </span>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {noHitAlerts?.map((a) => (
-                        <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                          {a.label}
-                        </span>
-                      ))}
-                      {isPostponed ? (
-                        <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-400 rounded-lg font-bold">PPD</span>
-                      ) : isDelayed && !isLive ? (
-                        <div className="flex flex-col items-end">
-                          <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
-                          {game.gameDate && <span className="text-[9px] text-slate-600 font-mono mt-0.5">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
-                        </div>
-                      ) : isDelayed ? (
-                        <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
-                      ) : isLive ? (
-                        <span className="inline-flex items-center gap-x-1 text-xs px-2 py-0.5 bg-red-500/10 text-red-400 rounded-lg">
-                          <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
-                        </span>
-                      ) : isFinal ? (
-                        <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">FINAL</span>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          {game.gameDate
-                            ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                            : '—'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Away */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-x-2.5">
-                      <img
-                        src={teamLogoUrl(game.teams.away.team.id)}
-                        className="w-8 h-8 object-contain"
-                        alt={game.teams.away.team.name}
-                        onError={(e) => (e.target.style.display = 'none')}
-                      />
-                      <div>
-                        <div className={`font-semibold text-sm ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>
-                          {game.teams.away.team.name}
-                        </div>
-                        <div className="text-[10px] text-slate-600 font-mono">
-                          {game.teams.away.team.record
-                            ? `${game.teams.away.team.record.wins}-${game.teams.away.team.record.losses}`
-                            : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className={`font-display text-2xl tabular-nums ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>
-                      {game.teams.away.score ?? ''}
-                    </div>
-                  </div>
-
-                  {/* Home */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-x-2.5">
-                      <img
-                        src={teamLogoUrl(game.teams.home.team.id)}
-                        className="w-8 h-8 object-contain"
-                        alt={game.teams.home.team.name}
-                        onError={(e) => (e.target.style.display = 'none')}
-                      />
-                      <div>
-                        <div className={`font-semibold text-sm ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>
-                          {game.teams.home.team.name}
-                        </div>
-                        <div className="text-[10px] text-slate-600 font-mono">
-                          {game.teams.home.team.record
-                            ? `${game.teams.home.team.record.wins}-${game.teams.home.team.record.losses}`
-                            : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className={`font-display text-2xl tabular-nums ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>
-                      {game.teams.home.score ?? ''}
-                    </div>
-                  </div>
-
-                  {/* Linescore mini */}
-                  {isLive && game.linescore && (
-                    <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                      <span className="text-slate-500">
-                        {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{' '}
-                        {game.linescore.currentInningOrdinal}
-                      </span>
-                      <span className="text-slate-500 font-mono">
-                        {game.linescore.balls ?? 0}-{game.linescore.strikes ?? 0} · {game.linescore.outs ?? 0} out
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Probable pitchers (scheduled games) */}
-                  {!isLive && !isFinal && (
-                    <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
-                      <span>{game.teams.away.probablePitcher?.fullName?.split(' ').pop() ?? '—'}</span>
-                      <span className="text-slate-700">vs</span>
-                      <span>{game.teams.home.probablePitcher?.fullName?.split(' ').pop() ?? '—'}</span>
-                    </div>
-                  )}
+                <div key={getDateStr(date)} className="w-full">
+                  {offset <= 1
+                    ? renderGamesForDate(date, { isActive, isAdjacent })
+                    : <div className="min-h-[1px]" aria-hidden />}
                 </div>
               );
             })}
-          </div>
+          </SwipeableCarousel>
         )}
       </div>
     </div>
