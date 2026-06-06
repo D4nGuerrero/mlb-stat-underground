@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
+import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { SegmentedControl, Select } from '../components/ui';
 
 const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => ({
@@ -56,45 +56,93 @@ const FIELDING_CATS = [
   { key: 'chances', label: 'Total Chances', abbr: 'TC', format: 'int' },
 ];
 
-// Team stat categories
-const TEAM_HITTING_CATS = [
-  { key: 'avg', label: 'Batting Average', abbr: 'AVG', format: '3dec', stat: 'avg' },
-  { key: 'homeRuns', label: 'Home Runs', abbr: 'HR', format: 'int', stat: 'homeRuns' },
-  { key: 'runs', label: 'Runs Scored', abbr: 'R', format: 'int', stat: 'runs' },
-  { key: 'hits', label: 'Hits', abbr: 'H', format: 'int', stat: 'hits' },
-  { key: 'rbi', label: 'RBI', abbr: 'RBI', format: 'int', stat: 'rbi' },
-  { key: 'stolenBases', label: 'Stolen Bases', abbr: 'SB', format: 'int', stat: 'stolenBases' },
-  { key: 'obp', label: 'On-Base %', abbr: 'OBP', format: '3dec', stat: 'obp' },
-  { key: 'slg', label: 'Slugging %', abbr: 'SLG', format: '3dec', stat: 'slg' },
-  { key: 'ops', label: 'OPS', abbr: 'OPS', format: '3dec', stat: 'ops' },
-  { key: 'strikeOuts', label: 'Strikeouts', abbr: 'SO', format: 'int', stat: 'strikeOuts' },
-  { key: 'baseOnBalls', label: 'Walks', abbr: 'BB', format: 'int', stat: 'baseOnBalls' },
+// ESPN-style team stats table (https://www.espn.com/mlb/stats/_/view/team)
+const AL_TEAM_IDS = new Set([108, 110, 111, 114, 116, 117, 118, 133, 136, 139, 140, 141, 142, 145, 147]);
+
+const TEAM_BATTING_COLS = [
+  { key: 'gamesPlayed', label: 'GP', format: 'int' },
+  { key: 'atBats', label: 'AB', format: 'int' },
+  { key: 'runs', label: 'R', format: 'int' },
+  { key: 'hits', label: 'H', format: 'int' },
+  { key: 'doubles', label: '2B', format: 'int' },
+  { key: 'triples', label: '3B', format: 'int' },
+  { key: 'homeRuns', label: 'HR', format: 'int' },
+  { key: 'rbi', label: 'RBI', format: 'int' },
+  { key: 'totalBases', label: 'TB', format: 'int' },
+  { key: 'baseOnBalls', label: 'BB', format: 'int' },
+  { key: 'strikeOuts', label: 'SO', format: 'int' },
+  { key: 'stolenBases', label: 'SB', format: 'int' },
+  { key: 'avg', label: 'AVG', format: '3dec' },
+  { key: 'obp', label: 'OBP', format: '3dec' },
+  { key: 'slg', label: 'SLG', format: '3dec' },
+  { key: 'ops', label: 'OPS', format: '3dec' },
 ];
 
-const TEAM_PITCHING_CATS = [
-  { key: 'era', label: 'ERA', abbr: 'ERA', format: '2dec', stat: 'era', asc: true },
-  { key: 'wins', label: 'Wins', abbr: 'W', format: 'int', stat: 'wins' },
-  { key: 'strikeOuts', label: 'Strikeouts', abbr: 'SO', format: 'int', stat: 'strikeOuts' },
-  { key: 'saves', label: 'Saves', abbr: 'SV', format: 'int', stat: 'saves' },
-  { key: 'whip', label: 'WHIP', abbr: 'WHIP', format: '2dec', stat: 'whip', asc: true },
-  { key: 'earnedRuns', label: 'Earned Runs', abbr: 'ER', format: 'int', stat: 'earnedRuns', asc: true },
-  { key: 'baseOnBalls', label: 'Walks', abbr: 'BB', format: 'int', stat: 'baseOnBalls', asc: true },
-  { key: 'hitBatsmen', label: 'Hit Batters', abbr: 'HBP', format: 'int', stat: 'hitBatsmen', asc: true },
-  { key: 'homeRuns', label: 'HR Allowed', abbr: 'HR', format: 'int', stat: 'homeRuns', asc: true },
-  { key: 'shutouts', label: 'Shutouts', abbr: 'SHO', format: 'int', stat: 'shutouts' },
+const TEAM_PITCHING_COLS = [
+  { key: 'gamesPlayed', label: 'GP', format: 'int' },
+  { key: 'wins', label: 'W', format: 'int' },
+  { key: 'losses', label: 'L', format: 'int' },
+  { key: 'era', label: 'ERA', format: '2dec', lowerBetter: true },
+  { key: 'saves', label: 'SV', format: 'int' },
+  { key: 'completeGames', label: 'CG', format: 'int' },
+  { key: 'shutouts', label: 'SHO', format: 'int' },
+  { key: 'inningsPitched', label: 'IP', format: 'str' },
+  { key: 'hits', label: 'H', format: 'int', lowerBetter: true },
+  { key: 'earnedRuns', label: 'ER', format: 'int', lowerBetter: true },
+  { key: 'homeRuns', label: 'HR', format: 'int', lowerBetter: true },
+  { key: 'baseOnBalls', label: 'BB', format: 'int', lowerBetter: true },
+  { key: 'strikeOuts', label: 'SO', format: 'int' },
+  { key: 'avg', label: 'OBA', format: '3dec', lowerBetter: true },
+  { key: 'whip', label: 'WHIP', format: '2dec', lowerBetter: true },
 ];
+
+const TEAM_SORT_DEFAULTS = {
+  batting: { col: 'homeRuns', dir: 'desc' },
+  pitching: { col: 'era', dir: 'asc' },
+};
 
 const MEDAL = ['🥇', '🥈', '🥉'];
 
 const formatValue = (val, fmt) => {
-  if (val == null) return '–';
-  if (fmt === 'int') return String(parseInt(val));
+  if (val == null || val === '') return '–';
+  if (fmt === 'int') return String(parseInt(val, 10));
   if (fmt === '3dec') {
     const f = parseFloat(val).toFixed(3);
-    return f.startsWith('0.') ? f.slice(1) : f; // strip leading 0 for .avg
+    return f.startsWith('0.') ? f.slice(1) : f;
   }
   if (fmt === '2dec') return parseFloat(val).toFixed(2);
   return String(val);
+};
+
+const parseSortValue = (stat, key) => {
+  const raw = stat?.[key];
+  if (raw == null || raw === '') return 0;
+  if (key === 'inningsPitched') {
+    const s = String(raw);
+    const [whole, frac = '0'] = s.split('.');
+    return parseInt(whole, 10) * 3 + parseInt(frac, 10);
+  }
+  const n = parseFloat(String(raw).replace(/^\./, '0.'));
+  return Number.isNaN(n) ? 0 : n;
+};
+
+const rankTeams = (rows, sortCol, sortDir) => {
+  const sorted = [...rows].sort((a, b) => {
+    const av = parseSortValue(a.stat, sortCol);
+    const bv = parseSortValue(b.stat, sortCol);
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+
+  let rank = 0;
+  let prevVal = null;
+  return sorted.map((row, i) => {
+    const val = parseSortValue(row.stat, sortCol);
+    if (i === 0 || val !== prevVal) {
+      rank = i + 1;
+      prevVal = val;
+    }
+    return { ...row, rank };
+  });
 };
 
 export default function StatLeaders() {
@@ -107,16 +155,17 @@ export default function StatLeaders() {
   const [leaders, setLeaders] = useState([]);
   const [leagueFilter, setLeagueFilter] = useState('all'); // 'all' | 'AL' | 'NL'
   const [teamStats, setTeamStats] = useState([]);
-  const [teamGroup, setTeamGroup] = useState('hitting');
-  const [teamCat, setTeamCat] = useState('homeRuns');
+  const [teamGroup, setTeamGroup] = useState('batting');
+  const [teamLeagueFilter, setTeamLeagueFilter] = useState('all');
+  const [teamSortCol, setTeamSortCol] = useState(TEAM_SORT_DEFAULTS.batting.col);
+  const [teamSortDir, setTeamSortDir] = useState(TEAM_SORT_DEFAULTS.batting.dir);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [limit, setLimit] = useState(25);
 
   const isTeam = playerOrTeam === 'team';
-  const allCats = isTeam
-    ? (teamGroup === 'hitting' ? TEAM_HITTING_CATS : TEAM_PITCHING_CATS)
-    : (group === 'hitting' ? HITTING_CATS : group === 'pitching' ? PITCHING_CATS : FIELDING_CATS);
+  const teamCols = teamGroup === 'batting' ? TEAM_BATTING_COLS : TEAM_PITCHING_COLS;
+  const allCats = group === 'hitting' ? HITTING_CATS : group === 'pitching' ? PITCHING_CATS : FIELDING_CATS;
 
   const handleGroupChange = (g) => {
     setGroup(g);
@@ -131,7 +180,7 @@ export default function StatLeaders() {
       fetchLeaders();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, season, group, limit, teamGroup, teamCat, playerOrTeam]);
+  }, [category, season, group, limit, teamGroup, playerOrTeam]);
 
   const fetchLeaders = async () => {
     const cacheKey = `player:${group}:${category}:${season}:${limit}`;
@@ -159,16 +208,10 @@ export default function StatLeaders() {
   };
 
   const fetchTeamStats = async () => {
-    const cacheKey = `team:${teamGroup}:${season}`;
+    const apiGroup = teamGroup === 'batting' ? 'hitting' : 'pitching';
+    const cacheKey = `team:${apiGroup}:${season}`;
     if (cache.current[cacheKey]) {
-      const splits = cache.current[cacheKey];
-      const catMeta = allCats.find((c) => c.key === teamCat) ?? allCats[0];
-      const sorted = [...splits].sort((a, b) => {
-        const av = parseFloat(a.stat?.[catMeta.stat] ?? a.stat?.[teamCat] ?? 0);
-        const bv = parseFloat(b.stat?.[catMeta.stat] ?? b.stat?.[teamCat] ?? 0);
-        return catMeta.asc ? av - bv : bv - av;
-      });
-      setTeamStats(sorted);
+      setTeamStats(cache.current[cacheKey]);
       setError(null);
       return;
     }
@@ -176,19 +219,23 @@ export default function StatLeaders() {
     setError(null);
     setTeamStats([]);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${teamGroup}&season=${season}&sportIds=1&playerPool=team&gameType=R&hydrate=team`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const splits = data.stats?.[0]?.splits ?? [];
-      cache.current[cacheKey] = splits;
-      const catMeta = allCats.find((c) => c.key === teamCat) ?? allCats[0];
-      const sortedSplits = [...splits].sort((a, b) => {
-        const av = parseFloat(a.stat?.[catMeta.stat] ?? a.stat?.[teamCat] ?? 0);
-        const bv = parseFloat(b.stat?.[catMeta.stat] ?? b.stat?.[teamCat] ?? 0);
-        return catMeta.asc ? av - bv : bv - av;
-      });
-      setTeamStats(sortedSplits);
+      const rows = await Promise.all(
+        mlbTeams.map(async (t) => {
+          const res = await fetch(
+            `https://statsapi.mlb.com/api/v1/teams/${t.id}/stats?stats=season&season=${season}&group=${apiGroup}`,
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const split = data.stats?.[0]?.splits?.[0];
+          return {
+            team: { id: t.id, name: t.name, abbr: t.abbr },
+            leagueId: AL_TEAM_IDS.has(t.id) ? 103 : 104,
+            stat: split?.stat ?? {},
+          };
+        }),
+      );
+      cache.current[cacheKey] = rows;
+      setTeamStats(rows);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -196,7 +243,17 @@ export default function StatLeaders() {
     }
   };
 
-  const currentCat = allCats.find((c) => c.key === (isTeam ? teamCat : category)) ?? allCats[0];
+  const handleTeamSort = (col) => {
+    if (teamSortCol === col) {
+      setTeamSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    const meta = teamCols.find((c) => c.key === col);
+    setTeamSortCol(col);
+    setTeamSortDir(meta?.lowerBetter ? 'asc' : 'desc');
+  };
+
+  const currentCat = allCats.find((c) => c.key === category) ?? allCats[0];
   const filteredLeaders = leaders.filter((l) => {
     if (leagueFilter === 'all') return true;
     const leagueId = l.team?.league?.id;
@@ -205,8 +262,17 @@ export default function StatLeaders() {
     return true;
   });
 
+  const filteredTeamStats = teamStats.filter((row) => {
+    if (teamLeagueFilter === 'all') return true;
+    if (teamLeagueFilter === 'AL') return row.leagueId === 103;
+    if (teamLeagueFilter === 'NL') return row.leagueId === 104;
+    return true;
+  });
+
+  const rankedTeamStats = rankTeams(filteredTeamStats, teamSortCol, teamSortDir);
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isTeam ? 'max-w-7xl' : 'max-w-4xl'}`}>
       {/* Header */}
       <div className="mb-6">
         <div className="text-emerald-400 text-xs font-mono tracking-[3px] mb-1 uppercase">
@@ -227,8 +293,10 @@ export default function StatLeaders() {
             onChange={(opt) => {
               setPlayerOrTeam(opt);
               if (opt === 'team') {
-                setTeamGroup('hitting');
-                setTeamCat('homeRuns');
+                setTeamGroup('batting');
+                setTeamLeagueFilter('all');
+                setTeamSortCol(TEAM_SORT_DEFAULTS.batting.col);
+                setTeamSortDir(TEAM_SORT_DEFAULTS.batting.dir);
               }
             }}
             variant="emerald"
@@ -276,33 +344,51 @@ export default function StatLeaders() {
           )}
         </div>
 
-        {/* Team sub-group toggle */}
+        {/* ESPN-style team controls: Batting/Pitching + league filter */}
         {isTeam && (
-          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
-            <SegmentedControl
-              value={teamGroup}
-              onChange={(g) => {
-                setTeamGroup(g);
-                setTeamCat(g === 'hitting' ? 'homeRuns' : 'era');
-              }}
-              variant="emerald"
-              options={[
-                { value: 'hitting', label: 'hitting' },
-                { value: 'pitching', label: 'pitching' },
-              ]}
-            />
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
+              <SegmentedControl
+                value={teamGroup}
+                onChange={(g) => {
+                  setTeamGroup(g);
+                  const defaults = TEAM_SORT_DEFAULTS[g];
+                  setTeamSortCol(defaults.col);
+                  setTeamSortDir(defaults.dir);
+                }}
+                variant="emerald"
+                options={[
+                  { value: 'batting', label: 'Batting' },
+                  { value: 'pitching', label: 'Pitching' },
+                ]}
+              />
+            </div>
+
+            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
+              <SegmentedControl
+                value={teamLeagueFilter}
+                onChange={setTeamLeagueFilter}
+                options={[
+                  { value: 'all', label: 'All MLB' },
+                  { value: 'AL', label: 'American League' },
+                  { value: 'NL', label: 'National League' },
+                ]}
+              />
+            </div>
           </div>
         )}
 
-        {/* Category pills */}
-        <SegmentedControl
-          value={isTeam ? teamCat : category}
-          onChange={isTeam ? setTeamCat : setCategory}
-          variant="category"
-          size="sm"
-          wrap
-          options={allCats.map((cat) => ({ value: cat.key, label: cat.abbr }))}
-        />
+        {/* Category pills (player leaders only) */}
+        {!isTeam && (
+          <SegmentedControl
+            value={category}
+            onChange={setCategory}
+            variant="category"
+            size="sm"
+            wrap
+            options={allCats.map((cat) => ({ value: cat.key, label: cat.abbr }))}
+          />
+        )}
       </div>
 
       {/* Results card */}
@@ -311,10 +397,15 @@ export default function StatLeaders() {
         <div className="px-5 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-base sm:text-lg">
-              {currentCat.label} {isTeam ? 'by Team' : 'Leaders'}
+              {isTeam
+                ? `MLB Team ${teamGroup === 'batting' ? 'Batting' : 'Pitching'} Stats ${season}`
+                : `${currentCat.label} Leaders`}
             </h2>
             <div className="text-xs text-slate-500 mt-0.5">
-              {season} · {isTeam ? `Team ${teamGroup}` : group} · Regular Season{!isTeam && ` · Top ${limit}`}
+              {season} Regular Season
+              {isTeam
+                ? ` · ${teamLeagueFilter === 'all' ? 'All MLB' : teamLeagueFilter === 'AL' ? 'American League' : 'National League'}`
+                : ` · ${group} · Top ${limit}`}
             </div>
           </div>
           {isLoading && (
@@ -327,43 +418,76 @@ export default function StatLeaders() {
           <div className="p-8 text-center text-red-400 text-sm">{error}</div>
         )}
 
-        {/* Team stats rows */}
-        {isTeam && !isLoading && !error && teamStats.map((split, i) => {
-          const val = split.stat?.[currentCat.stat] ?? split.stat?.[teamCat];
-          const isTop3 = i < 3;
-          return (
-            <div
-              key={split.team?.id ?? i}
-              className={`flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer ${isTop3 ? 'bg-gradient-to-r from-slate-800/40 to-transparent' : ''}`}
-              onClick={() => navigate(`/team/${split.team?.id}`)}
-            >
-              <div className="w-8 sm:w-10 text-center flex-shrink-0">
-                {isTop3 ? <span className="text-xl">{MEDAL[i]}</span> : <span className="font-mono text-slate-500 text-sm">{i + 1}</span>}
-              </div>
-              <img
-                src={teamLogoUrl(split.team?.id)}
-                alt={split.team?.name}
-                className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0"
-                onError={(e) => (e.target.style.display = 'none')}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm sm:text-base hover:text-emerald-400 transition-colors truncate">
-                  {split.team?.name ?? '—'}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">{season} · {teamGroup}</div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <div className={`font-display tabular-nums leading-none ${i === 0 ? 'text-3xl sm:text-4xl text-yellow-400' : i === 1 ? 'text-2xl sm:text-3xl text-slate-300' : i === 2 ? 'text-2xl sm:text-3xl text-amber-600' : 'text-xl sm:text-2xl text-slate-300'}`}>
-                  {formatValue(val, currentCat.format)}
-                </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">{currentCat.abbr}</div>
-              </div>
-            </div>
-          );
-        })}
+        {/* ESPN-style team stats table */}
+        {isTeam && !isLoading && !error && rankedTeamStats.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[960px]">
+              <thead>
+                <tr className="border-b border-slate-700 bg-slate-800/40">
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-400 w-10 sticky left-0 bg-slate-900 z-10">RK</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-400 min-w-[180px] sticky left-10 bg-slate-900 z-10">Team</th>
+                  {teamCols.map((col) => (
+                    <th
+                      key={col.key}
+                      className={`px-2 py-2.5 text-xs font-semibold cursor-pointer select-none whitespace-nowrap text-right transition-colors ${
+                        teamSortCol === col.key ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      onClick={() => handleTeamSort(col.key)}
+                    >
+                      {col.label}
+                      {teamSortCol === col.key && (
+                        <span className="ml-0.5">{teamSortDir === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rankedTeamStats.map((row) => (
+                  <tr
+                    key={row.team?.id}
+                    className="border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/team/${row.team?.id}`)}
+                  >
+                    <td className="px-3 py-2 font-mono text-xs text-slate-500 sticky left-0 bg-slate-900">{row.rank}</td>
+                    <td className="px-3 py-2 sticky left-10 bg-slate-900">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <img
+                          src={teamLogoUrl(row.team?.id)}
+                          alt=""
+                          className="w-7 h-7 object-contain flex-shrink-0"
+                          onError={(e) => (e.target.style.display = 'none')}
+                        />
+                        <span className="font-medium text-sm truncate hover:text-emerald-400 transition-colors">
+                          {row.team?.name ?? '—'}
+                        </span>
+                      </div>
+                    </td>
+                    {teamCols.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-2 py-2 text-right font-mono text-xs tabular-nums ${
+                          teamSortCol === col.key ? 'text-emerald-300' : 'text-slate-300'
+                        }`}
+                      >
+                        {formatValue(row.stat?.[col.key], col.format)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {isTeam && !isLoading && !error && (
+          <div className="px-5 sm:px-6 py-3 border-t border-slate-800 text-[11px] text-slate-500">
+            Click column headers to sort · Statistics updated from MLB Stats API
+          </div>
+        )}
 
         {/* Empty team */}
-        {isTeam && !isLoading && !error && teamStats.length === 0 && (
+        {isTeam && !isLoading && !error && rankedTeamStats.length === 0 && (
           <div className="p-12 text-center text-slate-500 text-sm">No team data available.</div>
         )}
 
@@ -440,7 +564,7 @@ export default function StatLeaders() {
       <div className="mt-6 text-xs text-slate-600 text-center">
         Data from MLB Stats API ·{' '}
         <code className="font-mono">
-          {isTeam ? `/v1/stats?stats=season&group=${teamGroup}&playerPool=team` : `/v1/stats/leaders?leaderCategories=${category}&season=${season}`}
+          {isTeam ? `/v1/teams/{teamId}/stats?stats=season&group=${teamGroup === 'batting' ? 'hitting' : 'pitching'}&season=${season}` : `/v1/stats/leaders?leaderCategories=${category}&season=${season}`}
         </code>
       </div>
     </div>

@@ -21,8 +21,12 @@ function App() {
               <div className="font-display text-xl sm:text-2xl tracking-tighter leading-none">
                 MLB Live
               </div>
-              <div className="text-[10px] text-slate-500">
-                Vite + React
+              <div className="nav-tagline-marquee" aria-label="LET'S GOOOOO">
+                <div className="nav-tagline-track">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <span key={i}>LET&apos;S GOOOOO</span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
