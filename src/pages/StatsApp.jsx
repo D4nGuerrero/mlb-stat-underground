@@ -17,12 +17,34 @@ const TEAM_OPTIONS = mlbTeams.map((t) => ({
 }));
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────
+const CURRENT_SEASON = new Date().getFullYear();
+
+const getGamesPlayed = (person) => {
+  let maxSeason = 0;
+  let maxCareer = 0;
+  for (const block of person.stats ?? []) {
+    const gp = Number(block.splits?.[0]?.stat?.gamesPlayed) || 0;
+    if (block.type?.displayName === 'season') maxSeason = Math.max(maxSeason, gp);
+    else if (block.type?.displayName === 'career') maxCareer = Math.max(maxCareer, gp);
+  }
+  return maxSeason > 0 ? maxSeason : maxCareer;
+};
+
+const getLastSeasonPlayed = (person) => {
+  if (person.lastPlayedDate) {
+    const year = Number(String(person.lastPlayedDate).slice(0, 4));
+    if (Number.isFinite(year) && year > 0) return year;
+  }
+  return 0;
+};
+
 const sortSearchResults = (people) =>
   [...people].sort((a, b) => {
     if (a.active !== b.active) return a.active ? -1 : 1;
-    const aMlb = a.currentTeam?.sport?.id === 1 ? 1 : 0;
-    const bMlb = b.currentTeam?.sport?.id === 1 ? 1 : 0;
-    if (aMlb !== bMlb) return bMlb - aMlb;
+    const seasonDiff = getLastSeasonPlayed(b) - getLastSeasonPlayed(a);
+    if (seasonDiff !== 0) return seasonDiff;
+    const gpDiff = getGamesPlayed(b) - getGamesPlayed(a);
+    if (gpDiff !== 0) return gpDiff;
     return (a.fullName ?? '').localeCompare(b.fullName ?? '');
   });
 
@@ -348,8 +370,11 @@ export default function StatsApp() {
     setError(null);
     setSearchResults([]);
     try {
+      const hydrate = encodeURIComponent(
+        `currentTeam,stats(group=[hitting,pitching],type=[season,career],season=${CURRENT_SEASON})`,
+      );
       const searchRes = await fetch(
-        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=1&hydrate=currentTeam`,
+        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=1&hydrate=${hydrate}`,
       );
       if (!searchRes.ok) throw new Error(`HTTP ${searchRes.status}`);
       const searchData = await searchRes.json();
