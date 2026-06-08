@@ -36,6 +36,18 @@ const buildDateRange = (min, max) => {
 
 const getMaxDate = () => addDays(new Date(), FUTURE_DAYS);
 
+const VIEW_MODE_KEY = 'mlbScoresViewMode';
+const VIEW_MODES = new Set(['card', 'list', 'grid']);
+
+const loadViewMode = () => {
+  try {
+    const saved = localStorage.getItem(VIEW_MODE_KEY);
+    return VIEW_MODES.has(saved) ? saved : 'card';
+  } catch {
+    return 'card';
+  }
+};
+
 const computeDateWindow = (center, maxDate) => {
   const start = addDays(center, -WINDOW_PAST);
   const clampedStart = start < MIN_DATE ? MIN_DATE : start;
@@ -71,7 +83,7 @@ export default function Scores() {
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialReady, setIsInitialReady] = useState(false);
-  const [viewMode, setViewMode] = useState('card'); // 'card' | 'list' | 'grid'
+  const [viewMode, setViewMode] = useState(loadViewMode);
   const carouselRef = useRef(null);
   const carouselStartIndex = useRef(selectedIndex);
 
@@ -219,6 +231,10 @@ export default function Scores() {
     const interval = setInterval(() => fetchGamesForDate(selectedDate, { force: true }), 60000);
     return () => clearInterval(interval);
   }, [selectedDate, fetchGamesForDate]);
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     // When coming back from TeamPage, favorites may have changed.
