@@ -33,7 +33,7 @@ const CAREER_GAME_TYPE_OPTIONS = [
 
 const TEAM_ABBR = Object.fromEntries(mlbTeams.map((t) => [t.id, t.abbr]));
 
-const MINOR_SPORT_IDS = [11, 12, 13, 14];
+const MINOR_SPORT_IDS = [11, 12, 13, 14,16];
 const MINOR_SPORT_ID_SET = new Set(MINOR_SPORT_IDS);
 
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
@@ -228,6 +228,8 @@ function formatCell(value, format, row) {
 async function fetchPlayerStats(playerId, params, level = 'mlb') {
   const base = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?${params}`;
 
+
+  
   if (level === 'mlb') {
     const res = await fetch(`${base}&sportId=1`);
     return res.json();
@@ -238,6 +240,9 @@ async function fetchPlayerStats(playerId, params, level = 'mlb') {
       fetch(`${base}&sportId=${sportId}`).then((r) => r.json()),
     ),
   );
+
+  console.log('AVER', responses);
+  
 
   return mergeMinorLeagueStats(responses);
 }

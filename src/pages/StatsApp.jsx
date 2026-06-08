@@ -16,6 +16,13 @@ const TEAM_OPTIONS = mlbTeams.map((t) => ({
   label: `${t.name} (${t.abbr})`,
 }));
 
+// sportId    Level     Common Leagues1
+// 1        Triple-A    AAA
+// 12       Double-A    AA
+// 13       High-A      A+
+// 14       Single-A    A (Low-A)
+// 16       Rookie      DSL, AZL, GCL, FCL, etc.
+
 // ─── Pure helpers ─────────────────────────────────────────────────────────
 const CURRENT_SEASON = new Date().getFullYear();
 
@@ -373,8 +380,12 @@ export default function StatsApp() {
       const hydrate = encodeURIComponent(
         `currentTeam,stats(group=[hitting,pitching],type=[season,career],season=${CURRENT_SEASON})`,
       );
+
+      const ALL_SPORTS = '1,11,12,13,14,16';
+
+
       const searchRes = await fetch(
-        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=1&hydrate=${hydrate}`,
+        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=${ALL_SPORTS}&hydrate=${hydrate}`,
       );
       if (!searchRes.ok) throw new Error(`HTTP ${searchRes.status}`);
       const searchData = await searchRes.json();
