@@ -149,6 +149,24 @@ function teamAbbr(team) {
   return TEAM_ABBR[team.id] ?? team.name?.split(' ').pop() ?? '—';
 }
 
+function formatBornWithAge(playerInfo) {
+  if (!playerInfo?.birthDate) return '—';
+  const formatted = new Date(playerInfo.birthDate).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  if (playerInfo.currentAge != null) {
+    return `${formatted} (${playerInfo.currentAge})`;
+  }
+  const born = new Date(playerInfo.birthDate);
+  const today = new Date();
+  let age = today.getFullYear() - born.getFullYear();
+  const monthDiff = today.getMonth() - born.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) age -= 1;
+  return `${formatted} (${age})`;
+}
+
 function parseStatValue(value) {
   if (value == null || value === '—' || value === '-.--') return null;
   if (typeof value === 'number') return value;
@@ -654,7 +672,7 @@ export default function PlayerPage() {
             {[
               { label: 'Bats / Throws', value: `${playerInfo.batSide?.code || '—'} / ${playerInfo.pitchHand?.code || '—'}` },
               { label: 'Height / Weight', value: `${playerInfo.height || '—'} / ${playerInfo.weight ? `${playerInfo.weight} lb` : '—'}` },
-              { label: 'Born', value: playerInfo.birthDate ? new Date(playerInfo.birthDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
+              { label: 'Born', value: formatBornWithAge(playerInfo) },
               { label: 'Birthplace', value: [playerInfo.birthCity, playerInfo.birthStateProvince, playerInfo.birthCountry].filter(Boolean).join(', ') || '—' },
             ].map(({ label, value }) => (
               <div key={label}>

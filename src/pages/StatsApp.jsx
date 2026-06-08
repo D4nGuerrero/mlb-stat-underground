@@ -55,6 +55,27 @@ const sortSearchResults = (people) =>
     return (a.fullName ?? '').localeCompare(b.fullName ?? '');
   });
 
+const findStatBlock = (person, group, type) =>
+  person.stats?.find(
+    (s) => s.group?.displayName?.toLowerCase() === group && s.type?.displayName === type,
+  )?.splits?.[0]?.stat;
+
+const extractStatPreview = (person) => {
+  const statType = person.active ? 'season' : 'career';
+  const label = person.active ? String(CURRENT_SEASON) : 'Career';
+  let stat = findStatBlock(person, 'hitting', statType);
+  if (!stat && person.active) stat = findStatBlock(person, 'hitting', 'career');
+  if (!stat) return { label, kind: 'hitting', avg: '—', homeRuns: '—', rbi: '—', ops: '—' };
+  return {
+    label,
+    kind: 'hitting',
+    avg: stat.avg ?? '—',
+    homeRuns: stat.homeRuns ?? '—',
+    rbi: stat.rbi ?? '—',
+    ops: stat.ops ?? '—',
+  };
+};
+
 const mapSearchPerson = (person) => ({
   id: person.id,
   fullName: person.fullName,
@@ -63,7 +84,15 @@ const mapSearchPerson = (person) => ({
   position: person.primaryPosition?.abbreviation ?? '',
   headshot: playerHeadshotUrl(person.id),
   active: person.active,
+  statsPreview: extractStatPreview(person),
 });
+
+const STAT_PREVIEW_COLS = [
+  { key: 'avg', label: 'AVG' },
+  { key: 'homeRuns', label: 'HR' },
+  { key: 'rbi', label: 'RBI' },
+  { key: 'ops', label: 'OPS' },
+];
 
 const processPlayerSeason = (person, season) => {
   const group = person.primaryPosition?.abbreviation === 'P' ? 'pitching' : 'hitting';
@@ -132,14 +161,31 @@ const SCORE_TONE_STYLES = {
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────
+function StatPreviewStrip({ preview }) {
+  if (!preview) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        {preview.label}
+      </span>
+      {STAT_PREVIEW_COLS.map(({ key, label }) => (
+        <span key={key} className="text-[11px] sm:text-xs tabular-nums">
+          <span className="text-slate-500 mr-1">{label}</span>
+          <span className="text-slate-200 font-medium">{preview[key] ?? '—'}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
-      <Link to={`/player/${player.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+    <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
+      <Link to={`/player/${player.id}`} className="flex items-start gap-3 flex-1 min-w-0">
         <img
           src={player.headshot}
           alt=""
-          className="w-12 h-12 rounded-2xl object-cover border border-slate-700 flex-shrink-0"
+          className="w-12 h-12 rounded-2xl object-cover border border-slate-700 flex-shrink-0 mt-0.5"
           onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
         />
         <div className="flex-1 min-w-0">
@@ -158,13 +204,14 @@ function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch })
             <span className="truncate">{player.team}</span>
             {player.position && <span className="text-slate-600">· {player.position}</span>}
           </div>
+          <StatPreviewStrip preview={player.statsPreview} />
         </div>
       </Link>
       <button
         type="button"
         onClick={() => onToggleWatch(player)}
         className={[
-          'text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0',
+          'text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0 mt-0.5',
           isWatchAnimating ? 'watch-pop' : '',
           isWatched
             ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
@@ -173,6 +220,81 @@ function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch })
       >
         {isWatched ? '✕' : '★ Watch'}
       </button>
+    </div>
+  );
+}
+
+function HotColdPlayerRow({ player, team, ops, rank, accentClass }) {
+  const playerId = player?.id;
+  const className = 'flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors';
+  const content = (
+    <>
+      <span className="w-5 text-center font-mono text-xs text-slate-500 flex-shrink-0">{rank}</span>
+      <img
+        src={playerHeadshotUrl(playerId)}
+        alt=""
+        className="w-9 h-9 rounded-xl object-cover border border-slate-700 flex-shrink-0"
+        onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
+          {player?.fullName ?? '—'}
+        </div>
+        <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+          {team?.id && (
+            <img
+              src={teamLogoUrl(team.id)}
+              alt=""
+              className="w-3.5 h-3.5 object-contain"
+              onError={(e) => (e.target.style.display = 'none')}
+            />
+          )}
+          <span className="truncate">{team?.name}</span>
+        </div>
+      </div>
+      <div className="text-right flex-shrink-0">
+        <div className={`font-display text-xl tabular-nums ${accentClass}`}>{ops ?? '—'}</div>
+        <div className="text-[10px] text-slate-500">OPS (10d)</div>
+      </div>
+    </>
+  );
+
+  if (!playerId) {
+    return <div className={className}>{content}</div>;
+  }
+
+  return (
+    <Link to={`/player/${playerId}`} className={className}>
+      {content}
+    </Link>
+  );
+}
+
+function WatchlistSection({ watchlist, watchAnimId, onToggleWatch, onClear }) {
+  if (!watchlist.length) return null;
+  return (
+    <div className="bg-slate-900 border border-yellow-500/20 rounded-3xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-yellow-300/90 uppercase tracking-wider">
+          ★ Watchlist · {watchlist.length} player{watchlist.length !== 1 ? 's' : ''}
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[11px] text-slate-500 hover:text-red-400 transition-colors"
+        >
+          Clear all
+        </button>
+      </div>
+      {watchlist.map((player) => (
+        <PlayerSearchRow
+          key={player.id}
+          player={player}
+          isWatched
+          isWatchAnimating={watchAnimId === player.id}
+          onToggleWatch={onToggleWatch}
+        />
+      ))}
     </div>
   );
 }
@@ -369,6 +491,34 @@ export default function StatsApp() {
   useEffect(() => {
     localStorage.setItem('mlbWatchlist', JSON.stringify(watchlist));
   }, [watchlist]);
+
+  useEffect(() => {
+    const refreshSavedWatchlist = async () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('mlbWatchlist') ?? '[]');
+        if (!saved.length || saved.every((p) => p.statsPreview)) return;
+        const hydrate = encodeURIComponent(
+          `currentTeam,stats(group=[hitting,pitching],type=[season,career],season=${CURRENT_SEASON})`,
+        );
+        const updated = await Promise.all(
+          saved.map(async (p) => {
+            if (p.statsPreview) return p;
+            try {
+              const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${p.id}?hydrate=${hydrate}`);
+              const person = (await res.json()).people?.[0];
+              return person ? mapSearchPerson(person) : p;
+            } catch {
+              return p;
+            }
+          }),
+        );
+        setWatchlist(updated);
+      } catch {
+        /* ignore */
+      }
+    };
+    refreshSavedWatchlist();
+  }, []);
 
   const searchPlayers = async (nameOverride) => {
     const name = (nameOverride ?? playerName).trim();
@@ -630,14 +780,13 @@ export default function StatsApp() {
       <div className="mb-6">
         <div className="text-emerald-400 text-xs font-mono tracking-[3px] mb-1 uppercase">Player Stats</div>
         <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
-        <p className="text-slate-400 mt-1 text-sm">Search any player · Build a watchlist · Track Team Exodus</p>
+        <p className="text-slate-400 mt-1 text-sm">Search any player · Watch favorites · Track Team Exodus</p>
       </div>
 
       <TabBar
         className="mb-6"
         tabs={[
           { key: 'search', label: 'Player Search' },
-          { key: 'watchlist', label: `Watchlist${watchlist.length ? ` (${watchlist.length})` : ''}` },
           { key: 'hotcold', label: '🔥 Hot & Cold ❄️' },
           { key: 'exodus', label: 'Team Exodus' },
           { key: 'acquisitions', label: 'Team Acquisitions' },
@@ -700,66 +849,13 @@ export default function StatsApp() {
               ))}
             </div>
           )}
-        </div>
-      )}
 
-      {/* WATCHLIST TAB */}
-      {activeTab === 'watchlist' && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-400">
-              {watchlist.length} player{watchlist.length !== 1 ? 's' : ''} saved
-            </div>
-            {watchlist.length > 0 && (
-              <button
-                onClick={() => setWatchlist([])}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                Clear all
-              </button>
-            )}
-          </div>
-
-          {watchlist.length === 0 ? (
-            <div className="border border-dashed border-slate-700 rounded-3xl p-12 text-center text-slate-500">
-              <div className="text-3xl mb-3">⭐</div>
-              No players saved. Use the Player Search tab to find a player and click <strong>“Watch”</strong>.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {watchlist.map((player) => (
-                <div
-                  key={player.id}
-                  className="bg-slate-900 border border-slate-700 rounded-2xl p-4 flex items-center gap-3"
-                >
-                  <img
-                    src={player.headshot ?? playerHeadshotUrl(player.id)}
-                    className="w-14 h-14 rounded-2xl object-cover border border-slate-700 flex-shrink-0"
-                    alt=""
-                    onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate text-sm">{player.fullName}</div>
-                    <div className="text-xs text-slate-400 truncate">{player.team}</div>
-                  </div>
-                  <div className="flex flex-col gap-1 flex-shrink-0">
-                    <Link
-                      to={`/player/${player.id}`}
-                      className="text-xs px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors text-center"
-                    >
-                      View
-                    </Link>
-                    <button
-                      onClick={() => removeFromWatchlist(player.id)}
-                      className="text-xs px-2 py-0.5 text-red-400 hover:text-red-300 transition-colors text-center"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <WatchlistSection
+            watchlist={watchlist}
+            watchAnimId={watchAnimId}
+            onToggleWatch={toggleWatchlist}
+            onClear={() => setWatchlist([])}
+          />
         </div>
       )}
 
@@ -796,38 +892,14 @@ export default function StatsApp() {
                   <div className="text-xs text-slate-500 mt-0.5">Highest OPS · Last 10 days</div>
                 </div>
                 {hotPlayers.map((p, i) => (
-                  <div
+                  <HotColdPlayerRow
                     key={p.player?.id ?? i}
-                    className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors"
-                  >
-                    <span className="w-5 text-center font-mono text-xs text-slate-500 flex-shrink-0">{i + 1}</span>
-                    <img
-                      src={playerHeadshotUrl(p.player?.id)}
-                      alt=""
-                      className="w-9 h-9 rounded-xl object-cover border border-slate-700 flex-shrink-0"
-                      onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{p.player.fullName}</div>
-                      <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        {p.team?.id && (
-                          <img
-                            src={teamLogoUrl(p.team.id)}
-                            alt=""
-                            className="w-3.5 h-3.5 object-contain"
-                            onError={(e) => (e.target.style.display = 'none')}
-                          />
-                        )}
-                        <span className="truncate">{p.team?.name}</span>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="font-display text-xl tabular-nums text-orange-400">
-                        {p.value ?? p.stat?.ops ?? '—'}
-                      </div>
-                      <div className="text-[10px] text-slate-500">OPS (10d)</div>
-                    </div>
-                  </div>
+                    player={p.player}
+                    team={p.team}
+                    ops={p.value ?? p.stat?.ops}
+                    rank={i + 1}
+                    accentClass="text-orange-400"
+                  />
                 ))}
               </div>
 
@@ -839,39 +911,14 @@ export default function StatsApp() {
                   <div className="text-xs text-slate-500 mt-0.5">Lowest OPS · Last 10 days</div>
                 </div>
                 {coldPlayers.map((p, i) => (
-                  <div
+                  <HotColdPlayerRow
                     key={p.player?.id ?? i}
-                    className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors"
-                  >
-                    <span className="w-5 text-center font-mono text-xs text-slate-500 flex-shrink-0">{i + 1}</span>
-                    <img
-                      src={playerHeadshotUrl(p.player?.id)}
-                      alt=""
-                      className="w-9 h-9 rounded-xl object-cover border border-slate-700 flex-shrink-0"
-                      onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-                    />
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{p.player?.fullName}</div>
-                      <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        {p.team?.id && (
-                          <img
-                            src={teamLogoUrl(p.team.id)}
-                            alt=""
-                            className="w-3.5 h-3.5 object-contain"
-                            onError={(e) => (e.target.style.display = 'none')}
-                          />
-                        )}
-                        <span className="truncate">{p.team?.name}</span>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="font-display text-xl tabular-nums text-blue-400">
-                        {p.value ?? p.stat?.ops ?? '—'}
-                      </div>
-                      <div className="text-[10px] text-slate-500">OPS (10d)</div>
-                    </div>
-                  </div>
+                    player={p.player}
+                    team={p.team}
+                    ops={p.value ?? p.stat?.ops}
+                    rank={i + 1}
+                    accentClass="text-blue-400"
+                  />
                 ))}
               </div>
             </div>
