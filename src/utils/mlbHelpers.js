@@ -41,9 +41,14 @@ export const mlbTeams = [
 export const teamLogoUrl = (teamId, darkmode = true) =>
   `https://www.mlbstatic.com/team-logos/${darkmode ? 'team-cap-on-dark/' : ''}${teamId}.svg`;
 
-export const playerHeadshotUrl = (playerId) =>
-`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`
+// export const playerHeadshotUrl = (playerId) =>
+// `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`
 
+
+
+// use this instead: https://midfield.mlbstatic.com/v1/people/673962/silo/240
+export const playerHeadshotUrl = (playerId) => 
+  `https://midfield.mlbstatic.com/v1/people/${playerId}/silo/240`;
 
 // Hero shot – batter (horizontal pose)
 export const playerHeroShotUrl = (playerId) =>

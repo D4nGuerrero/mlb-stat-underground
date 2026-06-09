@@ -632,22 +632,25 @@ export default function PlayerPage() {
           >
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/90 pointer-events-none" />
             <div className="relative flex items-end gap-4 sm:gap-6">
-              <div className="relative flex-shrink-0">
-                <img
-                  src={playerHeadshotUrl(playerId)}
-                  className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-white/20 shadow-lg"
-                  alt={playerInfo.fullName}
-                />
-                {playerInfo.currentTeam?.id && (
-                  <img
-                    src={teamLogoUrl(playerInfo.currentTeam.id)}
-                    className="absolute -bottom-2 -right-2 w-8 h-8 sm:w-9 sm:h-9 object-contain bg-slate-900 rounded-xl p-1 border border-slate-600"
-                    alt=""
-                  />
-                )}
-              </div>
-              <div className="pb-1 min-w-0">
-                
+        <div className="  -mb-6 -ml-6">
+  {/* BACKGROUND LOGO */}
+ <img
+  src={teamLogoUrl(playerInfo.currentTeam.id)}
+  className="absolute top-10 left-20 w-72 h-72 -translate-x-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
+  alt=""
+/>
+
+  {/* PLAYER IMG */}
+  <img
+    src={playerHeadshotUrl(playerId)}
+    className="relative z-10 w-32 h-32 sm:w-40 sm:h-40 rounded-2xl object-cover shadow-lg"
+    alt={playerInfo.fullName}
+  />
+
+ 
+</div>
+              <div className="relative z-20 pb-1 min-w-0 ">
+                {/* Player NAM POSITION TEAMNAME */}
                 <h1
                   className="text-2xl sm:text-3xl font-bold text-white leading-none mb-1.5 truncate"
                   style={HERO_TEXT_SHADOW}

@@ -164,7 +164,7 @@ const SCORE_TONE_STYLES = {
 function StatPreviewStrip({ preview }) {
   if (!preview) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 ">
       <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
         {preview.label}
       </span>
@@ -180,62 +180,128 @@ function StatPreviewStrip({ preview }) {
 
 function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch }) {
   return (
-    <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
-      <Link to={`/player/${player.id}`} className="flex items-start gap-3 flex-1 min-w-0">
-        <img
-          src={player.headshot}
-          alt=""
-          className="w-12 h-12 rounded-2xl object-cover border border-slate-700 flex-shrink-0 mt-0.5"
-          onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-        />
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
-            {player.fullName}
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
-            {player.teamId && (
-              <img
-                src={teamLogoUrl(player.teamId)}
-                alt=""
-                className="w-4 h-4 object-contain flex-shrink-0"
-                onError={(e) => (e.target.style.display = 'none')}
-              />
-            )}
-            <span className="truncate">{player.team}</span>
-            {player.position && <span className="text-slate-600">· {player.position}</span>}
-          </div>
-          <StatPreviewStrip preview={player.statsPreview} />
-        </div>
-      </Link>
-      <button
-        type="button"
-        onClick={() => onToggleWatch(player)}
-        className={[
-          'text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0 mt-0.5',
-          isWatchAnimating ? 'watch-pop' : '',
-          isWatched
-            ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
-            : 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30',
-        ].join(' ')}
-      >
-        {isWatched ? '✕' : '★ Watch'}
-      </button>
+   <div className="relative flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
+  <Link to={`/player/${player.id}`} className="flex items-end gap-3 flex-1 min-w-0">
+
+    {/* IMAGE AREA */}
+    <div className="relative w-24 h-22 flex-shrink-0 overflow-hidden">
+      {/* BACKGROUND LOGO */}
+      <img
+        src={teamLogoUrl(player.teamId)}
+        alt=""
+        className="
+          absolute
+          top-14
+          left-1/2
+          w-[200px]
+          max-w-none
+          -translate-x-1/2
+          -translate-y-1/2
+          opacity-30
+          object-contain
+          pointer-events-none
+        "
+      />
+
+      {/* PLAYER */}
+      <img
+        src={playerHeadshotUrl(player.id)}
+        alt=""
+        className="relative z-10 w-21 h-21 top-2 object-contain"
+        onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+      />
     </div>
+
+    <div className="flex-1 min-w-0">
+      <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
+        {player.fullName}
+      </div>
+
+      <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
+        {player.teamId && (
+          <img
+            src={teamLogoUrl(player.teamId)}
+            alt=""
+            className="w-4 h-4 object-contain flex-shrink-0"
+            onError={(e) => (e.target.style.display = 'none')}
+          />
+        )}
+        <span className="truncate">{player.team}</span>
+        {player.position && (
+          <span className="text-slate-600">· {player.position}</span>
+        )}
+      </div>
+
+      <StatPreviewStrip preview={player.statsPreview} />
+    </div>
+  </Link>
+
+  <button
+    type="button"
+    onClick={() => onToggleWatch(player)}
+    className={[
+      'absolute right-3 text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0 mt-0.5',
+      isWatchAnimating ? 'watch-pop' : '',
+      isWatched
+        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
+        : 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30',
+    ].join(' ')}
+  >
+    {isWatched ? '✕ Unwatch' : '★ Watch'}
+  </button>
+</div>
   );
 }
 
 function HotColdPlayerRow({ player, team, ops, rank, accentClass }) {
   const playerId = player?.id;
-  const className = 'flex items-center gap-3 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors';
+  const className = 'flex items-center gap-3 px-4 pt-4 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors';
   const content = (
     <>
-      <span className="w-5 text-center font-mono text-xs text-slate-500 flex-shrink-0">{rank}</span>
-      <img
-        src={playerHeadshotUrl(playerId)}
-        alt=""
-        className="w-9 h-9 rounded-xl object-cover border border-slate-700 flex-shrink-0"
-        onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-      />
+     <span
+  className="
+    w-10
+    text-center
+    flex-shrink-0
+    font-black
+    text-3xl
+    italic
+    text-white-700
+    leading-none
+    select-none
+  "
+>
+  {rank}
+</span>
+    <div className="relative w-20 h-20 flex-shrink-0 overflow-hidden">
+
+      {/* BACKGROUND LOGO */}
+
+  <img
+    src={teamLogoUrl(team?.id)}
+    alt=""
+    className="
+      absolute
+      top-12
+      left-8
+      w-[150px]
+      h-[150px]
+      max-w-none
+      -translate-x-1/2
+      -translate-y-1/2
+      opacity-50
+      object-contain
+      pointer-events-none
+    "
+  />
+
+  <img
+    src={playerHeadshotUrl(playerId)}
+    alt=""
+    className="relative z-10 w-20 h-20 object-cover"
+    onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+  />
+</div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
           {player?.fullName ?? '—'}
@@ -883,10 +949,10 @@ export default function StatsApp() {
           )}
 
           {!isHotColdLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div className="bg-slate-900 border border-orange-500/30 rounded-3xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-800 bg-gradient-to-r from-orange-500/10 to-transparent">
-                  <div className="font-semibold text-lg flex items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 ">
+              <div className="bg-slate-900 border border-orange-500/30 rounded-3xl overflow-hidden pb-4">
+                <div className="px-5 py-4 border-b border-slate-800 bg-gradient-to-r from-orange-500/10 to-transparent ">
+                  <div className="font-semibold text-lg flex items-center gap-2 ">
                     🔥 <span className="text-orange-400">Who's Hot</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5">Highest OPS · Last 10 days</div>
@@ -903,8 +969,8 @@ export default function StatsApp() {
                 ))}
               </div>
 
-              <div className="bg-slate-900 border border-blue-500/30 rounded-3xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-800 bg-gradient-to-r from-blue-500/10 to-transparent">
+              <div className="bg-slate-900 border border-blue-500/30 rounded-3xl overflow-hidden pb-4">
+                <div className="px-5 py-4 border-b border-slate-800 bg-gradient-to-r from-blue-500/10 to-transparent ">
                   <div className="font-semibold text-lg flex items-center gap-2">
                     ❄️ <span className="text-blue-400">Who's Cold</span>
                   </div>
