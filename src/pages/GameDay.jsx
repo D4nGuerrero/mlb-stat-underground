@@ -17,7 +17,8 @@ import {
   sumInningsPitched,
 } from '../utils/mlbHelpers';
 import PitchCanvas from '../components/PitchCanvas';
-import { TabBar, Modal, SegmentedControl } from '../components/ui';
+import { TabBar, Modal, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -560,18 +561,16 @@ export default function GamePage() {
           </div>
         )}
 
-        <div className="overflow-x-auto mb-2">
-          <table className="w-full text-xs min-w-[520px]">
+        <div className={`${TABLE_SCROLL} mb-2`}>
+          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
             <thead>
               <tr className="text-slate-500 border-b border-slate-700/60">
-                <th className="text-left py-1.5 font-normal">BATTING</th>
-                {['AB', 'R', 'H', 'RBI', 'BB', 'SO'].map((h) => (
-                  <th key={h} className="px-2 text-center font-normal w-8">
+                <th className={`${stickyHead('bg-slate-900')} font-normal`}>BATTING</th>
+                {['AB', 'R', 'H', 'RBI', 'BB', 'SO', 'AVG', 'OPS'].map((h) => (
+                  <th key={h} className={statHead('text-center font-normal')}>
                     {h}
                   </th>
                 ))}
-                <th className="px-2 text-center font-normal w-10">AVG</th>
-                <th className="px-2 text-center font-normal w-10">OPS</th>
               </tr>
             </thead>
             <tbody>
@@ -585,59 +584,40 @@ export default function GamePage() {
                 return (
                   <tr
                     key={p.person?.id}
-                    className="border-b border-slate-800/40 hover:bg-slate-800/20"
+                    className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                   >
-                    <td className="py-1.5 pr-2">
+                    <td className={stickyCell('bg-slate-900')}>
                       <button
                         onClick={() => navigate(`/player/${p.person?.id}`)}
-                        className={`text-left hover:text-${THEME_COLOR}-400 transition-colors`}
+                        className={`text-left hover:text-${THEME_COLOR}-400 transition-colors whitespace-nowrap`}
                       >
                         {subLetter && (
                           <span className="text-slate-500 mr-0.5">
                             {subLetter}-
                           </span>
                         )}
-                        <span
-                          className={
-                            subLetter ? 'text-slate-400' : 'text-slate-200'
-                          }
-                        >
-                          {lastName}
+                        <span className={subLetter ? 'text-slate-400' : 'text-slate-200'}>
+                          <span className="sm:hidden">{lastName}</span>
+                          <span className="hidden sm:inline">{p.person?.fullName}</span>
                         </span>
                       </button>
                       <span className="text-slate-600 ml-1 text-[10px]">
                         {pos}
                       </span>
                     </td>
-                    <td className="px-2 text-center text-slate-400">
-                      {b.atBats ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-400">
-                      {b.runs ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-400">
-                      {b.hits ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-400">
-                      {b.rbi ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-400">
-                      {b.baseOnBalls ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-400">
-                      {b.strikeOuts ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-500 font-mono">
-                      {sb.avg ?? '-'}
-                    </td>
-                    <td className="px-2 text-center text-slate-500 font-mono">
-                      {sb.ops ?? '-'}
-                    </td>
+                    <td className={statCell('text-slate-400')}>{b.atBats ?? '-'}</td>
+                    <td className={statCell('text-slate-400')}>{b.runs ?? '-'}</td>
+                    <td className={statCell('text-slate-400')}>{b.hits ?? '-'}</td>
+                    <td className={statCell('text-slate-400')}>{b.rbi ?? '-'}</td>
+                    <td className={statCell('text-slate-400')}>{b.baseOnBalls ?? '-'}</td>
+                    <td className={statCell('text-slate-400')}>{b.strikeOuts ?? '-'}</td>
+                    <td className={statCell('text-slate-500')}>{sb.avg ?? '-'}</td>
+                    <td className={statCell('text-slate-500')}>{sb.ops ?? '-'}</td>
                   </tr>
                 );
               })}
-              <tr className="border-t border-slate-700 font-bold text-slate-300">
-                <td className="py-1.5 pr-2">Totals</td>
+              <tr className="group border-t border-slate-700 font-bold text-slate-300">
+                <td className={stickyCell('bg-slate-900', { footer: true })}>Totals</td>
                 {[
                   battingTotals.ab,
                   battingTotals.r,
@@ -646,12 +626,12 @@ export default function GamePage() {
                   battingTotals.bb,
                   battingTotals.so,
                 ].map((v, i) => (
-                  <td key={i} className="px-2 text-center">
+                  <td key={i} className={statCell()}>
                     {v}
                   </td>
                 ))}
-                <td className="px-2" />
-                <td className="px-2" />
+                <td className={statCell()} />
+                <td className={statCell()} />
               </tr>
             </tbody>
           </table>
@@ -684,13 +664,13 @@ export default function GamePage() {
         ))}
 
         {pitchers.length > 0 && (
-          <div className="overflow-x-auto mt-4">
-            <table className="w-full text-xs min-w-[520px]">
+          <div className={`${TABLE_SCROLL} mt-4`}>
+            <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
               <thead>
                 <tr className="text-slate-500 border-b border-slate-700/60">
-                  <th className="text-left py-1.5 font-normal">PITCHING</th>
+                  <th className={`${stickyHead('bg-slate-900')} font-normal`}>PITCHING</th>
                   {['IP', 'H', 'R', 'ER', 'BB', 'K', 'HR', 'ERA'].map((h) => (
-                    <th key={h} className="px-2 text-center font-normal w-8">
+                    <th key={h} className={statHead('text-center font-normal')}>
                       {h}
                     </th>
                   ))}
@@ -713,55 +693,40 @@ export default function GamePage() {
                   return (
                     <tr
                       key={p.person?.id}
-                      className="border-b border-slate-800/40 hover:bg-slate-800/20"
+                      className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                     >
-                      <td className="py-1.5 pr-2 flex items-center gap-1.5">
+                      <td className={stickyCell('bg-slate-900')}>
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <button
                           onClick={() => navigate(`/player/${p.person?.id}`)}
                           className={`hover:text-${THEME_COLOR}-400 transition-colors text-slate-200`}
                         >
-                          {lastName}
+                          <span className="sm:hidden">{lastName}</span>
+                          <span className="hidden sm:inline">{p.person?.fullName}</span>
                         </button>
                         {decMark && (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-slate-700 text-slate-300 font-bold">
                             {decMark}
                           </span>
                         )}
+                        </div>
                       </td>
-                      <td className="px-2 text-center text-slate-400 font-mono">
-                        {pt.inningsPitched ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-400">
-                        {pt.hits ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-400">
-                        {pt.runs ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-400">
-                        {pt.earnedRuns ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-400">
-                        {pt.baseOnBalls ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-400">
-                        {pt.strikeOuts ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-400">
-                        {pt.homeRuns ?? '-'}
-                      </td>
-                      <td className="px-2 text-center text-slate-500 font-mono">
-                        {seasonEra != null
-                          ? parseFloat(seasonEra).toFixed(2)
-                          : '-'}
+                      <td className={statCell('text-slate-400')}>{pt.inningsPitched ?? '-'}</td>
+                      <td className={statCell('text-slate-400')}>{pt.hits ?? '-'}</td>
+                      <td className={statCell('text-slate-400')}>{pt.runs ?? '-'}</td>
+                      <td className={statCell('text-slate-400')}>{pt.earnedRuns ?? '-'}</td>
+                      <td className={statCell('text-slate-400')}>{pt.baseOnBalls ?? '-'}</td>
+                      <td className={statCell('text-slate-400')}>{pt.strikeOuts ?? '-'}</td>
+                      <td className={statCell('text-slate-400')}>{pt.homeRuns ?? '-'}</td>
+                      <td className={statCell('text-slate-500')}>
+                        {seasonEra != null ? parseFloat(seasonEra).toFixed(2) : '-'}
                       </td>
                     </tr>
                   );
                 })}
-                <tr className="border-t border-slate-700 font-bold text-slate-300">
-                  <td className="py-1.5 pr-2">Totals</td>
-                  <td className="px-2 text-center font-mono">
-                    {pitchingTotalsIp}
-                  </td>
+                <tr className="group border-t border-slate-700 font-bold text-slate-300">
+                  <td className={stickyCell('bg-slate-900', { footer: true })}>Totals</td>
+                  <td className={statCell()}>{pitchingTotalsIp}</td>
                   {[
                     pitchingTotals.h,
                     pitchingTotals.r,
@@ -770,11 +735,9 @@ export default function GamePage() {
                     pitchingTotals.k,
                     pitchingTotals.hr,
                   ].map((v, i) => (
-                    <td key={i} className="px-2 text-center">
-                      {v}
-                    </td>
+                    <td key={i} className={statCell()}>{v}</td>
                   ))}
-                  <td className="px-2 text-center" />
+                  <td className={statCell()} />
                 </tr>
               </tbody>
             </table>

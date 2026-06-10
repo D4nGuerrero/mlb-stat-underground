@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { mlbTeams, playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl } from '../utils/mlbHelpers';
+import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr } from '../utils/mlbHelpers';
+import TeamAbbrCell from '../components/TeamAbbrCell';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
 import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
 import { computeCareerTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
-import { SegmentedControl, Select, TabBar } from '../components/ui';
+import { SegmentedControl, Select, TabBar, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -33,8 +35,6 @@ const CAREER_GAME_TYPE_OPTIONS = [
   { value: 'S', label: 'Spring Training' },
   { value: 'P', label: 'Postseason Cumulative' },
 ];
-
-const TEAM_ABBR = Object.fromEntries(mlbTeams.map((t) => [t.id, t.abbr]));
 
 const MINOR_SPORT_IDS = [11, 12, 13, 14,16];
 const MINOR_SPORT_ID_SET = new Set(MINOR_SPORT_IDS);
@@ -156,11 +156,6 @@ const gameLogPitchCols = [
   { key: 'groundOutsToAirouts', label: 'GO/AO' },
 ];
 
-function teamAbbr(team) {
-  if (!team?.id) return '—';
-  return TEAM_ABBR[team.id] ?? team.name?.split(' ').pop() ?? '—';
-}
-
 function formatBornWithAge(playerInfo) {
   if (!playerInfo?.birthDate) return '—';
   const formatted = new Date(playerInfo.birthDate).toLocaleDateString('en-US', {
@@ -225,9 +220,11 @@ function formatCell(value, format, row) {
   if (format === 'date' && row.date) {
     return new Date(row.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
-  if (format === 'team') return teamAbbr(row.team);
+  if (format === 'team') {
+    return <TeamAbbrCell team={row.team} size="xs" abbrClassName="text-[10px] font-medium" nameClassName="text-xs font-medium" />;
+  }
   if (format === 'opponent') {
-    const abbr = teamAbbr(row.opponent);
+    const abbr = getTeamAbbr(row.opponent);
     if (abbr === '—') return '—';
     return row.isHome ? `vs ${abbr}` : `@ ${abbr}`;
   }
@@ -326,11 +323,11 @@ function StatsTable({
     <tr
       key={row.id ?? i}
       className={[
-        'border-b border-slate-800/60',
+        'group border-b border-slate-800/60',
         isFooter ? 'border-t border-slate-600 font-bold text-slate-100 bg-slate-800/30' : 'hover:bg-slate-800/20',
       ].join(' ')}
     >
-      <td className="py-2 pr-3 font-semibold text-slate-200 w-px whitespace-nowrap sticky left-0 bg-[#121827]">
+      <td className={`${stickyCell('bg-[#121827]', { footer: isFooter })} font-semibold text-slate-200`}>
         {row.label}
       </td>
       {cols.map((c) => {
@@ -340,8 +337,7 @@ function StatsTable({
           <td
             key={c.key}
             className={[
-              'px-2 text-center font-mono tabular-nums',
-              isHigh ? `font-bold text-${THEME_COLOR}-500` : isFooter ? 'text-slate-100' : 'text-slate-300',
+              statCell(isHigh ? `font-bold text-${THEME_COLOR}-500` : isFooter ? 'text-slate-100' : ''),
             ].join(' ')}
           >
             {formatCell(value, c.format, row)}
@@ -352,15 +348,15 @@ function StatsTable({
   );
 
   return (
-    <div className="overflow-x-auto -mx-1">
-      <table className="w-full text-xs md:text-sm min-w-[640px]">
+    <div className={`${TABLE_SCROLL} -mx-1`}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
         <thead>
           <tr className="text-slate-500 border-b border-slate-700/60">
-            <th className="text-left py-2 font-normal pr-3 w-px whitespace-nowrap sticky left-0 bg-[#121827]">
+            <th className={`${stickyHead('bg-[#121827]')} font-normal`}>
               {labelKey === 'season' ? 'Year' : 'Split'}
             </th>
             {cols.map((c) => (
-              <th key={c.key} className="px-2 text-center font-normal whitespace-nowrap">{c.label}</th>
+              <th key={c.key} className={statHead('text-center font-normal')}>{c.label}</th>
             ))}
           </tr>
         </thead>
@@ -377,11 +373,11 @@ function SplitColumnHeaders({ as = 'th', splitLabel = 'Split', className = '' })
   const Cell = as;
   return (
     <tr className={`text-slate-500 border-b border-slate-700/60 ${className}`}>
-      <Cell className="text-left py-1.5 font-normal pr-3 pl-2 w-px whitespace-nowrap sticky left-0 z-20 bg-[#121827]">
+      <Cell className={`${stickyHead('bg-[#121827]')} z-20 font-normal`}>
         {splitLabel}
       </Cell>
       {SPLIT_DISPLAY_COLS.map((c) => (
-        <Cell key={c.key} className="px-2 text-center font-normal whitespace-nowrap bg-[#121827]">
+        <Cell key={c.key} className={`${statHead('text-center font-normal bg-[#121827]')}`}>
           {c.label}
         </Cell>
       ))}
@@ -397,7 +393,7 @@ function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
 
   return (
     <div className="max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60">
-      <table className="w-full text-xs md:text-sm min-w-[900px]">
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
         <thead className="sticky top-0 z-30 bg-[#121827] shadow-[0_1px_0_0_rgba(51,65,85,0.6)]">
           <SplitColumnHeaders className="text-slate-400" />
         </thead>
@@ -414,12 +410,12 @@ function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
               </tr>
               <SplitColumnHeaders as="td" splitLabel="" className="text-[10px] text-slate-600" />
               {section.rows.map((row, i) => (
-                <tr key={row.id ?? `${section.title}-${i}`} className="border-b border-slate-800/60 hover:bg-slate-800/20">
-                  <td className="py-2 pr-3 pl-4 text-slate-200 w-px whitespace-nowrap sticky left-0 bg-[#121827] z-[1]">
+                <tr key={row.id ?? `${section.title}-${i}`} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
+                  <td className={`${stickyCell('bg-[#121827]')} z-[1] text-slate-200`}>
                     {row.label}
                   </td>
                   {SPLIT_DISPLAY_COLS.map((c) => (
-                    <td key={c.key} className="px-2 text-center font-mono tabular-nums text-slate-300">
+                    <td key={c.key} className={statCell()}>
                       {formatCell(row[c.key] ?? row.stat?.[c.key], c.format, row)}
                     </td>
                   ))}
@@ -510,15 +506,15 @@ function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
 
   return (
     <div className="max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60">
-      <table className="w-full text-xs md:text-sm">
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
         <thead className="sticky top-0 z-10 bg-[#121827] shadow-[0_1px_0_0_rgba(51,65,85,0.6)]">
           <tr className="text-slate-500 border-b border-slate-700/60">
             {cols.map((c, i) => (
               <th
                 key={c.key}
                 className={[
-                  'py-2 font-normal whitespace-nowrap bg-[#121827]',
-                  i === 0 ? 'text-left pr-3 pl-2 w-px sticky left-0 z-20' : 'px-2 text-center',
+                  'font-normal whitespace-nowrap bg-[#121827]',
+                  i === 0 ? `${stickyHead('bg-[#121827]')} z-20` : statHead('text-center'),
                 ].join(' ')}
               >
                 {c.label}
@@ -528,15 +524,14 @@ function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={row.id ?? i} className="border-b border-slate-800/60 hover:bg-slate-800/20">
+            <tr key={row.id ?? i} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
               {cols.map((c, j) => {
                 const value = row[c.key] ?? row.stat?.[c.key];
                 return (
                   <td
                     key={c.key}
                     className={[
-                      'py-2 text-slate-300 font-mono tabular-nums',
-                      j === 0 ? 'pr-3 pl-2 w-px whitespace-nowrap font-semibold text-slate-200 sticky left-0 bg-[#121827] z-[1]' : 'px-2 text-center',
+                      j === 0 ? `${stickyCell('bg-[#121827]')} z-[1] font-semibold text-slate-200` : statCell(),
                     ].join(' ')}
                   >
                     {formatCell(value, c.format, row)}

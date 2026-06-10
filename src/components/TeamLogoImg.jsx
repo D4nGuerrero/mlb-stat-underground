@@ -1,18 +1,29 @@
 import { useTheme } from '../context/ThemeContext';
+import { teamLogoUrl } from '../utils/mlbHelpers';
 
 /**
- * Theme-aware team logo image.
- * Dark mode  → /team-logos/team-cap-on-dark/{id}.svg
- * Light mode → /team-logos/team-cap-on-light/{id}.svg
+ * Theme-aware team logo image with smart exceptions.
+ * 
+ * Dark mode  → cap-on-dark (default for most teams)
+ * Light mode → cap-on-light
+ * Some teams use regular logo because it looks better.
  */
-export default function TeamLogoImg({ teamId, className, alt, onError, style }) {
+export default function TeamLogoImg({ 
+  teamId, 
+  className, 
+  alt, 
+  onError,
+  style,
+  forceRegular = false   // optional override
+}) {
   const { isDark } = useTheme();
 
   if (!teamId) return null;
 
-  const src = isDark
-    ? `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${teamId}.svg`
-    : `https://www.mlbstatic.com/team-logos/team-cap-on-light/${teamId}.svg`;
+  const src = teamLogoUrl(teamId, { 
+    preferDark: isDark,
+    forceRegular 
+  });
 
   return (
     <img

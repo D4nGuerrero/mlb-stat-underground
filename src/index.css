@@ -442,10 +442,6 @@ img {
   height: auto;
 }
 
-.name {
-  font-family: fontFamilyBold;
-}
-
 /* image is in public folder */
 .sparkle {
   background-image: url(/sparkle.gif);
@@ -462,6 +458,20 @@ img {
     yellow,
     yellow
   );
+  background: linear-gradient(90deg, #f7d560, #e8b226, #f6e27a, #d4a017);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+
+  /* Optional: subtle shine/animation */
+  background-size: 200% 100%;
+  animation: shine 3s linear infinite;
+}
+
+@keyframes shine {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
