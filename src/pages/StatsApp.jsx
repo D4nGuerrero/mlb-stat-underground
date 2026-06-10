@@ -14,6 +14,7 @@ import {
   enrichMoversWithDeltaScores,
   formatDeltaScore,
 } from '../utils/playerDeltaScore';
+
 const TEAM_OPTIONS = mlbTeams.map((t) => ({
   value: t.id,
   label: `${t.name} (${t.abbr})`,
@@ -869,25 +870,31 @@ export default function StatsApp() {
       {activeTab === 'search' && (
         <div className="space-y-6">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5">
-            <div className="flex items-center gap-2">
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (playerName.trim()) searchPlayers();
+                e.currentTarget.querySelector('input')?.blur();
+              }}
+            >
               <input
-                type="text"
+                type="search"
+                enterKeyHint="search"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && searchPlayers()}
                 className={`flex-1 bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-${THEME_COLOR}-500 transition-colors`}
                 placeholder="Search players…"
               />
               <button
-                type="button"
-                onClick={() => searchPlayers()}
+                type="submit"
                 disabled={isLoading || !playerName.trim()}
                 aria-label="Search players"
                 className={`w-11 h-11 flex items-center justify-center bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0`}
               >
                 <i className={`fa-solid fa-magnifying-glass text-sm ${isLoading ? 'animate-pulse' : ''}`} />
               </button>
-            </div>
+            </form>
           </div>
 
           {error && (
