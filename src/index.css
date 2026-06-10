@@ -6,6 +6,8 @@
 
 body {
   font-family: "Inter", system-ui, sans-serif;
+  background-color: #0f172a;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .font-display {
