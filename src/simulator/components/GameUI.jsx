@@ -1,4 +1,5 @@
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
+import { THEME_COLOR } from '../../theme/theme.js';
 import { SegmentedControl } from '../../components/ui';
 import { DEFAULT_PARK, PARK_FACTORS, PITCH_DEFS, PITCH_RESULT_BG, PITCH_RESULT_LABELS } from '../constants';
 
@@ -13,7 +14,7 @@ export function LineupBuilder({
       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
         <span className="text-xs font-semibold text-slate-300">{title} Lineup</span>
         <div className="flex items-center gap-2">
-          {loading && <span className="text-[10px] text-emerald-400 font-mono animate-pulse">Loading…</span>}
+          {loading && <span className={`text-[10px] text-${THEME_COLOR}-400 font-mono animate-pulse`}>Loading…</span>}
           {onModeChange && (
             <SegmentedControl
               value={mode}
@@ -37,7 +38,7 @@ export function LineupBuilder({
             <div className="flex-1 min-w-0">
               <span className="text-sm text-slate-200 truncate block">{player.name}</span>
               {player.slotABs >= 5 ? (
-                <span className="text-[10px] text-emerald-500/80 font-mono">
+                <span className={`text-[10px] text-${THEME_COLOR}-500/80 font-mono`}>
                   {player.slotABs} ABs batting {idx + 1}{ordSuffix(idx + 1)}
                 </span>
               ) : player.selectionReason ? (
@@ -65,7 +66,7 @@ export function LineupBuilder({
                 className={[
                   'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
                   selectedStarterId === pitcher.id
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
+                    ? `bg-${THEME_COLOR}-600 border-${THEME_COLOR}-500 text-white`
                     : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500',
                 ].join(' ')}
               >
@@ -136,7 +137,7 @@ export function AtBatCard({ play, index }) {
     HR: 'text-yellow-400', '3B': 'text-orange-400', '2B': 'text-blue-400',
     '1B': 'text-green-400', BB: 'text-cyan-400', IBB: 'text-cyan-300', HBP: 'text-purple-400',
     K: 'text-red-400', OUT: 'text-slate-500', DP: 'text-orange-300', E: 'text-amber-400',
-    SAC: 'text-slate-400', SF: 'text-slate-400', SB: 'text-emerald-400', CS: 'text-red-300', WP: 'text-slate-500',
+    SAC: 'text-slate-400', SF: 'text-slate-400', SB: `text-${THEME_COLOR}-400`, CS: 'text-red-300', WP: 'text-slate-500',
   }[play.outcome] || 'text-slate-400';
   const hasPitches = play.pitches?.length > 0;
 
@@ -271,7 +272,7 @@ export function BoxScore({ players, teamName, pitcherLines }) {
                 <td className="px-2 py-1.5 sticky left-0 bg-slate-900">
                   <span className="text-slate-500 font-mono text-[10px] w-4 inline-block text-center mr-1">{player.lineupSlot || ''}</span>
                   <span className="text-slate-300 font-medium">{player.name.split(' ').pop()}</span>
-                  <span className="text-emerald-600/80 text-[10px] ml-1 font-mono">{player.gamePos || player.pos}</span>
+                  <span className={`text-${THEME_COLOR}-600/80 text-[10px] ml-1 font-mono`}>{player.gamePos || player.pos}</span>
                 </td>
                 <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.ab}</td>
                 <td className="px-2 py-1.5 text-center text-slate-300 font-mono font-semibold">{player.h}</td>

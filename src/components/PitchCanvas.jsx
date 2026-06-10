@@ -2,6 +2,7 @@
 // Dual-canvas pitch visualization (trails + strike zone), catcher’s view.
 
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 
 const PLATE_WIDTH_FT = 17 / 12;
 const MOUND_Y = 60.5;
@@ -792,7 +793,7 @@ export default function PitchCanvas({
               step={0.05}
               value={releaseBiasX}
               onChange={(e) => setReleaseBiasX(Number(e.target.value))}
-              className="w-full accent-sky-500"
+              className={`w-full ${THEME_COLOR}-sky-500`}
               aria-label="Release bias X feet"
             />
           </label>
@@ -808,7 +809,7 @@ export default function PitchCanvas({
               step={0.05}
               value={releaseBiasZ}
               onChange={(e) => setReleaseBiasZ(Number(e.target.value))}
-              className="w-full accent-sky-500"
+              className={`w-full ${THEME_COLOR}-sky-500`}
               aria-label="Release bias Z feet"
             />
           </label>

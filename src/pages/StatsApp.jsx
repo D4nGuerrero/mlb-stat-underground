@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { Link } from 'react-router-dom';
 import {
   mlbTeams,
@@ -141,10 +142,10 @@ const LOWER_IS_BETTER = new Set(['era', 'whip']);
 
 const SCORE_TONE_STYLES = {
   positive: {
-    card: 'border-emerald-500/35 bg-gradient-to-b from-emerald-500/[0.12] via-slate-950 to-black hover:border-emerald-500/50',
+    card: `border-${THEME_COLOR}-500/35 bg-gradient-to-b from-${THEME_COLOR}-500/[0.12] via-slate-950 to-black hover:border-${THEME_COLOR}-500/50`,
     glow: 'bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.18),transparent_50%)]',
-    badge: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
-    photo: 'bg-emerald-500/20',
+    badge: `bg-${THEME_COLOR}-500/15 border-${THEME_COLOR}-500/30 text-${THEME_COLOR}-300`,
+    photo: `bg-${THEME_COLOR}-500/20`,
   },
   negative: {
     card: 'border-red-500/35 bg-gradient-to-b from-red-500/[0.10] via-slate-950 to-black hover:border-red-500/50',
@@ -213,7 +214,7 @@ function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch })
     </div>
 
     <div className="flex-1 min-w-0">
-      <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
+      <div className={`font-semibold text-sm truncate hover:text-${THEME_COLOR}-400 transition-colors`}>
         {player.fullName}
       </div>
 
@@ -255,7 +256,7 @@ function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch })
 
 function HotColdPlayerRow({ player, team, ops, rank, accentClass }) {
   const playerId = player?.id;
-  const className = 'flex items-center gap-3 px-4 pt-4 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors';
+  const className = 'flex items-center gap-3 px-4 pt-4 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer block w-full';
   const content = (
     <>
      <span
@@ -303,7 +304,7 @@ function HotColdPlayerRow({ player, team, ops, rank, accentClass }) {
   />
 </div>
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm truncate hover:text-emerald-400 transition-colors">
+        <div className={`font-semibold text-sm truncate hover:text-${THEME_COLOR}-400 transition-colors`}>
           {player?.fullName ?? '—'}
         </div>
         <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
@@ -390,7 +391,7 @@ function MoverPlayerCard({ player }) {
               <div className="min-w-0">
                 <Link
                   to={`/player/${player.playerId}`}
-                  className="text-base sm:text-lg font-bold text-white truncate block hover:text-emerald-400 transition-colors"
+                  className={`text-base sm:text-lg font-bold text-white truncate block hover:text-${THEME_COLOR}-400 transition-colors`}
                 >
                   {player.fullName}
                 </Link>
@@ -459,7 +460,7 @@ function MoverPlayerCard({ player }) {
                 key={k}
                 className={`relative overflow-hidden rounded-xl sm:rounded-2xl border transition-all duration-300 ${
                   improved
-                    ? 'border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.10] via-slate-900 to-slate-950'
+                    ? `border-${THEME_COLOR}-500/20 bg-gradient-to-b from-${THEME_COLOR}-500/[0.10] via-slate-900 to-slate-950`
                     : declined
                     ? 'border-red-500/20 bg-gradient-to-b from-red-500/[0.08] via-slate-900 to-slate-950'
                     : 'border-white/5 bg-gradient-to-b from-slate-900 to-slate-950'
@@ -473,7 +474,7 @@ function MoverPlayerCard({ player }) {
                     <div
                       className={`flex items-center justify-center rounded-full border w-4 h-4 sm:w-5 sm:h-5 ${
                         improved
-                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                          ? `border-${THEME_COLOR}-500/20 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-400`
                           : declined
                           ? 'border-red-500/20 bg-red-500/10 text-red-400'
                           : 'border-slate-700 bg-slate-800 text-slate-500'
@@ -501,7 +502,7 @@ function MoverPlayerCard({ player }) {
                       <div className="text-[10px] sm:text-[11px] text-slate-500 truncate">Prev: {player.statsPrev?.[k] ?? '—'}</div>
                       <div
                         className={`text-[10px] sm:text-[11px] font-semibold tabular-nums flex-shrink-0 ${
-                          improved ? 'text-emerald-400' : declined ? 'text-red-400' : 'text-slate-500'
+                          improved ? `text-${THEME_COLOR}-400` : declined ? 'text-red-400' : 'text-slate-500'
                         }`}
                       >
                         {improved
@@ -844,7 +845,7 @@ export default function StatsApp() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
       <div className="mb-6">
-        <div className="text-emerald-400 text-xs font-mono tracking-[3px] mb-1 uppercase">Player Stats</div>
+        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>Player Stats</div>
         <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
         <p className="text-slate-400 mt-1 text-sm">Search any player · Watch favorites · Track Team Exodus</p>
       </div>
@@ -872,7 +873,7 @@ export default function StatsApp() {
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && searchPlayers()}
-                className="flex-1 bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className={`flex-1 bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-${THEME_COLOR}-500 transition-colors`}
                 placeholder="Search players…"
               />
               <button
@@ -880,7 +881,7 @@ export default function StatsApp() {
                 onClick={() => searchPlayers()}
                 disabled={isLoading || !playerName.trim()}
                 aria-label="Search players"
-                className="w-11 h-11 flex items-center justify-center bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0"
+                className={`w-11 h-11 flex items-center justify-center bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0`}
               >
                 <i className={`fa-solid fa-magnifying-glass text-sm ${isLoading ? 'animate-pulse' : ''}`} />
               </button>
@@ -895,7 +896,7 @@ export default function StatsApp() {
 
           {isLoading && (
             <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
             </div>
           )}
 
@@ -944,7 +945,7 @@ export default function StatsApp() {
 
           {isHotColdLoading && (
             <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
             </div>
           )}
 
@@ -1015,7 +1016,7 @@ export default function StatsApp() {
               <button
                 onClick={analyzeTeamExodus}
                 disabled={isAnalyzing}
-                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto"
+                className={`px-6 py-3 bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto`}
               >
                 {isAnalyzing ? 'Analyzing Exodus…' : 'Analyze Exodus'}
               </button>
@@ -1061,7 +1062,7 @@ export default function StatsApp() {
               <button
                 onClick={analyzeTeamAcquisitions}
                 disabled={isAnalyzing}
-                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto"
+                className={`px-6 py-3 bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto`}
               >
                 {isAnalyzing ? 'Analyzing Acquisitions…' : 'Analyze Acquisitions'}
               </button>
@@ -1103,7 +1104,7 @@ export default function StatsApp() {
 
           {isRankingLoading && (
             <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
             </div>
           )}
 
@@ -1123,7 +1124,7 @@ export default function StatsApp() {
                 <tbody>
                   {exodusRankings.map((team, i) => (
                     <tr key={team.teamId} className="border-b border-slate-700 last:border-none hover:bg-slate-800/50">
-                      <td className="px-6 py-4 font-mono text-lg font-bold text-emerald-400">{i + 1}</td>
+                      <td className={`px-6 py-4 font-mono text-lg font-bold text-${THEME_COLOR}-400`}>{i + 1}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <img src={team.logo} alt="" className="w-8 h-8 object-contain" />
@@ -1134,7 +1135,7 @@ export default function StatsApp() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center font-mono">{team.lostPlayers}</td>
-                      <td className="px-6 py-4 text-center font-mono text-emerald-300">{team.avgOPS}</td>
+                      <td className={`px-6 py-4 text-center font-mono text-${THEME_COLOR}-300`}>{team.avgOPS}</td>
                       <td className="px-6 py-4 text-center font-mono text-rose-300">{team.avgERA}</td>
                       <td className="px-6 py-4 text-right font-mono font-bold text-rose-400">{team.exodusScore}</td>
                     </tr>

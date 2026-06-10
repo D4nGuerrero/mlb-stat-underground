@@ -25,19 +25,35 @@ function HonorBadge({ badge }) {
 }
 
 export default function SeasonYearLabel({ season, minorsLevel, badges = [] }) {
+  const hasAllStar = badges.some(b => b.key === 'allStar');
+
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span>
-        {season}
-        {minorsLevel ? ` (${minorsLevel})` : ''}
-      </span>
-      {badges.length > 0 && (
-        <span className="inline-flex items-center gap-0.5">
-          {badges.map((badge) => (
-            <HonorBadge key={badge.key} badge={badge} />
-          ))}
+      {/* Special sparkle treatment for All-Star years */}
+      {hasAllStar ? (
+        <span className="sparkle">
+          <span className="name gradient">
+            {season}
+            {minorsLevel ? ` (${minorsLevel})` : ''}
+          </span>
+        </span>
+      ) : (
+        <span>
+          {season}
+          {minorsLevel ? ` (${minorsLevel})` : ''}
         </span>
       )}
+
+      {/* Render all badges (including All-Star) */}
+      {badges.length > 0 && (
+        <span className="inline-flex items-center gap-0.5">
+          {badges.map((badge) => {
+            if (badge.key === 'allStar') return null;
+            return <HonorBadge key={badge.key} badge={badge} />;
+          }
+          )}
+        </span>
+      )}  
     </span>
   );
 }

@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, Fragment } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl } from '../utils/mlbHelpers';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
+import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
+import { computeCareerTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
 import { SegmentedControl, Select, TabBar } from '../components/ui';
 
@@ -38,10 +41,16 @@ const MINOR_SPORT_ID_SET = new Set(MINOR_SPORT_IDS);
 
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
 
-const HITTING_SIT_CODES = 'vl,vr,h,a,d,n,b1,b2,b3,b4,b5,b6,b7,b8,b9';
-const PITCHING_SIT_CODES = 'vl,vr,h,a,d,n';
-
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
+
+function fmtDate(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 const hitCols = [
  { key: 'team', label: 'Team', format: 'team' },
@@ -212,20 +221,6 @@ function mergeMinorLeagueStats(responses) {
   return { stats: [...mergedByKey.values()] };
 }
 
-function pickLastXGamesSplit(splits, level) {
-  if (!splits?.length) return null;
-
-  if (level === 'mlb') {
-    return splits.find((s) => s.sport?.id === 1) ?? splits.find((s) => s.sport?.id === 0) ?? splits[0];
-  }
-
-  return (
-    splits.find((s) => s.sport?.id === 0)
-    ?? splits.find((s) => MINOR_SPORT_ID_SET.has(s.sport?.id))
-    ?? splits[0]
-  );
-}
-
 function formatCell(value, format, row) {
   if (format === 'date' && row.date) {
     return new Date(row.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -277,6 +272,7 @@ function FilterBar({
   onSeasonChange,
   group,
   onGroupChange,
+  hidePeriod = false,
 }) {
   return (
     <div className="flex flex-wrap gap-3 items-center mb-5 mt-3">
@@ -304,7 +300,9 @@ function FilterBar({
           />
         </div>
       )}
-      <Select value={period} onChange={onPeriodChange} options={PERIOD_OPTIONS} className="w-52" />
+      {!hidePeriod && period !== undefined && onPeriodChange && (
+        <Select value={period} onChange={onPeriodChange} options={PERIOD_OPTIONS} className="w-52" />
+      )}
       <Select value={season} onChange={onSeasonChange} options={SEASON_OPTIONS} className="w-28" />
     </div>
   );
@@ -316,12 +314,42 @@ function StatsTable({
   labelKey = 'label',
   emptyMessage = 'No stats available',
   highlightCareerHighs = false,
+  footerRow = null,
 }) {
-  if (!rows?.length) {
+  if (!rows?.length && !footerRow) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
 
   const careerHighs = highlightCareerHighs ? computeCareerHighs(rows, cols) : null;
+
+  const renderRow = (row, i, { isFooter = false } = {}) => (
+    <tr
+      key={row.id ?? i}
+      className={[
+        'border-b border-slate-800/60',
+        isFooter ? 'border-t border-slate-600 font-bold text-slate-100 bg-slate-800/30' : 'hover:bg-slate-800/20',
+      ].join(' ')}
+    >
+      <td className="py-2 pr-3 font-semibold text-slate-200 w-px whitespace-nowrap sticky left-0 bg-[#121827]">
+        {row.label}
+      </td>
+      {cols.map((c) => {
+        const value = row[c.key] ?? row.stat?.[c.key];
+        const isHigh = !isFooter && careerHighs && isCareerHigh(c.key, value, careerHighs);
+        return (
+          <td
+            key={c.key}
+            className={[
+              'px-2 text-center font-mono tabular-nums',
+              isHigh ? `font-bold text-${THEME_COLOR}-500` : isFooter ? 'text-slate-100' : 'text-slate-300',
+            ].join(' ')}
+          >
+            {formatCell(value, c.format, row)}
+          </td>
+        );
+      })}
+    </tr>
+  );
 
   return (
     <div className="overflow-x-auto -mx-1">
@@ -337,30 +365,140 @@ function StatsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <tr key={row.id ?? i} className="border-b border-slate-800/60 hover:bg-slate-800/20">
-              <td className="py-2 pr-3 font-semibold text-slate-200 w-px whitespace-nowrap sticky left-0 bg-[#121827]">
-                {row.label}
-              </td>
-              {cols.map((c) => {
-                const value = row[c.key] ?? row.stat?.[c.key];
-                const isHigh = careerHighs && isCareerHigh(c.key, value, careerHighs);
-                return (
-                  <td
-                    key={c.key}
-                    className={[
-                      'px-2 text-center font-mono tabular-nums',
-                      isHigh ? 'font-bold text-emerald-500' : 'text-slate-300',
-                    ].join(' ')}
-                  >
-                    {formatCell(value, c.format, row)}
+          {rows.map((row, i) => renderRow(row, i))}
+          {footerRow && renderRow(footerRow, 'footer', { isFooter: true })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SplitColumnHeaders({ as = 'th', splitLabel = 'Split', className = '' }) {
+  const Cell = as;
+  return (
+    <tr className={`text-slate-500 border-b border-slate-700/60 ${className}`}>
+      <Cell className="text-left py-1.5 font-normal pr-3 pl-2 w-px whitespace-nowrap sticky left-0 z-20 bg-[#121827]">
+        {splitLabel}
+      </Cell>
+      {SPLIT_DISPLAY_COLS.map((c) => (
+        <Cell key={c.key} className="px-2 text-center font-normal whitespace-nowrap bg-[#121827]">
+          {c.label}
+        </Cell>
+      ))}
+    </tr>
+  );
+}
+
+function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
+  const hasRows = sections?.some((s) => s.rows?.length);
+  if (!hasRows) {
+    return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
+  }
+
+  return (
+    <div className="max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60">
+      <table className="w-full text-xs md:text-sm min-w-[900px]">
+        <thead className="sticky top-0 z-30 bg-[#121827] shadow-[0_1px_0_0_rgba(51,65,85,0.6)]">
+          <SplitColumnHeaders className="text-slate-400" />
+        </thead>
+        <tbody>
+          {sections.map((section) => (
+            <Fragment key={section.title}>
+              <tr className="bg-slate-800/50">
+                <td
+                  colSpan={SPLIT_DISPLAY_COLS.length + 1}
+                  className="py-2 px-3 text-[10px] font-bold text-slate-300 uppercase tracking-widest bg-slate-800/95 border-y border-slate-700/50"
+                >
+                  {section.title}
+                </td>
+              </tr>
+              <SplitColumnHeaders as="td" splitLabel="" className="text-[10px] text-slate-600" />
+              {section.rows.map((row, i) => (
+                <tr key={row.id ?? `${section.title}-${i}`} className="border-b border-slate-800/60 hover:bg-slate-800/20">
+                  <td className="py-2 pr-3 pl-4 text-slate-200 w-px whitespace-nowrap sticky left-0 bg-[#121827] z-[1]">
+                    {row.label}
                   </td>
-                );
-              })}
-            </tr>
+                  {SPLIT_DISPLAY_COLS.map((c) => (
+                    <td key={c.key} className="px-2 text-center font-mono tabular-nums text-slate-300">
+                      {formatCell(row[c.key] ?? row.stat?.[c.key], c.format, row)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PlayerTransactionsTab({ playerId }) {
+  const [txns, setTxns] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!playerId) return;
+    setLoading(true);
+    (async () => {
+      try {
+        const today = new Date();
+        const start = new Date(today);
+        start.setFullYear(today.getFullYear() - 5);
+        const fmt = (d) => {
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${m}/${day}/${d.getFullYear()}`;
+        };
+        const res = await fetch(
+          `https://statsapi.mlb.com/api/v1/transactions?playerId=${playerId}&startDate=${fmt(start)}&endDate=${fmt(today)}&sportId=1`,
+        );
+        const json = await res.json();
+        const sorted = [...(json.transactions ?? [])].sort(
+          (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
+        );
+        setTxns(sorted);
+      } catch {
+        setTxns([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [playerId]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className={`w-6 h-6 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
+      </div>
+    );
+  }
+
+  if (!txns.length) {
+    return <div className="text-slate-500 text-sm text-center py-12">No transactions found.</div>;
+  }
+
+  return (
+    <div className="space-y-1">
+      {txns.map((t, i) => (
+        <div
+          key={t.id ?? `${t.date}-${i}`}
+          className="flex items-start gap-3 px-1 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors rounded-xl"
+        >
+          <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-slate-200">{t.typeDesc ?? t.description ?? '—'}</div>
+            {t.fromTeam?.name && t.toTeam?.name && (
+              <div className="text-xs text-slate-500 mt-0.5">
+                {t.fromTeam.name} → {t.toTeam.name}
+              </div>
+            )}
+            {t.description && t.typeDesc && t.description !== t.typeDesc && (
+              <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -371,16 +509,16 @@ function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
   }
 
   return (
-    <div className="overflow-x-auto -mx-1">
+    <div className="max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60">
       <table className="w-full text-xs md:text-sm">
-        <thead>
+        <thead className="sticky top-0 z-10 bg-[#121827] shadow-[0_1px_0_0_rgba(51,65,85,0.6)]">
           <tr className="text-slate-500 border-b border-slate-700/60">
             {cols.map((c, i) => (
               <th
                 key={c.key}
                 className={[
-                  'py-2 font-normal whitespace-nowrap',
-                  i === 0 ? 'text-left pr-3 pl-0 w-px sticky left-0 bg-[#121827]' : 'px-2 text-center',
+                  'py-2 font-normal whitespace-nowrap bg-[#121827]',
+                  i === 0 ? 'text-left pr-3 pl-2 w-px sticky left-0 z-20' : 'px-2 text-center',
                 ].join(' ')}
               >
                 {c.label}
@@ -398,7 +536,7 @@ function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
                     key={c.key}
                     className={[
                       'py-2 text-slate-300 font-mono tabular-nums',
-                      j === 0 ? 'pr-3 pl-0 w-px whitespace-nowrap font-semibold text-slate-200 sticky left-0 bg-[#121827]' : 'px-2 text-center',
+                      j === 0 ? 'pr-3 pl-2 w-px whitespace-nowrap font-semibold text-slate-200 sticky left-0 bg-[#121827] z-[1]' : 'px-2 text-center',
                     ].join(' ')}
                   >
                     {formatCell(value, c.format, row)}
@@ -427,15 +565,14 @@ export default function PlayerPage() {
 
   const [logLevel, setLogLevel] = useState('mlb');
   const [logGroup, setLogGroup] = useState('hitting');
-  const [logPeriod, setLogPeriod] = useState('regular');
+
   const [logSeason, setLogSeason] = useState(CURRENT_YEAR);
   const [gameLogRows, setGameLogRows] = useState([]);
   const [gameLogLoading, setGameLogLoading] = useState(false);
 
   const [splitLevel, setSplitLevel] = useState('mlb');
-  const [splitPeriod, setSplitPeriod] = useState('regular');
   const [splitSeason, setSplitSeason] = useState(CURRENT_YEAR);
-  const [splitRows, setSplitRows] = useState([]);
+  const [splitSections, setSplitSections] = useState([]);
   const [splitLoading, setSplitLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('career');
 
@@ -480,7 +617,7 @@ export default function PlayerPage() {
   const loadGameLogs = useCallback(async () => {
     if (!playerId) return;
     setGameLogLoading(true);
-    const meta = getPeriodMeta(logPeriod);
+    const meta = getPeriodMeta('regular');
     try {
       const params = new URLSearchParams({
         stats: 'gameLog',
@@ -516,60 +653,23 @@ export default function PlayerPage() {
     } finally {
       setGameLogLoading(false);
     }
-  }, [playerId, logLevel, logGroup, logPeriod, logSeason]);
+  }, [playerId, logLevel, logGroup, logSeason]);
 
   const loadSplits = useCallback(async () => {
-    if (!playerId) return;
+    if (!playerId || isPitcher) {
+      setSplitSections([]);
+      return;
+    }
     setSplitLoading(true);
-    const meta = getPeriodMeta(splitPeriod);
-    const group = isPitcher ? 'pitching' : 'hitting';
-    const sitCodes = isPitcher ? PITCHING_SIT_CODES : HITTING_SIT_CODES;
-
     try {
-      let splits = [];
-
-      if (meta.statsType === 'lastXGames') {
-        const params = new URLSearchParams({
-          stats: 'lastXGames',
-          season: String(splitSeason),
-          group,
-          gameType: meta.gameType,
-          limit: String(meta.limit),
-        });
-        const data = await fetchPlayerStats(playerId, params.toString(), splitLevel);
-        const raw = data.stats?.[0]?.splits ?? [];
-        const best = pickLastXGamesSplit(raw, splitLevel);
-        if (best?.stat) {
-          splits = [{
-            split: { code: 'total', description: `Last ${meta.limit} Games` },
-            stat: best.stat,
-          }];
-        }
-      } else {
-        const params = new URLSearchParams({
-          stats: 'statSplits',
-          sitCodes,
-          season: String(splitSeason),
-          group,
-          gameType: meta.gameType,
-        });
-        const data = await fetchPlayerStats(playerId, params.toString(), splitLevel);
-        splits = data.stats?.[0]?.splits ?? [];
-      }
-
-      setSplitRows(
-        splits.map((sp, i) => ({
-          id: sp.split?.code ?? i,
-          label: sp.split?.description ?? sp.split?.code ?? '—',
-          stat: sp.stat,
-        })),
-      );
+      const sections = await fetchPlayerSplitSections(playerId, splitSeason, splitLevel);
+      setSplitSections(sections);
     } catch {
-      setSplitRows([]);
+      setSplitSections([]);
     } finally {
       setSplitLoading(false);
     }
-  }, [playerId, splitLevel, splitPeriod, splitSeason, isPitcher]);
+  }, [playerId, splitLevel, splitSeason, isPitcher]);
 
   useEffect(() => {
     loadGameLogs();
@@ -606,10 +706,13 @@ export default function PlayerPage() {
     { value: 'fielding', label: 'Fielding' },
   ];
 
+  const careerTotalsRow = computeCareerTotalsRow(careerRows, statGroup);
+
   const PLAYER_TABS = [
     { key: 'career', label: 'Career' },
     { key: 'gamelogs', label: 'Game Logs' },
     { key: 'splits', label: 'Splits' },
+    { key: 'transactions', label: 'Transactions' },
     { key: 'bvp', label: 'Batter vs. Pitcher' },
   ];
 
@@ -618,7 +721,7 @@ export default function PlayerPage() {
  
       {isLoading && (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
         </div>
       )}
 
@@ -664,10 +767,19 @@ export default function PlayerPage() {
                   {playerInfo.primaryPosition?.name || '—'}
                 </div>
                 <div
-                  className="text-[11px] text-emerald-300 font-semibold uppercase tracking-widest truncate"
+                  className={`text-[11px] text-${THEME_COLOR}-300 font-semibold uppercase tracking-widest truncate`}
                   style={HERO_TEXT_SHADOW}
                 >
-                  {playerInfo.currentTeam?.name || '—'}
+                  {playerInfo.currentTeam?.id ? (
+                    <Link
+                      to={`/team/${playerInfo.currentTeam.id}`}
+                      className="hover:text-white transition-colors"
+                    >
+                      {playerInfo.currentTeam.name}
+                    </Link>
+                  ) : (
+                    playerInfo.currentTeam?.name || '—'
+                  )}
                   {playerInfo.primaryNumber ? ` · #${playerInfo.primaryNumber}` : ''}
                 </div>
               </div>
@@ -726,6 +838,7 @@ export default function PlayerPage() {
                         rows={careerRows}
                         labelKey="season"
                         highlightCareerHighs
+                        footerRow={careerTotalsRow}
                         emptyMessage="No career stats available for this selection."
                       />
                     </>
@@ -737,22 +850,21 @@ export default function PlayerPage() {
                       <FilterBar
                         level={logLevel}
                         onLevelChange={setLogLevel}
-                        period={logPeriod}
-                        onPeriodChange={setLogPeriod}
                         season={logSeason}
                         onSeasonChange={setLogSeason}
                         group={logGroup}
                         onGroupChange={setLogGroup}
+                        hidePeriod
                       />
                       {gameLogLoading ? (
                         <div className="flex justify-center py-12">
-                          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                          <div className={`w-6 h-6 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
                         </div>
                       ) : (
                         <GameLogTable
                           cols={gameLogCols}
                           rows={gameLogRows}
-                          emptyMessage={`No game logs for ${logSeason} ${PERIOD_OPTIONS.find((p) => p.value === logPeriod)?.label ?? ''}.`}
+                          emptyMessage={`No game logs for ${logSeason} regular season.`}
                         />
                       )}
                     </>
@@ -764,24 +876,29 @@ export default function PlayerPage() {
                       <FilterBar
                         level={splitLevel}
                         onLevelChange={setSplitLevel}
-                        period={splitPeriod}
-                        onPeriodChange={setSplitPeriod}
                         season={splitSeason}
                         onSeasonChange={setSplitSeason}
+                        hidePeriod
                       />
-                      {splitLoading ? (
+                      {isPitcher ? (
+                        <div className="text-slate-500 text-sm text-center py-12">
+                          Splits breakdown is available for hitters only.
+                        </div>
+                      ) : splitLoading ? (
                         <div className="flex justify-center py-12">
-                          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                          <div className={`w-6 h-6 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
                         </div>
                       ) : (
-                        <StatsTable
-                          cols={isPitcher ? pitchCols : hitCols}
-                          rows={splitRows}
-                          emptyMessage={`No splits for ${splitSeason} ${PERIOD_OPTIONS.find((p) => p.value === splitPeriod)?.label ?? ''}.`}
+                        <SplitsTable
+                          sections={splitSections}
+                          emptyMessage={`No splits for ${splitSeason} regular season.`}
                         />
                       )}
                     </>
                   );
+                }
+                if (key === 'transactions') {
+                  return <PlayerTransactionsTab playerId={playerId} />;
                 }
                 return (
                   <div className="text-slate-500 text-sm text-center py-12 border border-dashed border-slate-700 rounded-2xl">

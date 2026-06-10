@@ -1,4 +1,5 @@
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
+import { THEME_COLOR } from '../../theme/theme.js';
 
 const VARIANTS = {
   contained: {
@@ -11,7 +12,7 @@ const VARIANTS = {
   page: {
     list: 'flex gap-1 border-b border-slate-700/60  scrollbar-none',
     tab: 'px-4 sm:px-5 py-2.5 rounded-t-xl',
-    active: 'bg-slate-800 text-white border-b-2 border-emerald-400 -mb-px',
+    active: `bg-slate-800 text-white border-b-2 border-${THEME_COLOR}-400 -mb-px`,
     inactive: 'text-slate-400 hover:text-white hover:bg-slate-800/40',
     transition: 'transition-colors',
   },

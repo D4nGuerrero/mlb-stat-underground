@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { mlbTeams } from '../utils/mlbHelpers';
 import { TeamPicker, SegmentedControl } from '../components/ui';
 import { simulateGame } from '../simulator/game';
@@ -208,7 +209,7 @@ export default function BaseballSimulator() {
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
       <div className="text-center mb-6">
-        <div className="text-emerald-400 text-[10px] font-mono tracking-[3px] uppercase mb-1">Rebuild</div>
+        <div className={`text-${THEME_COLOR}-400 text-[10px] font-mono tracking-[3px] uppercase mb-1`}>Rebuild</div>
         <h1 className="font-display text-3xl sm:text-4xl tracking-tighter mb-1">Baseball Simulator</h1>
         <p className="text-slate-500 text-sm">Hybrid probabilistic engine with pitch-by-pitch at-bats</p>
       </div>
@@ -290,7 +291,7 @@ export default function BaseballSimulator() {
               className="w-full mb-4 py-2 bg-slate-800/60 hover:bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2"
             >
               <span>{showLineup ? '▲ Hide' : '▼ Edit'} Lineups & Pitchers</span>
-              {(awayLoading || homeLoading) && <span className="text-emerald-400 animate-pulse">Loading real stats…</span>}
+              {(awayLoading || homeLoading) && <span className={`text-${THEME_COLOR}-400 animate-pulse`}>Loading real stats…</span>}
             </button>
           )}
 
@@ -337,7 +338,7 @@ export default function BaseballSimulator() {
               type="button"
               onClick={runSimulation}
               disabled={!awayTeam || !homeTeam || simming || awayLoading || homeLoading}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm"
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
             >
               {simming ? (
                 <>
@@ -373,7 +374,7 @@ export default function BaseballSimulator() {
                 </div>
                 {!isLiveMode && (
                   <div className="mt-4 text-center">
-                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-semibold">
+                    <span className={`inline-flex items-center gap-2 px-4 py-2 bg-${THEME_COLOR}-500/10 border border-${THEME_COLOR}-500/30 rounded-xl text-${THEME_COLOR}-400 text-sm font-semibold`}>
                       {result.winner.abbr} win{result.innings.length > 9 ? ` (F/${result.innings.length})` : '!'}
                     </span>
                   </div>
