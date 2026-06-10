@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { teamLogoUrl } from '../../utils/mlbHelpers';
+import { handleEnterDismiss } from '../../utils/inputHelpers';
 import Modal from './Modal';
 
 export default function TeamPicker({ label, selected, onSelect, exclude, teams }) {
@@ -66,9 +67,12 @@ export default function TeamPicker({ label, selected, onSelect, exclude, teams }
       >
         <div className="p-4 border-b border-slate-800">
           <input
+            type="search"
+            enterKeyHint="search"
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => handleEnterDismiss(e)}
             placeholder="Search teams…"
             className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
           />
