@@ -276,7 +276,7 @@ function FilterBar({
   onGroupChange,
 }) {
   return (
-    <div className="flex flex-wrap gap-3 items-center mb-5">
+    <div className="flex flex-wrap gap-3 items-center mb-5 mt-3">
       <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
         <SegmentedControl
           value={level}
@@ -691,7 +691,7 @@ export default function PlayerPage() {
                 if (key === 'career') {
                   return (
                     <>
-                      <div className="flex flex-wrap gap-3 items-center mb-5">
+                      <div className="flex flex-wrap gap-3 items-center mb-5 pt-3">
                         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
                           <SegmentedControl
                             value={careerLevel}
