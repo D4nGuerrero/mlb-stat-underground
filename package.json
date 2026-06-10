@@ -4,8 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",  
-    "prebuild": "node scripts/generate-pwa-icons.mjs",
+    "dev": "vite --host",     
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
