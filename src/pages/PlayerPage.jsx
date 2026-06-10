@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr } from '../utils/mlbHelpers';
@@ -7,8 +7,28 @@ import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
 import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
 import { computeCareerTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
-import { SegmentedControl, Select, TabBar, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
-import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
+import {
+  SegmentedControl,
+  Select,
+  TabBar,
+  scrollStickyYearHead,
+  scrollStickyYearCell,
+  scrollStickyTeamAbbrHead,
+  scrollStickyTeamAbbrCell,
+  scrollStickyDateHead,
+  scrollStickyDateCell,
+  scrollStickyTeamAfterDateHead,
+  scrollStickyTeamAfterDateCell,
+  scrollStickyHead,
+  scrollStickyCell,
+  scrollStatHead,
+  scrollStatCell,
+  TABLE_SCROLL_BODY,
+  TABLE_BASE,
+  useStickyColOffset,
+  stickyCol1Props,
+} from '../components/ui';
+import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -198,6 +218,53 @@ function isCareerHigh(colKey, value, highs) {
   return num != null && highs[colKey] != null && num === highs[colKey];
 }
 
+const LABEL_SORT_KEY = '__label__';
+
+function cellSortValue(key, row, col) {
+  if (key === LABEL_SORT_KEY) {
+    if (row.season != null) return Number(row.season) || 0;
+    if (typeof row.label === 'string') return parseFloat(row.label) || 0;
+    return 0;
+  }
+  const format = col?.format;
+  if (format === 'date' && row.date) return new Date(`${row.date}T12:00:00`).getTime();
+  if (format === 'team') return getTeamAbbr(row.team);
+  if (format === 'opponent') {
+    const abbr = getTeamAbbr(row.opponent);
+    if (abbr === '—') return '';
+    return row.isHome ? `vs ${abbr}` : `@ ${abbr}`;
+  }
+  const value = row[key] ?? row.stat?.[key];
+  if (format === 'text') return String(value ?? '');
+  const n = parseStatValue(value);
+  if (n != null) return n;
+  return parseFloat(value) || 0;
+}
+
+function comparePlayerRows(a, b, sortCol, sortDir, col) {
+  const av = cellSortValue(sortCol, a, col);
+  const bv = cellSortValue(sortCol, b, col);
+  let cmp = 0;
+  if (typeof av === 'string' && typeof bv === 'string') cmp = av.localeCompare(bv);
+  else cmp = (Number(av) || 0) - (Number(bv) || 0);
+  return sortDir === 'asc' ? cmp : -cmp;
+}
+
+function useTableSort(defaultCol, defaultDir = 'desc') {
+  const [sortCol, setSortCol] = useState(defaultCol);
+  const [sortDir, setSortDir] = useState(defaultDir);
+  const handleSort = (key) => {
+    if (sortCol === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortCol(key);
+      setSortDir(defaultDir);
+    }
+  };
+  const sortMark = (key) => (sortCol === key ? (sortDir === 'asc' ? '▲' : '▼') : '');
+  const sortActive = (key) => (sortCol === key ? `text-${THEME_COLOR}-400` : '');
+  return { sortCol, sortDir, handleSort, sortMark, sortActive };
+}
+
 function mergeMinorLeagueStats(responses) {
   const mergedByKey = new Map();
 
@@ -221,7 +288,7 @@ function formatCell(value, format, row) {
     return new Date(row.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   if (format === 'team') {
-    return <TeamAbbrCell team={row.team} size="xs" abbrClassName="text-[10px] font-medium" nameClassName="text-xs font-medium" />;
+    return <TeamAbbrCell team={row.team} abbrOnly size="xs" abbrClassName="text-[10px] font-medium" />;
   }
   if (format === 'opponent') {
     const abbr = getTeamAbbr(row.opponent);
@@ -313,32 +380,54 @@ function StatsTable({
   highlightCareerHighs = false,
   footerRow = null,
 }) {
+  const tableRef = useRef(null);
+  const { sortCol, sortDir, handleSort, sortMark, sortActive } = useTableSort(LABEL_SORT_KEY, 'desc');
+  useStickyColOffset(tableRef, [rows, footerRow, cols, sortCol, sortDir]);
+
+  const sortedRows = useMemo(() => {
+    const col = cols.find((c) => c.key === sortCol);
+    return [...rows].sort((a, b) => comparePlayerRows(a, b, sortCol, sortDir, col));
+  }, [rows, cols, sortCol, sortDir]);
+
+  const careerHighs = highlightCareerHighs ? computeCareerHighs(rows, cols) : null;
+
   if (!rows?.length && !footerRow) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
-
-  const careerHighs = highlightCareerHighs ? computeCareerHighs(rows, cols) : null;
 
   const renderRow = (row, i, { isFooter = false } = {}) => (
     <tr
       key={row.id ?? i}
       className={[
         'group border-b border-slate-800/60',
-        isFooter ? 'border-t border-slate-600 font-bold text-slate-100 bg-slate-800/30' : 'hover:bg-slate-800/20',
+        isFooter ? 'border-t border-slate-600 font-bold text-slate-100 bg-[#182030]' : 'hover:bg-slate-800/20',
       ].join(' ')}
     >
-      <td className={`${stickyCell('bg-[#121827]', { footer: isFooter })} font-semibold text-slate-200`}>
+      <td
+        {...stickyCol1Props()}
+        className={`${scrollStickyYearCell('bg-[#121827]', { footer: isFooter })} font-semibold text-slate-200`}
+      >
         {row.label}
       </td>
-      {cols.map((c) => {
+      {cols.map((c, colIdx) => {
         const value = row[c.key] ?? row.stat?.[c.key];
         const isHigh = !isFooter && careerHighs && isCareerHigh(c.key, value, careerHighs);
+        const isTeamSticky = colIdx === 0 && c.format === 'team';
         return (
           <td
             key={c.key}
-            className={[
-              statCell(isHigh ? `font-bold text-${THEME_COLOR}-500` : isFooter ? 'text-slate-100' : ''),
-            ].join(' ')}
+            className={
+              isTeamSticky
+                ? scrollStickyTeamAbbrCell('bg-[#121827]', { footer: isFooter })
+                : scrollStatCell(
+                    isHigh
+                      ? `font-bold text-${THEME_COLOR}-500`
+                      : isFooter
+                        ? 'text-slate-100 bg-[#182030]'
+                        : 'text-slate-300',
+                    { align: 'text-center' },
+                  )
+            }
           >
             {formatCell(value, c.format, row)}
           </td>
@@ -347,21 +436,37 @@ function StatsTable({
     </tr>
   );
 
+  const labelTitle = labelKey === 'season' ? 'Year' : 'Split';
+
   return (
-    <div className={`${TABLE_SCROLL} -mx-1`}>
-      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+    <div className={TABLE_SCROLL_BODY}>
+      <table ref={tableRef} className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.md}`}>
         <thead>
           <tr className="text-slate-500 border-b border-slate-700/60">
-            <th className={`${stickyHead('bg-[#121827]')} font-normal`}>
-              {labelKey === 'season' ? 'Year' : 'Split'}
+            <th
+              {...stickyCol1Props()}
+              className={`${scrollStickyYearHead('bg-[#121827]', { stickTop: true })} font-normal cursor-pointer select-none hover:text-slate-300 ${sortActive(LABEL_SORT_KEY)}`}
+              onClick={() => handleSort(LABEL_SORT_KEY)}
+            >
+              {labelTitle}{sortMark(LABEL_SORT_KEY)}
             </th>
-            {cols.map((c) => (
-              <th key={c.key} className={statHead('text-center font-normal')}>{c.label}</th>
+            {cols.map((c, colIdx) => (
+              <th
+                key={c.key}
+                className={[
+                  colIdx === 0 && c.format === 'team'
+                    ? scrollStickyTeamAbbrHead('bg-[#121827]', { align: 'text-center', stickTop: true })
+                    : scrollStatHead(`text-center font-normal cursor-pointer select-none hover:text-slate-300 ${sortActive(c.key)}`, { align: 'text-center', stickTop: true }),
+                ].join(' ')}
+                onClick={() => handleSort(c.key)}
+              >
+                {c.label}{sortMark(c.key)}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => renderRow(row, i))}
+          {sortedRows.map((row, i) => renderRow(row, i))}
           {footerRow && renderRow(footerRow, 'footer', { isFooter: true })}
         </tbody>
       </table>
@@ -373,11 +478,11 @@ function SplitColumnHeaders({ as = 'th', splitLabel = 'Split', className = '' })
   const Cell = as;
   return (
     <tr className={`text-slate-500 border-b border-slate-700/60 ${className}`}>
-      <Cell className={`${stickyHead('bg-[#121827]')} z-20 font-normal`}>
+      <Cell className={`${scrollStickyHead('bg-[#121827]', { stickTop: true })} font-normal`}>
         {splitLabel}
       </Cell>
       {SPLIT_DISPLAY_COLS.map((c) => (
-        <Cell key={c.key} className={`${statHead('text-center font-normal bg-[#121827]')}`}>
+        <Cell key={c.key} className={`${scrollStatHead('text-center font-normal', { align: 'text-center', stickTop: true })}`}>
           {c.label}
         </Cell>
       ))}
@@ -392,9 +497,9 @@ function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
   }
 
   return (
-    <div className="max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60">
-      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
-        <thead className="sticky top-0 z-30 bg-[#121827] shadow-[0_1px_0_0_rgba(51,65,85,0.6)]">
+    <div className={TABLE_SCROLL_BODY}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
+        <thead>
           <SplitColumnHeaders className="text-slate-400" />
         </thead>
         <tbody>
@@ -411,11 +516,11 @@ function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
               <SplitColumnHeaders as="td" splitLabel="" className="text-[10px] text-slate-600" />
               {section.rows.map((row, i) => (
                 <tr key={row.id ?? `${section.title}-${i}`} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
-                  <td className={`${stickyCell('bg-[#121827]')} z-[1] text-slate-200`}>
+                  <td className={`${scrollStickyCell('bg-[#121827]')} z-[1] pl-4 text-slate-200`}>
                     {row.label}
                   </td>
                   {SPLIT_DISPLAY_COLS.map((c) => (
-                    <td key={c.key} className={statCell()}>
+                    <td key={c.key} className={scrollStatCell('', { align: 'text-center' })}>
                       {formatCell(row[c.key] ?? row.stat?.[c.key], c.format, row)}
                     </td>
                   ))}
@@ -500,30 +605,41 @@ function PlayerTransactionsTab({ playerId }) {
 }
 
 function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
+  const { sortCol, sortDir, handleSort, sortMark, sortActive } = useTableSort('date', 'desc');
+  const sortedRows = useMemo(() => {
+    const col = cols.find((c) => c.key === sortCol);
+    return [...rows].sort((a, b) => comparePlayerRows(a, b, sortCol, sortDir, col));
+  }, [rows, cols, sortCol, sortDir]);
+
   if (!rows?.length) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
 
   return (
-    <div className="max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60">
-      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
-        <thead className="sticky top-0 z-10 bg-[#121827] shadow-[0_1px_0_0_rgba(51,65,85,0.6)]">
+    <div className={TABLE_SCROLL_BODY}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS}`}>
+        <thead>
           <tr className="text-slate-500 border-b border-slate-700/60">
             {cols.map((c, i) => (
               <th
                 key={c.key}
                 className={[
                   'font-normal whitespace-nowrap bg-[#121827]',
-                  i === 0 ? `${stickyHead('bg-[#121827]')} z-20` : statHead('text-center'),
+                  i === 0
+                    ? scrollStickyDateHead('bg-[#121827]', { stickTop: true })
+                    : i === 1
+                      ? scrollStickyTeamAfterDateHead('bg-[#121827]', { align: 'text-center', stickTop: true })
+                      : scrollStatHead(`text-center cursor-pointer select-none hover:text-slate-300 ${sortActive(c.key)}`, { align: 'text-center', stickTop: true }),
                 ].join(' ')}
+                onClick={() => handleSort(c.key)}
               >
-                {c.label}
+                {c.label}{sortMark(c.key)}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
+          {sortedRows.map((row, i) => (
             <tr key={row.id ?? i} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
               {cols.map((c, j) => {
                 const value = row[c.key] ?? row.stat?.[c.key];
@@ -531,7 +647,11 @@ function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
                   <td
                     key={c.key}
                     className={[
-                      j === 0 ? `${stickyCell('bg-[#121827]')} z-[1] font-semibold text-slate-200` : statCell(),
+                      j === 0
+                        ? `${scrollStickyDateCell('bg-[#121827]')} font-semibold text-slate-200`
+                        : j === 1
+                          ? scrollStickyTeamAfterDateCell('bg-[#121827]')
+                          : scrollStatCell('', { align: 'text-center' }),
                     ].join(' ')}
                   >
                     {formatCell(value, c.format, row)}
@@ -684,6 +804,7 @@ export default function PlayerPage() {
     .sort((a, b) => Number(b.season) - Number(a.season) || (b.sport?.id ?? 0) - (a.sport?.id ?? 0))
     .map((sp) => ({
       id: `${sp.season}-${sp.team?.id ?? 'na'}-${sp.sport?.id ?? 0}`,
+      season: Number(sp.season),
       label: (
         <SeasonYearLabel
           season={sp.season}
@@ -795,13 +916,13 @@ export default function PlayerPage() {
             ))}
           </div>
 
-          <div className="px-5 sm:px-8 py-5 sm:py-6">
+          <div className=" sm:px-8 py-5 sm:py-6">
             <TabBar variant="page" tabs={PLAYER_TABS} activeKey={activeTab} onChange={setActiveTab}>
               {(key) => {
                 if (key === 'career') {
                   return (
                     <>
-                      <div className="flex flex-wrap gap-3 items-center mb-5 pt-3">
+                      <div className="flex flex-wrap gap-3 items-center mb-5 pt-3 mx-3 sm:mx-0">
                         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
                           <SegmentedControl
                             value={careerLevel}

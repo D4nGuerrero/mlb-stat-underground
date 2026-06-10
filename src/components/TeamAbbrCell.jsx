@@ -11,12 +11,14 @@ const SIZES = {
 
 /**
  * Team column cell: logo + abbr (mobile) / full name (desktop).
+ * Pass abbrOnly to always show abbreviation (stats tables outside standings).
  */
 export default function TeamAbbrCell({
   team,
   teamId,
   teamName,
   link = false,
+  abbrOnly = false,
   className = '',
   size = 'md',
   abbrClassName = 'text-sm font-medium',
@@ -33,8 +35,14 @@ export default function TeamAbbrCell({
   const inner = (
     <span className={`inline-flex items-center gap-1 sm:gap-1.5 min-w-0 ${className}`}>
       <TeamLogoImg teamId={id} className={`${SIZES[size] ?? SIZES.md} object-contain flex-shrink-0`} alt={abbr} />
-      <span className={`${abbrClassName} sm:hidden leading-none`}>{abbr}</span>
-      <span className={`hidden sm:inline whitespace-nowrap leading-tight ${nameClassName}`}>{name}</span>
+      {abbrOnly ? (
+        <span className={`${abbrClassName} leading-none`}>{abbr}</span>
+      ) : (
+        <>
+          <span className={`${abbrClassName} sm:hidden leading-none`}>{abbr}</span>
+          <span className={`hidden sm:inline whitespace-nowrap leading-tight ${nameClassName}`}>{name}</span>
+        </>
+      )}
     </span>
   );
 

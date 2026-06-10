@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { SegmentedControl, Select, stickyTeamHeadAfterRank, stickyTeamCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { SegmentedControl, Select, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 
@@ -428,7 +428,7 @@ export default function StatLeaders() {
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/40">
                   <th className={`${stickyRankHead('bg-slate-900')} font-semibold text-slate-400`}>RK</th>
-                  <th className={`${stickyTeamHeadAfterRank('bg-slate-900')} font-semibold text-slate-400`}>Team</th>
+                  <th className={`${stickyTeamAbbrHeadAfterRank('bg-slate-900')} font-semibold text-slate-400`}>Team</th>
                   {teamCols.map((col) => (
                     <th
                       key={col.key}
@@ -451,8 +451,8 @@ export default function StatLeaders() {
                     onClick={() => navigate(`/team/${row.team?.id}`)}
                   >
                     <td className={`${stickyRankCell('bg-slate-900')} font-mono text-xs text-slate-500`}>{row.rank}</td>
-                    <td className={stickyTeamCellAfterRank('bg-slate-900')}>
-                      <TeamAbbrCell team={row.team} size="sm" abbrClassName="text-[10px] font-medium" nameClassName="text-xs font-medium" />
+                    <td className={stickyTeamAbbrCellAfterRank('bg-slate-900')}>
+                      <TeamAbbrCell team={row.team} abbrOnly size="sm" abbrClassName="text-[10px] font-medium" />
                     </td>
                     {teamCols.map((col) => (
                       <td

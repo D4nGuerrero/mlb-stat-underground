@@ -6,3 +6,4 @@ export { default as Collapsible } from './Collapsible';
 export { default as TeamPicker } from './TeamPicker';
 export { default as SwipeableCarousel } from './SwipeableCarousel';
 export * from './stickyTable';
+export * from './useStickyColOffset';
