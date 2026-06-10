@@ -5,11 +5,13 @@ import App from './App.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { routerBasename } from './utils/baseUrl.js';
 import './index.css';
+import ScrollToTop from './components/ScrollToTop.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter basename={routerBasename()}>
       <ThemeProvider>
+        <ScrollToTop />
         <App />
       </ThemeProvider>
     </BrowserRouter>
