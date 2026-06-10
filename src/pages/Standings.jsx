@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate } from 'react-router-dom';
 import TeamAbbrCell from '../components/TeamAbbrCell';
-import { TabBar, Select, SegmentedControl, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TabBar, Select, SegmentedControl, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -510,7 +510,7 @@ export default function Standings() {
           <h2 className="font-semibold text-base sm:text-lg">{title}</h2>
         </div>
         <div className={TABLE_SCROLL}>
-          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT_STANDINGS}`}>
             <colgroup>
               <col className={TABLE_TEAM_COL_CLASS} />
               {columns.map((col) => (

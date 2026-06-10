@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { TabBar, Select, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
-import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
+import { TabBar, Select, SegmentedControl, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
+import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
 const SEASON = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: SEASON - 2002 + 1 }, (_, i) => {
@@ -131,14 +131,14 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
 
   return (
     <div className={`${TABLE_SCROLL} -mx-1 px-1 scrollbar-thin`}>
-      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.md}`}>
         <thead>
           <tr className="border-b border-slate-700/60">
-            <th className={`${stickyHead('bg-[#121827]')} text-slate-400 font-medium`}>Player</th>
+            <th className={`${stickyPlayerHead('bg-[#121827]')} text-slate-400 font-medium`}>Player</th>
             {cols.map((c) => (
               <th
                 key={c.key}
-                className={`${statHead(`font-medium cursor-pointer select-none ${sortCol === c.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
+                className={`${scrollStatHead(`font-medium cursor-pointer select-none ${sortCol === c.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
                 onClick={() => handleSort(c.key)}
               >
                 {c.label}
@@ -154,11 +154,10 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
             const pos = row.position?.abbreviation ?? row.position?.name ?? person?.primaryPosition?.abbreviation;
             return (
               <tr key={playerId ?? i} className="group border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-                <td className={stickyCell('bg-[#121827]')}>
+                <td className={stickyPlayerCell('bg-[#121827]')}>
                   <div className="min-w-0">
-                    <Link to={`/player/${playerId}`} className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block whitespace-nowrap`}>
-                      <span className="sm:hidden">{person?.[nameKey]?.split(' ').pop() ?? person?.fullName?.split(' ').pop() ?? '—'}</span>
-                      <span className="hidden sm:inline">{person?.[nameKey] ?? person?.fullName ?? '—'}</span>
+                    <Link to={`/player/${playerId}`} className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block truncate`}>
+                      {person?.[nameKey] ?? person?.fullName ?? '—'}
                     </Link>
                     {pos && <span className="text-[10px] text-slate-500">{pos}</span>}
                   </div>
@@ -166,7 +165,7 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
                 {cols.map((c) => {
                   const raw = row.stat?.[c.key] ?? row[c.key];
                   return (
-                    <td key={c.key} className={statCell(sortCol === c.key ? `text-${THEME_COLOR}-300` : '')}>
+                    <td key={c.key} className={scrollStatCell(sortCol === c.key ? `text-${THEME_COLOR}-300` : '')}>
                       {c.dec === -1 ? (raw ?? '–') : fmt(raw, c.dec)}
                     </td>
                   );
@@ -701,24 +700,24 @@ function SplitsTab({ teamId, season }) {
 
   return (
     <div className={`${TABLE_SCROLL} -mx-1 px-1`}>
-      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.sm}`}>
         <thead>
           <tr className="border-b border-slate-700/60">
-            <th className={`${stickyHead('bg-[#121827]')} text-slate-400 font-medium`}>Split</th>
+            <th className={`${scrollStickyHead('bg-[#121827]')} text-slate-400 font-medium`}>Split</th>
             {['G', 'AB', 'H', 'HR', 'RBI', 'AVG', 'OBP', 'SLG', 'OPS'].map((c) => (
-              <th key={c} className={statHead('font-medium text-slate-400')}>{c}</th>
+              <th key={c} className={scrollStatHead('font-medium text-slate-400')}>{c}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {(splits ?? []).map((s, i) => (
             <tr key={i} className="group border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-              <td className={`${stickyCell('bg-[#121827]')} text-xs font-medium text-slate-300`}>{SPLIT_LABELS[s.split?.code] ?? s.split?.description ?? s.split?.code}</td>
+              <td className={`${scrollStickyCell('bg-[#121827]')} text-xs font-medium text-slate-300`}>{SPLIT_LABELS[s.split?.code] ?? s.split?.description ?? s.split?.code}</td>
               {[
                 ['gamesPlayed', 0], ['atBats', 0], ['hits', 0], ['homeRuns', 0], ['rbi', 0],
                 ['avg', 3], ['obp', 3], ['slg', 3], ['ops', 3],
               ].map(([key, dec]) => (
-                <td key={key} className={statCell()}>{fmt(s.stat?.[key], dec)}</td>
+                <td key={key} className={scrollStatCell()}>{fmt(s.stat?.[key], dec)}</td>
               ))}
             </tr>
           ))}

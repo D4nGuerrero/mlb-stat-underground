@@ -110,7 +110,7 @@ export function InningBox({ innings, awayTeam, homeTeam, lineHits, lineErrors })
             return (
               <tr key={key} className="border-t border-slate-800">
                 <td className="px-2 py-2 text-left sticky left-0 bg-slate-900 z-10">
-                  <TeamAbbrCell team={team} size="sm" abbrClassName="text-xs font-semibold text-slate-300" />
+                  <TeamAbbrCell team={team} abbrOnly size="sm" abbrClassName="text-xs font-semibold text-slate-300" />
                 </td>
                 {innings.map((inning, index) => {
                   const val = inning[key];

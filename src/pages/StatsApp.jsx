@@ -7,7 +7,7 @@ import {
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
 } from '../utils/mlbHelpers';
-import { TabBar, Select, stickyTeamHeadAfterRank, stickyTeamCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TabBar, Select, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import {
@@ -1117,7 +1117,7 @@ export default function StatsApp() {
                   <thead>
                     <tr className="border-b border-slate-700">
                       <th className={`${stickyRankHead('bg-slate-900')} font-medium text-slate-400`}>#</th>
-                      <th className={`${stickyTeamHeadAfterRank('bg-slate-900')} font-medium text-slate-400`}>Team</th>
+                      <th className={`${stickyTeamAbbrHeadAfterRank('bg-slate-900')} font-medium text-slate-400`}>Team</th>
                       <th className={`${statHead('text-center font-medium text-slate-400')}`}>Lost</th>
                       <th className={`${statHead('text-center font-medium text-slate-400')}`}>OPS</th>
                       <th className={`${statHead('text-center font-medium text-slate-400')}`}>ERA</th>
@@ -1128,8 +1128,8 @@ export default function StatsApp() {
                     {exodusRankings.map((team, i) => (
                       <tr key={team.teamId} className="group border-b border-slate-700 last:border-none hover:bg-slate-800/50">
                         <td className={`${stickyRankCell('bg-slate-900')} font-mono font-bold text-${THEME_COLOR}-400`}>{i + 1}</td>
-                        <td className={stickyTeamCellAfterRank('bg-slate-900')}>
-                          <TeamAbbrCell teamId={team.teamId} teamName={team.teamName} size="sm" nameClassName="text-xs font-semibold" />
+                        <td className={stickyTeamAbbrCellAfterRank('bg-slate-900')}>
+                          <TeamAbbrCell teamId={team.teamId} teamName={team.teamName} abbrOnly size="sm" abbrClassName="text-xs font-semibold" />
                         </td>
                         <td className={statCell('text-center')}>{team.lostPlayers}</td>
                         <td className={statCell(`text-center text-${THEME_COLOR}-300`)}>{team.avgOPS}</td>
