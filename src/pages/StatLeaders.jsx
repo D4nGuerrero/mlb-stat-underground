@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { SegmentedControl, Select } from '../components/ui';
+import { SegmentedControl, Select, stickyTeamHeadAfterRank, stickyTeamCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
+import TeamAbbrCell from '../components/TeamAbbrCell';
 
 const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => ({
   value: String(y),
@@ -421,18 +423,16 @@ export default function StatLeaders() {
 
         {/* ESPN-style team stats table */}
         {isTeam && !isLoading && !error && rankedTeamStats.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[960px]">
+          <div className={TABLE_SCROLL}>
+            <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/40">
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-400 w-10 sticky left-0 bg-slate-900 z-10">RK</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-400 min-w-[180px] sticky left-10 bg-slate-900 z-10">Team</th>
+                  <th className={`${stickyRankHead('bg-slate-900')} font-semibold text-slate-400`}>RK</th>
+                  <th className={`${stickyTeamHeadAfterRank('bg-slate-900')} font-semibold text-slate-400`}>Team</th>
                   {teamCols.map((col) => (
                     <th
                       key={col.key}
-                      className={`px-2 py-2.5 text-xs font-semibold cursor-pointer select-none whitespace-nowrap text-right transition-colors ${
-                        teamSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                      className={`${statHead(`font-semibold cursor-pointer select-none transition-colors ${teamSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
                       onClick={() => handleTeamSort(col.key)}
                     >
                       {col.label}
@@ -447,29 +447,17 @@ export default function StatLeaders() {
                 {rankedTeamStats.map((row) => (
                   <tr
                     key={row.team?.id}
-                    className="border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer"
+                    className="group border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer"
                     onClick={() => navigate(`/team/${row.team?.id}`)}
                   >
-                    <td className="px-3 py-2 font-mono text-xs text-slate-500 sticky left-0 bg-slate-900">{row.rank}</td>
-                    <td className="px-3 py-2 sticky left-10 bg-slate-900">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <img
-                          src={teamLogoUrl(row.team?.id)}
-                          alt=""
-                          className="w-7 h-7 object-contain flex-shrink-0"
-                          onError={(e) => (e.target.style.display = 'none')}
-                        />
-                        <span className={`font-medium text-sm truncate hover:text-${THEME_COLOR}-400 transition-colors`}>
-                          {row.team?.name ?? '—'}
-                        </span>
-                      </div>
+                    <td className={`${stickyRankCell('bg-slate-900')} font-mono text-xs text-slate-500`}>{row.rank}</td>
+                    <td className={stickyTeamCellAfterRank('bg-slate-900')}>
+                      <TeamAbbrCell team={row.team} size="sm" abbrClassName="text-[10px] font-medium" nameClassName="text-xs font-medium" />
                     </td>
                     {teamCols.map((col) => (
                       <td
                         key={col.key}
-                        className={`px-2 py-2 text-right font-mono text-xs tabular-nums ${
-                          teamSortCol === col.key ? `text-${THEME_COLOR}-300` : 'text-slate-300'
-                        }`}
+                        className={`${statCell(teamSortCol === col.key ? `text-${THEME_COLOR}-300` : '')}`}
                       >
                         {formatValue(row.stat?.[col.key], col.format)}
                       </td>

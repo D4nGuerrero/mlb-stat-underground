@@ -33,13 +33,61 @@ export const mlbTeams = [
   { id: 120, name: 'Washington Nationals', abbr: 'WSH' },
 ];
 
+const TEAM_ABBR_BY_ID = Object.fromEntries(mlbTeams.map((t) => [t.id, t.abbr]));
+
+/** Resolve a 3-letter team abbreviation from a team object or team id. */
+export function getTeamAbbr(teamOrId) {
+  if (teamOrId == null) return '—';
+  if (typeof teamOrId === 'number') return TEAM_ABBR_BY_ID[teamOrId] ?? '—';
+  if (typeof teamOrId === 'string' && /^\d+$/.test(teamOrId)) {
+    return TEAM_ABBR_BY_ID[Number(teamOrId)] ?? '—';
+  }
+  const team = teamOrId;
+  if (!team?.id) return team?.abbreviation ?? '—';
+  return team.abbreviation ?? TEAM_ABBR_BY_ID[team.id] ?? team.name?.split(' ').pop() ?? '—';
+}
+
 // export const teamLogoUrl = (teamId) =>
 //   `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${teamId}.svg`;
 
 
-// team logo dark mode and light mode
-export const teamLogoUrl = (teamId, darkmode = true) =>
-  `https://www.mlbstatic.com/team-logos/${darkmode ? 'team-cap-on-dark/' : ''}${teamId}.svg`;
+
+
+const BASE_URL = 'https://www.mlbstatic.com/team-logos';
+
+/**
+ * Get MLB team logo URL
+ * @param {number|string} teamId 
+ * @param {object} options
+ * @param {boolean} options.preferDark - true = try cap-on-dark first (default)
+ * @param {boolean} options.forceRegular - force regular logo (overrides preferDark)
+ */
+export const teamLogoUrl = (teamId, options = {}) => {
+  const { preferDark = true, forceRegular = false } = options;
+  const id = String(teamId).trim();
+
+  if (!id) return '';
+
+  // Teams that look better with the regular (non-cap) logo
+  const regularPreferredTeams = new Set([
+    110, // Baltimore Orioles
+    121, // New York Mets
+    134, // Pittsburgh Pirates
+    138, // St. Louis Cardinals
+    141, // Toronto Blue Jays
+    // Add more teams here as you find them
+  ]);
+
+  const shouldUseRegular = forceRegular || regularPreferredTeams.has(Number(id));
+
+  if (shouldUseRegular) {
+    return `${BASE_URL}/${id}.svg`;
+  }
+
+  // Default: cap-on-dark
+  return `${BASE_URL}/team-cap-on-dark/${id}.svg`;
+};
+  
 
 // export const playerHeadshotUrl = (playerId) =>
 // `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`

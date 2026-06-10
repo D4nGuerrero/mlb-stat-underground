@@ -7,7 +7,9 @@ import {
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
 } from '../utils/mlbHelpers';
-import { TabBar, Select } from '../components/ui';
+import { TabBar, Select, stickyTeamHeadAfterRank, stickyTeamCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
+import TeamAbbrCell from '../components/TeamAbbrCell';
 import {
   enrichMoversWithDeltaScores,
   formatDeltaScore,
@@ -1110,38 +1112,34 @@ export default function StatsApp() {
 
           {exodusRankings.length > 0 && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-700">
-                    <th className="text-left px-6 py-4 text-xs font-medium text-slate-400">RANK</th>
-                    <th className="text-left px-6 py-4 text-xs font-medium text-slate-400">TEAM</th>
-                    <th className="text-center px-6 py-4 text-xs font-medium text-slate-400">PLAYERS LOST</th>
-                    <th className="text-center px-6 py-4 text-xs font-medium text-slate-400">HITTERS AVG OPS</th>
-                    <th className="text-center px-6 py-4 text-xs font-medium text-slate-400">PITCHERS AVG ERA</th>
-                    <th className="text-right px-6 py-4 text-xs font-medium text-slate-400">EXODUS SCORE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exodusRankings.map((team, i) => (
-                    <tr key={team.teamId} className="border-b border-slate-700 last:border-none hover:bg-slate-800/50">
-                      <td className={`px-6 py-4 font-mono text-lg font-bold text-${THEME_COLOR}-400`}>{i + 1}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <img src={team.logo} alt="" className="w-8 h-8 object-contain" />
-                          <div>
-                            <div className="font-semibold">{team.teamName}</div>
-                            <div className="text-xs text-slate-400">{team.abbr}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center font-mono">{team.lostPlayers}</td>
-                      <td className={`px-6 py-4 text-center font-mono text-${THEME_COLOR}-300`}>{team.avgOPS}</td>
-                      <td className="px-6 py-4 text-center font-mono text-rose-300">{team.avgERA}</td>
-                      <td className="px-6 py-4 text-right font-mono font-bold text-rose-400">{team.exodusScore}</td>
+              <div className={TABLE_SCROLL}>
+                <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+                  <thead>
+                    <tr className="border-b border-slate-700">
+                      <th className={`${stickyRankHead('bg-slate-900')} font-medium text-slate-400`}>#</th>
+                      <th className={`${stickyTeamHeadAfterRank('bg-slate-900')} font-medium text-slate-400`}>Team</th>
+                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>Lost</th>
+                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>OPS</th>
+                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>ERA</th>
+                      <th className={`${statHead('text-right font-medium text-slate-400')}`}>Score</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {exodusRankings.map((team, i) => (
+                      <tr key={team.teamId} className="group border-b border-slate-700 last:border-none hover:bg-slate-800/50">
+                        <td className={`${stickyRankCell('bg-slate-900')} font-mono font-bold text-${THEME_COLOR}-400`}>{i + 1}</td>
+                        <td className={stickyTeamCellAfterRank('bg-slate-900')}>
+                          <TeamAbbrCell teamId={team.teamId} teamName={team.teamName} size="sm" nameClassName="text-xs font-semibold" />
+                        </td>
+                        <td className={statCell('text-center')}>{team.lostPlayers}</td>
+                        <td className={statCell(`text-center text-${THEME_COLOR}-300`)}>{team.avgOPS}</td>
+                        <td className={statCell('text-center text-rose-300')}>{team.avgERA}</td>
+                        <td className={statCell('text-right font-bold text-rose-400')}>{team.exodusScore}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

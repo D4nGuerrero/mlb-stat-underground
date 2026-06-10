@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { TabBar, Select, SegmentedControl } from '../components/ui';
+import { TabBar, Select, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 
 const SEASON = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: SEASON - 2002 + 1 }, (_, i) => {
@@ -27,6 +28,27 @@ const fmtDate = (d) => {
 const fmtGameTime = (gameDate) => {
   if (!gameDate) return 'TBD';
   return new Date(gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+};
+
+const formatCalendarGameLabel = (g, teamId) => {
+  const home = g.teams?.home;
+  const away = g.teams?.away;
+  const isHome = home?.team?.id?.toString() === teamId?.toString();
+  const isFinal = g.status?.abstractGameState === 'Final';
+  const isLive = g.status?.abstractGameState === 'Live';
+
+  if (isFinal) {
+    const homeWin = (home?.score ?? 0) > (away?.score ?? 0);
+    const awayWin = (away?.score ?? 0) > (home?.score ?? 0);
+    const won = isHome ? homeWin : awayWin;
+    const wl = won ? 'W' : 'L';
+    const score = isHome
+      ? `${home?.score ?? 0}-${away?.score ?? 0}`
+      : `${away?.score ?? 0}-${home?.score ?? 0}`;
+    return { text: `${wl} ${score}`, type: won ? 'win' : 'loss' };
+  }
+  if (isLive) return { text: 'LIVE', type: 'live' };
+  return { text: fmtGameTime(g.gameDate), type: 'upcoming' };
 };
 const fmt = (v, dec = 3) => {
   if (v == null || v === '') return '–';
@@ -108,17 +130,15 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
   });
 
   return (
-    <div className="overflow-x-auto -mx-1 px-1 scrollbar-thin">
-
-      {/* TEAM STATS TABLE */}
-      <table className="w-full text-sm min-w-[640px]">
+    <div className={`${TABLE_SCROLL} -mx-1 px-1 scrollbar-thin`}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
         <thead>
           <tr className="border-b border-slate-700/60">
-            <th className="text-left px-3 py-2.5 text-slate-400 font-medium text-xs sticky left-0 bg-[#121827] z-10 min-w-[148px]">Player</th>
+            <th className={`${stickyHead('bg-[#121827]')} text-slate-400 font-medium`}>Player</th>
             {cols.map((c) => (
               <th
                 key={c.key}
-                className={`px-2 py-2.5 text-xs font-medium cursor-pointer select-none whitespace-nowrap text-right ${sortCol === c.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`}
+                className={`${statHead(`font-medium cursor-pointer select-none ${sortCol === c.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
                 onClick={() => handleSort(c.key)}
               >
                 {c.label}
@@ -133,22 +153,20 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
             const playerId = person?.[idKey] ?? person?.id;
             const pos = row.position?.abbreviation ?? row.position?.name ?? person?.primaryPosition?.abbreviation;
             return (
-              <tr key={playerId ?? i} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-                <td className="px-3 py-2 sticky left-0 bg-[#121827] z-10">
-                  <div className="flex items-center gap-2.5">
-                    
-                    <div className="min-w-0">
-                      <Link to={`/player/${playerId}`} className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block truncate`}>
-                        {person?.[nameKey] ?? person?.fullName ?? '—'}
-                      </Link>
-                      {pos && <span className="text-[10px] text-slate-500">{pos}</span>}
-                    </div>
+              <tr key={playerId ?? i} className="group border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
+                <td className={stickyCell('bg-[#121827]')}>
+                  <div className="min-w-0">
+                    <Link to={`/player/${playerId}`} className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block whitespace-nowrap`}>
+                      <span className="sm:hidden">{person?.[nameKey]?.split(' ').pop() ?? person?.fullName?.split(' ').pop() ?? '—'}</span>
+                      <span className="hidden sm:inline">{person?.[nameKey] ?? person?.fullName ?? '—'}</span>
+                    </Link>
+                    {pos && <span className="text-[10px] text-slate-500">{pos}</span>}
                   </div>
                 </td>
                 {cols.map((c) => {
                   const raw = row.stat?.[c.key] ?? row[c.key];
                   return (
-                    <td key={c.key} className={`px-2 py-2 text-right font-mono text-xs tabular-nums ${sortCol === c.key ? `text-${THEME_COLOR}-300` : 'text-slate-300'}`}>
+                    <td key={c.key} className={statCell(sortCol === c.key ? `text-${THEME_COLOR}-300` : '')}>
                       {c.dec === -1 ? (raw ?? '–') : fmt(raw, c.dec)}
                     </td>
                   );
@@ -233,7 +251,7 @@ function StatsTab({ teamId, season }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-5">
+      <div className="flex flex-wrap gap-2 my-4">
         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
           <SegmentedControl
             value={sub}
@@ -360,13 +378,14 @@ function ScheduleTab({ teamId, season }) {
   const buildMonthGrid = (monthStr) => {
     const [yy, mm] = monthStr.split('-').map((x) => Number(x));
     const first = new Date(yy, mm - 1, 1);
+    const last = new Date(yy, mm, 0);
     const start = new Date(first);
     start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
     const days = [];
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      days.push(d);
+    const cursor = new Date(start);
+    while (cursor <= last) {
+      days.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
     }
     const gamesForMonth = gamesByMonth[monthStr] ?? [];
     const byDate = {};
@@ -384,7 +403,7 @@ function ScheduleTab({ teamId, season }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 my-4">
         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
           <SegmentedControl
             value={view}
@@ -440,7 +459,7 @@ function ScheduleTab({ teamId, season }) {
                 <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name}</div>
                 <div className="text-right flex-shrink-0 text-sm">
                   {isFinal ? (
-                    <span className={`font-semibold tabular-nums ${isHome ? (homeWin ? `text-${THEME_COLOR}-400` : 'text-red-400') : (awayWin ? `text-${THEME_COLOR}-400` : 'text-red-400')}`}>
+                    <span className={`font-semibold tabular-nums ${isHome ? (homeWin ? `text-emerald-400` : 'text-red-400') : (awayWin ? `text-emerald-400` : 'text-red-400')}`}>
                       {isHome ? (homeWin ? 'W' : 'L') : (awayWin ? 'W' : 'L')}{' '}
                       {isHome ? `${home?.score}-${away?.score}` : `${away?.score}-${home?.score}`}
                     </span>
@@ -463,7 +482,7 @@ function ScheduleTab({ teamId, season }) {
         const monthIdx = monthDate.getMonth();
 
         return (
-          <div className="border border-slate-700/60 rounded-2xl overflow-hidden overflow-x-auto">
+         <div className="border-t border-t-slate-700/60 sm:border sm:border-slate-700/60 sm:rounded-2xl overflow-hidden overflow-x-auto">
             <div className="min-w-[320px]">
               <div className="grid grid-cols-7 border-b border-slate-800/60">
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
@@ -481,13 +500,13 @@ function ScheduleTab({ teamId, season }) {
                   return (
                     <div
                       key={key}
-                      className={`min-h-[108px] sm:min-h-[128px] border-b border-r border-slate-800/50 p-1 sm:p-1.5 flex flex-col ${inMonth ? '' : 'opacity-35'} ${isToday ? `bg-${THEME_COLOR}-500/[0.06]` : ''}`}
+                      className={`aspect-square sm:aspect-auto sm:min-h-[128px] border-b border-r border-slate-800/50 p-0.5 sm:p-1.5 flex flex-col overflow-hidden ${inMonth ? '' : 'opacity-35'} ${isToday ? `bg-${THEME_COLOR}-500/[0.06]` : ''}`}
                     >
-                      <div className={`text-[10px] sm:text-[11px] font-mono leading-none mb-1 ${isToday ? `text-${THEME_COLOR}-300` : 'text-slate-400'}`}>
-                        {d.getDate()}
+                      <div className={`text-[9px] sm:text-[11px] font-mono leading-none mb-0.5 sm:mb-1 flex-shrink-0 ${isToday ? `text-${THEME_COLOR}-300` : 'text-slate-400'}`}>
+                        {inMonth ? d.getDate() : ''}
                       </div>
-                      <div className="flex-1 flex flex-col gap-1">
-                        {dayGames.slice(0, 2).map((g) => {
+                      <div className="flex-1 flex flex-col gap-0.5 sm:gap-1 min-h-0">
+                        {dayGames.slice(0, 2).map((g, gi) => {
                           const home = g.teams?.home;
                           const away = g.teams?.away;
                           const isHome = home?.team?.id?.toString() === teamId?.toString();
@@ -497,41 +516,48 @@ function ScheduleTab({ teamId, season }) {
                           const homeWin = isFinal && home?.score > away?.score;
                           const awayWin = isFinal && away?.score > home?.score;
                           const won = isHome ? homeWin : awayWin;
-                          const timeLabel = isLive
-                            ? 'LIVE'
-                            : fmtGameTime(g.gameDate);
+                          const gameLabel = formatCalendarGameLabel(g, teamId);
                           return (
                             <button
                               key={g.gamePk}
                               type="button"
                               onClick={() => navigate(`/game/${g.gamePk}`)}
-                              className={`w-full flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[44px] sm:min-h-[52px] rounded-lg px-1 py-1 transition-colors ${
+                              className={`w-full flex-1 flex flex-col items-center justify-between gap-0 min-h-0 sm:min-h-[52px] rounded sm:rounded-lg px-0.5 py-0.5 sm:px-1 sm:py-1 transition-colors ${gi > 0 ? 'hidden sm:flex' : ''} ${
                                 isFinal
                                   ? won
-                                    ? `bg-${THEME_COLOR}-500/10 hover:bg-${THEME_COLOR}-500/20 border border-${THEME_COLOR}-500/25`
+                                    ? `bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25`
                                     : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/25'
                                   : isLive
                                   ? 'bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30'
                                   : 'bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/50'
                               }`}
-                              title={`${isHome ? 'vs' : '@'} ${opp?.team?.name ?? 'Opponent'} · ${timeLabel}`}
+                              title={`${isHome ? 'vs' : '@'} ${opp?.team?.name ?? 'Opponent'} · ${gameLabel.text}`}
                             >
                               <img
                                 src={teamLogoUrl(opp?.team?.id)}
                                 alt={opp?.team?.name ?? 'Opponent'}
-                                className="w-9 h-9 sm:w-11 sm:h-11 object-contain flex-shrink-0 drop-shadow-sm"
+                                className="w-7 h-7 sm:w-11 sm:h-11 object-contain flex-shrink-0 drop-shadow-sm"
                                 onError={(e) => (e.target.style.display = 'none')}
                               />
-                              <span className={`text-[9px] sm:text-[10px] font-semibold tabular-nums leading-none ${
-                                isLive ? 'text-yellow-300' : isFinal ? 'text-slate-400' : 'text-slate-400'
-                              }`}>
-                                {timeLabel}
+                              <span
+                                className={[
+                                  'text-[9px] sm:text-[10px] font-semibold tabular-nums leading-none flex-shrink-0',
+                                  gameLabel.type === 'win' ? `text-emerald-400`
+                                    : gameLabel.type === 'loss' ? 'text-red-400'
+                                    : gameLabel.type === 'live' ? 'text-yellow-300'
+                                    : 'text-slate-400',
+                                ].join(' ')}
+                              >
+                                {gameLabel.text}
                               </span>
                             </button>
                           );
                         })}
+                        {dayGames.length > 1 && (
+                          <div className="sm:hidden text-[7px] text-slate-500 text-center leading-none">+{dayGames.length - 1}</div>
+                        )}
                         {dayGames.length > 2 && (
-                          <div className="text-[8px] sm:text-[9px] text-slate-500 text-center">+{dayGames.length - 2}</div>
+                          <div className="hidden sm:block text-[9px] text-slate-500 text-center">+{dayGames.length - 2}</div>
                         )}
                       </div>
                     </div>
@@ -674,25 +700,25 @@ function SplitsTab({ teamId, season }) {
   const SPLIT_LABELS = { vl: 'vs LHP', vr: 'vs RHP', h: 'Home', a: 'Away' };
 
   return (
-    <div className="overflow-x-auto -mx-1 px-1">
-      <table className="w-full text-sm min-w-[520px]">
+    <div className={`${TABLE_SCROLL} -mx-1 px-1`}>
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
         <thead>
           <tr className="border-b border-slate-700/60">
-            <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Split</th>
+            <th className={`${stickyHead('bg-[#121827]')} text-slate-400 font-medium`}>Split</th>
             {['G', 'AB', 'H', 'HR', 'RBI', 'AVG', 'OBP', 'SLG', 'OPS'].map((c) => (
-              <th key={c} className="px-2 py-2 text-xs font-medium text-slate-400 text-right">{c}</th>
+              <th key={c} className={statHead('font-medium text-slate-400')}>{c}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {(splits ?? []).map((s, i) => (
-            <tr key={i} className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-              <td className="px-3 py-2 text-xs font-medium text-slate-300">{SPLIT_LABELS[s.split?.code] ?? s.split?.description ?? s.split?.code}</td>
+            <tr key={i} className="group border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
+              <td className={`${stickyCell('bg-[#121827]')} text-xs font-medium text-slate-300`}>{SPLIT_LABELS[s.split?.code] ?? s.split?.description ?? s.split?.code}</td>
               {[
                 ['gamesPlayed', 0], ['atBats', 0], ['hits', 0], ['homeRuns', 0], ['rbi', 0],
                 ['avg', 3], ['obp', 3], ['slg', 3], ['ops', 3],
               ].map(([key, dec]) => (
-                <td key={key} className="px-2 py-2 text-right font-mono text-xs tabular-nums text-slate-300">{fmt(s.stat?.[key], dec)}</td>
+                <td key={key} className={statCell()}>{fmt(s.stat?.[key], dec)}</td>
               ))}
             </tr>
           ))}
@@ -953,7 +979,7 @@ export default function TeamPage() {
           ))}
         </div>
 
-        <div className="px-5 sm:px-8 py-5 sm:py-6">
+        <div className=" sm:px-8 py-5 sm:py-6">
           <TabBar variant="page" tabs={TABS} activeKey={activeTab} onChange={setActiveTab}>
             {(key) => {
               if (key === 'stats') return <StatsTab teamId={teamId} season={season} />;

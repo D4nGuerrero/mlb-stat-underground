@@ -1,6 +1,8 @@
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
 import { THEME_COLOR } from '../../theme/theme.js';
-import { SegmentedControl } from '../../components/ui';
+import { SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../../components/ui';
+import { TABLE_TEXT_CLASS } from '../../theme/tableTheme';
+import TeamAbbrCell from '../../components/TeamAbbrCell';
 import { DEFAULT_PARK, PARK_FACTORS, PITCH_DEFS, PITCH_RESULT_BG, PITCH_RESULT_LABELS } from '../constants';
 
 export const teamLogoUrl = (id) => `https://www.mlbstatic.com/team-logos/team-cap-on-light/${id}.svg`;
@@ -107,7 +109,9 @@ export function InningBox({ innings, awayTeam, homeTeam, lineHits, lineErrors })
             const errors = lineErrors?.[key] ?? 0;
             return (
               <tr key={key} className="border-t border-slate-800">
-                <td className="px-2 py-2 text-left text-slate-300 font-semibold sticky left-0 bg-slate-900 z-10">{team.abbr}</td>
+                <td className="px-2 py-2 text-left sticky left-0 bg-slate-900 z-10">
+                  <TeamAbbrCell team={team} size="sm" abbrClassName="text-xs font-semibold text-slate-300" />
+                </td>
                 {innings.map((inning, index) => {
                   const val = inning[key];
                   const skipped = key === 'home' && inning.homeSkipped;
@@ -212,28 +216,31 @@ export function AtBatCard({ play, index }) {
 function PitcherBox({ lines, title }) {
   if (!lines?.length) return null;
   return (
-    <div className="overflow-x-auto mt-4">
+    <div className={`${TABLE_SCROLL} mt-4`}>
       <div className="text-slate-500 text-[10px] font-mono uppercase tracking-wider px-2 pb-1">{title} Pitching</div>
-      <table className="w-full text-xs min-w-[380px]">
+      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
         <thead>
           <tr className="text-slate-600 border-b border-slate-800">
-            {['Pitcher', 'IP', 'H', 'R', 'ER', 'BB', 'K', 'HR', 'PC'].map((label) => (
-              <th key={label} className="px-2 py-1 text-center font-mono text-[10px]">{label}</th>
+            {['Pitcher', 'IP', 'H', 'R', 'ER', 'BB', 'K', 'HR', 'PC'].map((label, i) => (
+              <th key={label} className={i === 0 ? `${stickyHead('bg-slate-900')} font-mono` : statHead('text-center font-mono')}>{label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {lines.map((line, index) => (
-            <tr key={index} className="border-t border-slate-800/50 hover:bg-slate-800/20">
-              <td className="px-2 py-1.5 text-left text-slate-300 font-medium">{line.name?.split(' ').pop() || '—'}</td>
-              <td className="px-2 py-1.5 text-center text-slate-300 font-mono font-semibold">{line.ip}</td>
-              <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{line.h}</td>
-              <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{line.r}</td>
-              <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{line.er}</td>
-              <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{line.bb}</td>
-              <td className="px-2 py-1.5 text-center text-green-400 font-mono font-semibold">{line.k}</td>
-              <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{line.hr || '—'}</td>
-              <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{line.pc}</td>
+            <tr key={index} className="group border-t border-slate-800/50 hover:bg-slate-800/20">
+              <td className={`${stickyCell('bg-slate-900')} text-slate-300 font-medium`}>
+                <span className="sm:hidden">{line.name?.split(' ').pop() || '—'}</span>
+                <span className="hidden sm:inline whitespace-nowrap">{line.name || '—'}</span>
+              </td>
+              <td className={statCell('text-slate-300 font-semibold')}>{line.ip}</td>
+              <td className={statCell('text-slate-400')}>{line.h}</td>
+              <td className={statCell('text-slate-400')}>{line.r}</td>
+              <td className={statCell('text-slate-400')}>{line.er}</td>
+              <td className={statCell('text-slate-400')}>{line.bb}</td>
+              <td className={statCell('text-green-400 font-semibold')}>{line.k}</td>
+              <td className={statCell('text-slate-400')}>{line.hr || '—'}</td>
+              <td className={statCell('text-slate-400')}>{line.pc}</td>
             </tr>
           ))}
         </tbody>
@@ -256,36 +263,39 @@ export function BoxScore({ players, teamName, pitcherLines }) {
 
   return (
     <div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs min-w-[480px]">
+      <div className={TABLE_SCROLL}>
+        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
           <thead>
             <tr className="text-slate-600 border-b border-slate-800">
-              <th className="px-2 py-1.5 text-left font-mono text-[10px] sticky left-0 bg-slate-900">{teamName}</th>
+              <th className={`${stickyHead('bg-slate-900')} font-mono`}>{teamName}</th>
               {['AB', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'K', 'AVG', 'OBP', 'SLG', 'EV'].map((label) => (
-                <th key={label} className="px-2 py-1.5 text-center font-mono text-[10px]">{label}</th>
+                <th key={label} className={statHead('text-center font-mono')}>{label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {players.map((player) => (
-              <tr key={player.id} className="border-t border-slate-800/50 hover:bg-slate-800/20">
-                <td className="px-2 py-1.5 sticky left-0 bg-slate-900">
+              <tr key={player.id} className="group border-t border-slate-800/50 hover:bg-slate-800/20">
+                <td className={stickyCell('bg-slate-900')}>
                   <span className="text-slate-500 font-mono text-[10px] w-4 inline-block text-center mr-1">{player.lineupSlot || ''}</span>
-                  <span className="text-slate-300 font-medium">{player.name.split(' ').pop()}</span>
+                  <span className="text-slate-300 font-medium whitespace-nowrap">
+                    <span className="sm:hidden">{player.name.split(' ').pop()}</span>
+                    <span className="hidden sm:inline">{player.name}</span>
+                  </span>
                   <span className={`text-${THEME_COLOR}-600/80 text-[10px] ml-1 font-mono`}>{player.gamePos || player.pos}</span>
                 </td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.ab}</td>
-                <td className="px-2 py-1.5 text-center text-slate-300 font-mono font-semibold">{player.h}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.d || '—'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.t || '—'}</td>
-                <td className={`px-2 py-1.5 text-center font-mono font-semibold ${player.hr > 0 ? 'text-yellow-400' : 'text-slate-600'}`}>{player.hr || '—'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.rbi}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.bb || '—'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.k || '—'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.avg || '.000'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.obp || '.000'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-400 font-mono">{player.slg || '.000'}</td>
-                <td className="px-2 py-1.5 text-center text-slate-500 font-mono text-[10px]">{player.avgEV ?? '—'}</td>
+                <td className={statCell('text-slate-400')}>{player.ab}</td>
+                <td className={statCell('text-slate-300 font-semibold')}>{player.h}</td>
+                <td className={statCell('text-slate-400')}>{player.d || '—'}</td>
+                <td className={statCell('text-slate-400')}>{player.t || '—'}</td>
+                <td className={statCell(`font-semibold ${player.hr > 0 ? 'text-yellow-400' : 'text-slate-600'}`)}>{player.hr || '—'}</td>
+                <td className={statCell('text-slate-400')}>{player.rbi}</td>
+                <td className={statCell('text-slate-400')}>{player.bb || '—'}</td>
+                <td className={statCell('text-slate-400')}>{player.k || '—'}</td>
+                <td className={statCell('text-slate-400')}>{player.avg || '.000'}</td>
+                <td className={statCell('text-slate-400')}>{player.obp || '.000'}</td>
+                <td className={statCell('text-slate-400')}>{player.slg || '.000'}</td>
+                <td className={statCell('text-slate-500')}>{player.avgEV ?? '—'}</td>
               </tr>
             ))}
           </tbody>
