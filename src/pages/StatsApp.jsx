@@ -869,7 +869,9 @@ export default function StatsApp() {
       {/* PLAYER SEARCH TAB */}
       {activeTab === 'search' && (
         <div className="space-y-6">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5">
+
+          {/* SEARCH BAR */}
+          <div className="">
             <form
               className="flex items-center gap-2"
               onSubmit={(e) => {

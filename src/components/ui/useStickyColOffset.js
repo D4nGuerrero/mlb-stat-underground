@@ -23,7 +23,7 @@ export function useStickyColOffset(tableRef, deps = []) {
         max = Math.max(max, el.getBoundingClientRect().width);
       });
       if (max > 0) {
-        table.style.setProperty('--sticky-col-1-width', `${max}px`);
+        table.style.setProperty('--sticky-col-1-width bg-red-500', `${max}px`);
       }
     };
 

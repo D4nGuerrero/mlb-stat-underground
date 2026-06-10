@@ -7,6 +7,8 @@ const SIZES = {
   sm: 'w-5 h-5',
   md: 'w-6 h-6',
   lg: 'w-7 h-7',
+  xl: 'w-8 h-8',
+  xxl: 'w-10 h-10',
 };
 
 /**

@@ -2,8 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { SegmentedControl, Select, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
-import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
+import {
+  SegmentedControl,
+  Select,
+  stickyTeamAbbrHeadAfterRank,
+  stickyTeamAbbrCellAfterRank,
+  stickyRankHead,
+  stickyRankCell,
+  scrollStatHead,
+  scrollStatCell,
+  TABLE_SCROLL_BODY,
+  TABLE_BASE,
+} from '../components/ui';
+import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 
 const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => ({
@@ -15,6 +26,12 @@ const LIMIT_OPTIONS = [
   { value: 25, label: 'Top 25' },
   { value: 50, label: 'Top 50' },
 ];
+
+const LEAGUE_LOGOS = {
+  all: { src: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg', alt: 'MLB' },
+  AL: { src: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg', alt: 'AL' },
+  NL: { src: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg', alt: 'NL' },
+};
 
 const HITTING_CATS = [
   { key: 'homeRuns', label: 'Home Runs', abbr: 'HR', format: 'int' },
@@ -59,7 +76,6 @@ const FIELDING_CATS = [
   { key: 'chances', label: 'Total Chances', abbr: 'TC', format: 'int' },
 ];
 
-// ESPN-style team stats table (https://www.espn.com/mlb/stats/_/view/team)
 const AL_TEAM_IDS = new Set([108, 110, 111, 114, 116, 117, 118, 133, 136, 139, 140, 141, 142, 145, 147]);
 
 const TEAM_BATTING_COLS = [
@@ -99,9 +115,33 @@ const TEAM_PITCHING_COLS = [
   { key: 'whip', label: 'WHIP', format: '2dec', lowerBetter: true },
 ];
 
+const TEAM_FIELDING_COLS = [
+  { key: 'gamesPlayed', label: 'GP', format: 'int' },
+  { key: 'gamesStarted', label: 'GS', format: 'int' },
+  { key: 'putOuts', label: 'PO', format: 'int' },
+  { key: 'assists', label: 'A', format: 'int' },
+  { key: 'errors', label: 'E', format: 'int', lowerBetter: true },
+  { key: 'fielding', label: 'FLD%', format: '3dec' },
+  { key: 'doublePlays', label: 'DP', format: 'int' },
+  { key: 'chances', label: 'TC', format: 'int' },
+];
+
+const TEAM_STAT_COLS = {
+  hitting: TEAM_BATTING_COLS,
+  pitching: TEAM_PITCHING_COLS,
+  fielding: TEAM_FIELDING_COLS,
+};
+
 const TEAM_SORT_DEFAULTS = {
-  batting: { col: 'homeRuns', dir: 'desc' },
+  hitting: { col: 'homeRuns', dir: 'desc' },
   pitching: { col: 'era', dir: 'asc' },
+  fielding: { col: 'fielding', dir: 'desc' },
+};
+
+const GROUP_CATS = {
+  hitting: HITTING_CATS,
+  pitching: PITCHING_CATS,
+  fielding: FIELDING_CATS,
 };
 
 const MEDAL = ['🥇', '🥈', '🥉'];
@@ -148,45 +188,46 @@ const rankTeams = (rows, sortCol, sortDir) => {
   });
 };
 
+function LeagueLogo({ filter }) {
+  const logo = LEAGUE_LOGOS[filter] ?? LEAGUE_LOGOS.all;
+  return (
+    <img
+      key={filter}
+      src={logo.src}
+      alt={logo.alt}
+      className="w-8 h-8 object-contain flex-shrink-0"
+    />
+  );
+}
+
 export default function StatLeaders() {
   const navigate = useNavigate();
   const cache = useRef({});
-  const [playerOrTeam, setPlayerOrTeam] = useState('player'); // 'player' | 'team'
+  const [playerOrTeam, setPlayerOrTeam] = useState('player');
   const [group, setGroup] = useState('hitting');
   const [category, setCategory] = useState('homeRuns');
   const [season, setSeason] = useState('2026');
   const [leaders, setLeaders] = useState([]);
-  const [leagueFilter, setLeagueFilter] = useState('all'); // 'all' | 'AL' | 'NL'
+  const [leagueFilter, setLeagueFilter] = useState('all');
   const [teamStats, setTeamStats] = useState([]);
-  const [teamGroup, setTeamGroup] = useState('batting');
-  const [teamLeagueFilter, setTeamLeagueFilter] = useState('all');
-  const [teamSortCol, setTeamSortCol] = useState(TEAM_SORT_DEFAULTS.batting.col);
-  const [teamSortDir, setTeamSortDir] = useState(TEAM_SORT_DEFAULTS.batting.dir);
+  const [teamGroup, setTeamGroup] = useState('hitting');
+  const [teamSortCol, setTeamSortCol] = useState(TEAM_SORT_DEFAULTS.hitting.col);
+  const [teamSortDir, setTeamSortDir] = useState(TEAM_SORT_DEFAULTS.hitting.dir);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [limit, setLimit] = useState(25);
 
   const isTeam = playerOrTeam === 'team';
-  const teamCols = teamGroup === 'batting' ? TEAM_BATTING_COLS : TEAM_PITCHING_COLS;
-  const allCats = group === 'hitting' ? HITTING_CATS : group === 'pitching' ? PITCHING_CATS : FIELDING_CATS;
+  const teamCols = TEAM_STAT_COLS[teamGroup] ?? TEAM_BATTING_COLS;
+  const allCats = GROUP_CATS[group] ?? HITTING_CATS;
 
-  const handleGroupChange = (g) => {
-    setGroup(g);
-    const cats = g === 'hitting' ? HITTING_CATS : g === 'pitching' ? PITCHING_CATS : FIELDING_CATS;
-    setCategory(cats[0].key);
-  };
-
-  useEffect(() => {
-    if (isTeam) {
-      fetchTeamStats();
-    } else {
-      fetchLeaders();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, season, group, limit, teamGroup, playerOrTeam]);
-
-  const fetchLeaders = async () => {
-    const cacheKey = `player:${group}:${category}:${season}:${limit}`;
+  const fetchLeaders = async ({
+    statGroup = group,
+    leaderCategory = category,
+    season: seasonParam = season,
+    resultLimit = limit,
+  } = {}) => {
+    const cacheKey = `player:${statGroup}:${leaderCategory}:${seasonParam}:${resultLimit}`;
     if (cache.current[cacheKey]) {
       setLeaders(cache.current[cacheKey]);
       setError(null);
@@ -196,7 +237,7 @@ export default function StatLeaders() {
     setError(null);
     setLeaders([]);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${category}&season=${season}&statGroup=${group}&leaderGameTypes=R&limit=${limit}&sportId=1&hydrate=person,team(league)`;
+      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${leaderCategory}&season=${seasonParam}&statGroup=${statGroup}&leaderGameTypes=R&limit=${resultLimit}&sportId=1&hydrate=person,team(league)`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -210,9 +251,11 @@ export default function StatLeaders() {
     }
   };
 
-  const fetchTeamStats = async () => {
-    const apiGroup = teamGroup === 'batting' ? 'hitting' : 'pitching';
-    const cacheKey = `team:${apiGroup}:${season}`;
+  const fetchTeamStats = async ({
+    statGroup = teamGroup,
+    season: seasonParam = season,
+  } = {}) => {
+    const cacheKey = `team:${statGroup}:${seasonParam}`;
     if (cache.current[cacheKey]) {
       setTeamStats(cache.current[cacheKey]);
       setError(null);
@@ -225,7 +268,7 @@ export default function StatLeaders() {
       const rows = await Promise.all(
         mlbTeams.map(async (t) => {
           const res = await fetch(
-            `https://statsapi.mlb.com/api/v1/teams/${t.id}/stats?stats=season&season=${season}&group=${apiGroup}`,
+            `https://statsapi.mlb.com/api/v1/teams/${t.id}/stats?stats=season&season=${seasonParam}&group=${statGroup}`,
           );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
@@ -244,6 +287,55 @@ export default function StatLeaders() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchLeaders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handlePlayerOrTeamChange = (opt) => {
+    setPlayerOrTeam(opt);
+    if (opt === 'team') {
+      setTeamGroup('hitting');
+      setTeamSortCol(TEAM_SORT_DEFAULTS.hitting.col);
+      setTeamSortDir(TEAM_SORT_DEFAULTS.hitting.dir);
+      fetchTeamStats({ statGroup: 'hitting' });
+    } else {
+      fetchLeaders();
+    }
+  };
+
+  const handleGroupChange = (g) => {
+    setGroup(g);
+    const cats = GROUP_CATS[g] ?? HITTING_CATS;
+    const nextCategory = cats[0].key;
+    setCategory(nextCategory);
+    fetchLeaders({ statGroup: g, leaderCategory: nextCategory });
+  };
+
+  const handleTeamGroupChange = (g) => {
+    setTeamGroup(g);
+    const defaults = TEAM_SORT_DEFAULTS[g];
+    setTeamSortCol(defaults.col);
+    setTeamSortDir(defaults.dir);
+    fetchTeamStats({ statGroup: g });
+  };
+
+  const handleSeasonChange = (s) => {
+    setSeason(s);
+    if (isTeam) fetchTeamStats({ season: s });
+    else fetchLeaders({ season: s });
+  };
+
+  const handleCategoryChange = (cat) => {
+    setCategory(cat);
+    fetchLeaders({ leaderCategory: cat });
+  };
+
+  const handleLimitChange = (n) => {
+    setLimit(n);
+    fetchLeaders({ resultLimit: n });
   };
 
   const handleTeamSort = (col) => {
@@ -266,17 +358,19 @@ export default function StatLeaders() {
   });
 
   const filteredTeamStats = teamStats.filter((row) => {
-    if (teamLeagueFilter === 'all') return true;
-    if (teamLeagueFilter === 'AL') return row.leagueId === 103;
-    if (teamLeagueFilter === 'NL') return row.leagueId === 104;
+    if (leagueFilter === 'all') return true;
+    if (leagueFilter === 'AL') return row.leagueId === 103;
+    if (leagueFilter === 'NL') return row.leagueId === 104;
     return true;
   });
 
   const rankedTeamStats = rankTeams(filteredTeamStats, teamSortCol, teamSortDir);
 
+  const teamGroupLabel = teamGroup === 'hitting' ? 'Batting' : teamGroup === 'pitching' ? 'Pitching' : 'Fielding';
+  const leagueLabel = leagueFilter === 'all' ? 'MLB' : leagueFilter;
+
   return (
     <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isTeam ? 'max-w-7xl' : 'max-w-4xl'}`}>
-      {/* Header */}
       <div className="mb-6">
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
           League Leaders
@@ -287,21 +381,11 @@ export default function StatLeaders() {
         </p>
       </div>
 
-      {/* Controls */}
       <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5 mb-6 space-y-4">
-        {/* Player / Team toggle */}
         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
           <SegmentedControl
             value={playerOrTeam}
-            onChange={(opt) => {
-              setPlayerOrTeam(opt);
-              if (opt === 'team') {
-                setTeamGroup('batting');
-                setTeamLeagueFilter('all');
-                setTeamSortCol(TEAM_SORT_DEFAULTS.batting.col);
-                setTeamSortDir(TEAM_SORT_DEFAULTS.batting.dir);
-              }
-            }}
+            onChange={handlePlayerOrTeamChange}
             variant="emerald"
             options={[
               { value: 'player', label: 'Player' },
@@ -310,82 +394,42 @@ export default function StatLeaders() {
           />
         </div>
 
-        {/* Group + season */}
         <div className="flex flex-wrap gap-3 items-center">
-          {!isTeam && (
-            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-              <SegmentedControl
-                value={group}
-                onChange={handleGroupChange}
-                options={[
-                  { value: 'hitting', label: 'hitting' },
-                  { value: 'pitching', label: 'pitching' },
-                  { value: 'fielding', label: 'fielding' },
-                ]}
-              />
-            </div>
-          )}
+          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+            <SegmentedControl
+              value={isTeam ? teamGroup : group}
+              onChange={isTeam ? handleTeamGroupChange : handleGroupChange}
+              options={[
+                { value: 'hitting', label: 'hitting' },
+                { value: 'pitching', label: 'pitching' },
+                { value: 'fielding', label: 'fielding' },
+              ]}
+            />
+          </div>
+
+          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+            <SegmentedControl
+              value={leagueFilter}
+              onChange={setLeagueFilter}
+              options={[
+                { value: 'all', label: 'MLB' },
+                { value: 'AL', label: 'AL' },
+                { value: 'NL', label: 'NL' },
+              ]}
+            />
+          </div>
+
+          <Select value={season} onChange={handleSeasonChange} options={SEASON_OPTIONS} />
 
           {!isTeam && (
-            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-              <SegmentedControl
-                value={leagueFilter}
-                onChange={setLeagueFilter}
-                options={[
-                  { value: 'all', label: 'MLB' },
-                  { value: 'AL', label: 'AL' },
-                  { value: 'NL', label: 'NL' },
-                ]}
-              />
-            </div>
-          )}
-
-          <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} />
-
-          {!isTeam && (
-            <Select value={limit} onChange={setLimit} options={LIMIT_OPTIONS} />
+            <Select value={limit} onChange={handleLimitChange} options={LIMIT_OPTIONS} />
           )}
         </div>
 
-        {/* ESPN-style team controls: Batting/Pitching + league filter */}
-        {isTeam && (
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
-              <SegmentedControl
-                value={teamGroup}
-                onChange={(g) => {
-                  setTeamGroup(g);
-                  const defaults = TEAM_SORT_DEFAULTS[g];
-                  setTeamSortCol(defaults.col);
-                  setTeamSortDir(defaults.dir);
-                }}
-                variant="emerald"
-                options={[
-                  { value: 'batting', label: 'Batting' },
-                  { value: 'pitching', label: 'Pitching' },
-                ]}
-              />
-            </div>
-
-            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-fit">
-              <SegmentedControl
-                value={teamLeagueFilter}
-                onChange={setTeamLeagueFilter}
-                options={[
-                  { value: 'all', label: 'All MLB' },
-                  { value: 'AL', label: 'American League' },
-                  { value: 'NL', label: 'National League' },
-                ]}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Category pills (player leaders only) */}
         {!isTeam && (
           <SegmentedControl
             value={category}
-            onChange={setCategory}
+            onChange={handleCategoryChange}
             variant="category"
             size="sm"
             wrap
@@ -394,45 +438,48 @@ export default function StatLeaders() {
         )}
       </div>
 
-      {/* Results card */}
       <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
-        {/* Header row */}
-        <div className="px-5 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-5 sm:px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold text-base sm:text-lg">
               {isTeam
-                ? `MLB Team ${teamGroup === 'batting' ? 'Batting' : 'Pitching'} Stats ${season}`
+                ? `${leagueLabel} Team ${teamGroupLabel} Stats ${season}`
                 : `${currentCat.label} Leaders`}
             </h2>
             <div className="text-xs text-slate-500 mt-0.5">
               {season} Regular Season
               {isTeam
-                ? ` · ${teamLeagueFilter === 'all' ? 'All MLB' : teamLeagueFilter === 'AL' ? 'American League' : 'National League'}`
+                ? ` · ${teamGroupLabel}`
                 : ` · ${group} · Top ${limit}`}
             </div>
           </div>
-          {isLoading && (
-            <div className={`w-5 h-5 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin flex-shrink-0`} />
-          )}
+
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <LeagueLogo filter={leagueFilter} />
+            {isLoading && (
+              <div className={`w-5 h-5 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
+            )}
+          </div>
         </div>
 
-        {/* Error */}
         {!isLoading && error && (
           <div className="p-8 text-center text-red-400 text-sm">{error}</div>
         )}
 
-        {/* ESPN-style team stats table */}
         {isTeam && !isLoading && !error && rankedTeamStats.length > 0 && (
-          <div className={TABLE_SCROLL}>
-            <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+          <div className={TABLE_SCROLL_BODY}>
+            <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/40">
-                  <th className={`${stickyRankHead('bg-slate-900')} font-semibold text-slate-400`}>RK</th>
-                  <th className={`${stickyTeamAbbrHeadAfterRank('bg-slate-900')} font-semibold text-slate-400`}>Team</th>
+                  <th className={`${stickyRankHead('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>RK</th>
+                  <th className={`${stickyTeamAbbrHeadAfterRank('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>Team</th>
                   {teamCols.map((col) => (
                     <th
                       key={col.key}
-                      className={`${statHead(`font-semibold cursor-pointer select-none transition-colors ${teamSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
+                      className={scrollStatHead(
+                        `font-semibold cursor-pointer select-none transition-colors ${teamSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`,
+                        { stickTop: true, bg: 'bg-slate-900' },
+                      )}
                       onClick={() => handleTeamSort(col.key)}
                     >
                       {col.label}
@@ -457,7 +504,7 @@ export default function StatLeaders() {
                     {teamCols.map((col) => (
                       <td
                         key={col.key}
-                        className={`${statCell(teamSortCol === col.key ? `text-${THEME_COLOR}-300` : '')}`}
+                        className={scrollStatCell(teamSortCol === col.key ? `text-${THEME_COLOR}-300` : '')}
                       >
                         {formatValue(row.stat?.[col.key], col.format)}
                       </td>
@@ -475,12 +522,10 @@ export default function StatLeaders() {
           </div>
         )}
 
-        {/* Empty team */}
         {isTeam && !isLoading && !error && rankedTeamStats.length === 0 && (
           <div className="p-12 text-center text-slate-500 text-sm">No team data available.</div>
         )}
 
-        {/* Player leaders */}
         {!isTeam && !isLoading && !error && leaders.length === 0 && (
           <div className="p-12 text-center text-slate-500 text-sm">
             No data available for this category / season combination.
@@ -498,7 +543,7 @@ export default function StatLeaders() {
             >
               <div className="w-8 sm:w-10 text-center flex-shrink-0">
                 {isTop3 ? (
-                  <span className="text-xl">{MEDAL[i]}</span>
+                  <span className="text-xl sm:text-[30px]">{MEDAL[i]}</span>
                 ) : (
                   <span className="font-mono text-slate-500 text-sm">{leader.rank}</span>
                 )}
@@ -507,7 +552,7 @@ export default function StatLeaders() {
               <img
                 src={playerHeadshotUrl(leader.person?.id)}
                 alt={leader.person?.fullName}
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl object-cover border border-slate-700 flex-shrink-0"
+                className="w-10 h-10 sm:w-20 sm:h-20 "
                 onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
               />
 
@@ -523,7 +568,7 @@ export default function StatLeaders() {
                     <img
                       src={teamLogoUrl(leader.team.id)}
                       alt=""
-                      className="w-4 h-4 object-contain cursor-pointer"
+                      className="w-6 h-6 object-contain cursor-pointer"
                       onClick={() => navigate(`/team/${leader.team.id}`)}
                       onError={(e) => (e.target.style.display = 'none')}
                     />
@@ -535,10 +580,10 @@ export default function StatLeaders() {
               <div className="text-right flex-shrink-0">
                 <div
                   className={`font-display tabular-nums leading-none ${
-                    i === 0 ? 'text-3xl sm:text-4xl text-yellow-400'
-                    : i === 1 ? 'text-2xl sm:text-3xl text-slate-300'
-                    : i === 2 ? 'text-2xl sm:text-3xl text-amber-600'
-                    : 'text-xl sm:text-2xl text-slate-300'
+                    i === 0 ? 'text-3xl text-5xl sm:text-6xl text-yellow-400'
+                    : i === 1 ? 'text-2xl text-4xl sm:text-5xl text-slate-300'
+                    : i === 2 ? 'text-2xl text-3xl sm:text-4xl text-amber-600'
+                    : 'text-2xl sm:text-2xl text-slate-300'
                   }`}
                 >
                   {formatValue(leader.value, currentCat.format)}
@@ -553,7 +598,7 @@ export default function StatLeaders() {
       <div className="mt-6 text-xs text-slate-600 text-center">
         Data from MLB Stats API ·{' '}
         <code className="font-mono">
-          {isTeam ? `/v1/teams/{teamId}/stats?stats=season&group=${teamGroup === 'batting' ? 'hitting' : 'pitching'}&season=${season}` : `/v1/stats/leaders?leaderCategories=${category}&season=${season}`}
+          {isTeam ? `/v1/teams/{teamId}/stats?stats=season&group=${teamGroup}&season=${season}` : `/v1/stats/leaders?leaderCategories=${category}&season=${season}`}
         </code>
       </div>
     </div>

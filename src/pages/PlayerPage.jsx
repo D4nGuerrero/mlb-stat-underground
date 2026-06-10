@@ -833,7 +833,7 @@ export default function PlayerPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto  sm:px-6  sm:py-8">
+    <div className="max-w-5xl mx-auto  sm:px-6  sm:py-8">
  
       {isLoading && (
         <div className="flex items-center justify-center py-20">
