@@ -658,7 +658,7 @@ export default function Scores() {
   return (
     <div className="max-w-7xl mx-auto  sm:px-6 py-5 sm:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 sm:mb-8">
+      <div className="flex items-center justify-between mb-6 px-4 sm:px-0 sm:mb-8 ">
         <div>
           <h1 className="font-display text-3xl sm:text-4xl tracking-tighter">Scores</h1>
           <p className="text-slate-400 text-sm sm:text-base">Real-time MLB scores — click a game to dive in</p>
@@ -672,7 +672,7 @@ export default function Scores() {
       </div>
 
       {/* Date Navigation Bar */}
-      <div className="flex items-center justify-between mb-5 sm:mb-6">
+      <div className="flex items-center justify-between mb-5 sm:mb-6  px-4 sm:px-0">
         <div className="flex items-center gap-x-2 sm:gap-x-3">
           <button
             onClick={goToPrevDay}
@@ -732,14 +732,14 @@ export default function Scores() {
       {/* Games Grid */}
       <div>
         {/* Row: label + view mode toggle */}
-        <div className="flex items-center justify-between mb-4 px-1">
+        <div className="flex items-center justify-between mb-4 px-1  px-4 sm:px-0">
           <div className="font-semibold flex items-center gap-x-2">
             <i className={`fa-solid fa-baseball-ball text-${THEME_COLOR}-400`} />
             {isToday(selectedDate)
               ? "Today's Games"
               : `Games on ${formatDisplayDate(selectedDate)}`}
           </div>
-          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 gap-0.5">
+          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 gap-0.5 ">
             <SegmentedControl
               value={viewMode}
               onChange={setViewMode}

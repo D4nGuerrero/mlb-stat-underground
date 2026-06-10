@@ -31,8 +31,8 @@ export const TABLE_PAD = {
 export const TABLE_PAD_SCROLL = {
   statX: 'px-2',
   statY: 'py-2',
-  stickyX: 'px-3 pr-3',
-  stickyY: 'py-2 sm:py-2.5',
+  stickyX: 'px-3',
+  stickyY: ' sm:py-1',
 };
 
 /**

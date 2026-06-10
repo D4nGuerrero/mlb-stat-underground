@@ -418,9 +418,9 @@ export default function Standings() {
         <TeamAbbrCell
           teamId={team.teamId}
           teamName={team.teamName}
-          size="sm"
+          size="xxl"
           abbrClassName="text-[10px] font-medium"
-          nameClassName="text-xs font-medium"
+          nameClassName="text-[20px] font-medium"
         />
         {(team.clinched || team.divisionChamp) && (
           <span className={`hidden sm:block text-[10px] text-${THEME_COLOR}-400 font-semibold mt-0.5`}>
@@ -564,7 +564,7 @@ export default function Standings() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto sm:px-6 py-6 sm:py-8">
+    <div className="max-w-7xl mx-auto sm:px-6 py-6 sm:py-8 max-w-3xl">
       <div className="mb-6 px-3 sm:px-0">
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
           MLB Standings

@@ -24,7 +24,7 @@ export const TABLE_BASE = 'w-full border-separate border-spacing-0';
 export const TABLE_BASE_STICKY = TABLE_BASE;
 
 /** Vertical + horizontal scroll for long stat tables */
-export const TABLE_SCROLL_BODY = 'max-h-[70vh] overflow-auto -mx-1 rounded-xl border border-slate-800/60 scrollbar-thin';
+export const TABLE_SCROLL_BODY = ' overflow-auto -mx-1 rounded-xl border border-slate-800/60 scrollbar-thin';
 /** @deprecated use TABLE_TEXT_CLASS from theme/tableTheme.js */
 export const TABLE_COMPACT = TABLE_TEXT_CLASS;
 export const TABLE_LAYOUT = TABLE_LAYOUT_CLASS;
@@ -108,16 +108,27 @@ export function scrollStickyCell(bg = 'bg-slate-900', opts = {}) {
 }
 
 /** Narrow rank/index column pinned before a sticky label column. */
-export function stickyRankHead(bg = 'bg-slate-900', left = 'left-0') {
-  return `sticky z-20 whitespace-nowrap w-6 min-w-[1.5rem] px-0.5 py-1 text-center ${TABLE_TEXT_CLASS} ${left} ${bg}`;
+export function stickyRankHead(bg = 'bg-slate-900', opts = {}) {
+  const resolved = typeof opts === 'string' ? { left: opts } : opts;
+  const { left = 'left-0', stickTop = false } = resolved;
+  return [
+    'sticky whitespace-nowrap w-7 min-w-[1.75rem] px-1 py-2 text-center',
+    TABLE_TEXT_CLASS,
+    left,
+    bg,
+    stickTop ? 'top-0 z-40' : 'z-20',
+    stickTop ? STICKY_SHADOW : '',
+  ].filter(Boolean).join(' ');
 }
 
-export function stickyRankCell(bg = 'bg-slate-900', left = 'left-0') {
-  return `sticky z-20 whitespace-nowrap w-6 min-w-[1.5rem] px-0.5 py-1 text-center ${TABLE_TEXT_CLASS} ${left} ${bg} ${STICKY_CELL_BG.hover}`;
+export function stickyRankCell(bg = 'bg-slate-900', opts = {}) {
+  const resolved = typeof opts === 'string' ? { left: opts } : opts;
+  const { left = 'left-0' } = resolved;
+  return `sticky z-20 whitespace-nowrap w-7 min-w-[1.75rem] px-1 py-2 text-center ${TABLE_TEXT_CLASS} ${left} ${bg} ${STICKY_CELL_BG.hover}`;
 }
 
 /** Sticky team column after a w-6 rank column — offset + team width */
-export const STICKY_AFTER_RANK = 'left-6';
+export const STICKY_AFTER_RANK = 'left-7';
 
 export function stickyTeamHeadAfterRank(bg = 'bg-slate-900') {
   return stickyTeamHead(bg, { left: STICKY_AFTER_RANK });
@@ -128,8 +139,8 @@ export function stickyTeamCellAfterRank(bg = 'bg-slate-900', opts = {}) {
 }
 
 /** Narrow abbr team column after rank — stat leaders, stats center */
-export function stickyTeamAbbrHeadAfterRank(bg = 'bg-slate-900') {
-  return stickyBase(bg, { left: STICKY_AFTER_RANK, widthClass: TABLE_TEAM_ABBR_COL_CLASS, compact: false });
+export function stickyTeamAbbrHeadAfterRank(bg = 'bg-slate-900', opts = {}) {
+  return stickyBase(bg, { left: STICKY_AFTER_RANK, widthClass: TABLE_TEAM_ABBR_COL_CLASS, compact: false, ...opts });
 }
 
 export function stickyTeamAbbrCellAfterRank(bg = 'bg-slate-900', opts = {}) {
