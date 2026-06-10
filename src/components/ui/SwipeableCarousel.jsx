@@ -1,5 +1,6 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
+import AutoHeight from 'embla-carousel-auto-height';
 import { RadioGroup, Radio } from '@headlessui/react';
 
 const SwipeableCarousel = forwardRef(function SwipeableCarousel(
@@ -11,6 +12,8 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     showArrows = false,
     showDots = false,
     hideUntilReady = false,
+    autoHeight = false,
+    reinitDeps,
     slideGap = 16,
     className = '',
     slideClassName = '',
@@ -19,14 +22,22 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
   },
   ref,
 ) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({
-    loop: false,
-    dragFree: false,
-    align: 'start',
-    containScroll: 'trimSnaps',
-    skipSnaps: false,
-    startIndex,
-  });
+  const plugins = useMemo(
+    () => (autoHeight ? [AutoHeight()] : []),
+    [autoHeight],
+  );
+
+  const [emblaRef, emblaApi] = useEmblaCarousel(
+    {
+      loop: false,
+      dragFree: false,
+      align: 'start',
+      containScroll: 'trimSnaps',
+      skipSnaps: false,
+      startIndex,
+    },
+    plugins,
+  );
 
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
@@ -105,6 +116,11 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     prevIndexRef.current = selectedIndex;
   }, [emblaApi, selectedIndex, ready]);
 
+  useEffect(() => {
+    if (!emblaApi || !ready) return;
+    emblaApi.reInit();
+  }, [emblaApi, ready, reinitDeps, slideCount]);
+
   return (
     <div className={className}>
       <div
@@ -114,7 +130,11 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
         style={{ '--slide-spacing': `${slideGap}px` }}
         ref={emblaRef}
       >
-        <div className="flex ml-[calc(var(--slide-spacing)*-1)]">
+        <div
+          className={`flex ml-[calc(var(--slide-spacing)*-1)] ${
+            autoHeight ? 'items-start transition-[height] duration-200 ease-out' : ''
+          }`}
+        >
           {slides.map((slide, i) => (
             <div
               key={slide?.key ?? i}

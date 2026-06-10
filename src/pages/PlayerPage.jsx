@@ -68,16 +68,19 @@ const pitchCols = [
   { key: 'gamesStarted', label: 'GS' },
   { key: 'wins', label: 'W' },
   { key: 'losses', label: 'L' },
-  { key: 'saves', label: 'SV' },
   { key: 'inningsPitched', label: 'IP' },
+
+  { key: 'era', label: 'ERA' },
+  { key: 'whip', label: 'WHIP' },
+  { key: 'strikeOuts', label: 'K' },
+  { key: 'baseOnBalls', label: 'BB' },
+
   { key: 'hits', label: 'H' },
   { key: 'runs', label: 'R' },
   { key: 'earnedRuns', label: 'ER' },
+  { key: 'saves', label: 'SV' },
+
   { key: 'homeRuns', label: 'HR' },
-  { key: 'baseOnBalls', label: 'BB' },
-  { key: 'strikeOuts', label: 'K' },
-  { key: 'era', label: 'ERA' },
-  { key: 'whip', label: 'WHIP' },
 ];
 
 const fieldCols = [

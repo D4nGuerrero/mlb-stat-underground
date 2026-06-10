@@ -769,6 +769,8 @@ export default function Scores() {
             selectedIndex={selectedIndex}
             onSelectedIndexChange={handleCarouselSelect}
             hideUntilReady
+            autoHeight
+            reinitDeps={`${selectedIndex}-${viewMode}-${getDateStr(selectedDate)}-${gamesMap[getDateStr(selectedDate)]?.length ?? 'x'}`}
             slideGap={20}
             showArrows={false}
             showDots={false}

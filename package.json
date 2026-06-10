@@ -12,6 +12,7 @@
   "dependencies": {
     "@headlessui/react": "^2.2.10",
     "date-fns": "^4.1.0",
+    "embla-carousel-auto-height": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "lucide-react": "^1.12.0",
     "react": "^19.2.5",
@@ -20,14 +21,11 @@
     "react-router-dom": "^7.14.2"
   },
   "devDependencies": {
-    
     "@eslint/js": "^10.0.1",
-  
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.5.0",
-   
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
