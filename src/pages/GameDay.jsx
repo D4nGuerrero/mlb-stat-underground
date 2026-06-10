@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useMLBWebSocket } from '../hooks/useMLBWebSocket';
 import {
@@ -11,6 +11,9 @@ import {
   stadiumTimeOfDay,
   batterSilhouetteUrl,
   renderBaseDiamond,
+  getLinescoreInningNums,
+  formatFinalStatus,
+  sumInningsPitched,
 } from '../utils/mlbHelpers';
 import PitchCanvas from '../components/PitchCanvas';
 import { TabBar, Modal, SegmentedControl } from '../components/ui';
@@ -167,6 +170,113 @@ const ORDINALS = [
   '13th',
 ];
 
+function LinescoreInningCell({ val }) {
+  if (val > 0) {
+    return <span className="text-green-400 font-bold">{val}</span>;
+  }
+  if (val === 0) return <span>0</span>;
+  return <span className="text-slate-600">-</span>;
+}
+
+function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
+  const scrollRef = useRef(null);
+  const inningNums = useMemo(() => getLinescoreInningNums(ls), [ls]);
+
+  const inningByNum = useMemo(() => {
+    const map = {};
+    (ls?.innings ?? []).forEach((inn) => {
+      map[inn.num] = inn;
+    });
+    return map;
+  }, [ls?.innings]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || inningNums.length <= 9) return;
+    el.scrollLeft = el.scrollWidth - el.clientWidth;
+  }, [inningNums.length, ls]);
+
+  const sides = [
+    { side: 'away', team: away, runs: awayRuns },
+    { side: 'home', team: home, runs: homeRuns },
+  ];
+
+  return (
+    <div className="bg-slate-800/40 border-t border-slate-700/50">
+      <div className="flex text-sm px-4 sm:px-6 py-3">
+        <div className="flex-shrink-0 w-14">
+          <div className="h-[32px]" />
+          {sides.map(({ side, team }) => (
+            <div
+              key={side}
+              className="py-2 font-bold text-slate-200 border-t border-slate-700/40"
+            >
+              {team.abbreviation}
+            </div>
+          ))}
+        </div>
+
+        <div ref={scrollRef} className="overflow-x-auto flex-1 min-w-0">
+          <div className="inline-block">
+            <div className="flex text-slate-500">
+              {inningNums.map((i) => (
+                <div
+                  key={i}
+                  className="w-6 px-2 text-center font-normal flex-shrink-0 py-1.5"
+                >
+                  {i}
+                </div>
+              ))}
+            </div>
+            {sides.map(({ side }) => (
+              <div
+                key={side}
+                className="flex border-t border-slate-700/40"
+              >
+                {inningNums.map((i) => {
+                  const val = inningByNum[i]?.[side]?.runs;
+                  return (
+                    <div
+                      key={i}
+                      className="w-6 px-2 text-center font-mono text-slate-300 flex-shrink-0 py-2"
+                    >
+                      <LinescoreInningCell val={val} />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-shrink-0 border-l border-slate-600">
+          <div className="flex text-slate-500">
+            <div className="w-8 px-3 text-center font-bold py-1.5">R</div>
+            <div className="w-8 px-2 text-center font-normal py-1.5">H</div>
+            <div className="w-8 px-2 text-center font-normal py-1.5">E</div>
+          </div>
+          {sides.map(({ side, runs }) => (
+            <div
+              key={side}
+              className="flex border-t border-slate-700/40"
+            >
+              <div className="w-8 px-3 text-center font-bold py-2">
+                {runs}
+              </div>
+              <div className="w-8 px-2 text-center text-slate-400 py-2">
+                {ls?.teams?.[side]?.hits ?? 0}
+              </div>
+              <div className="w-8 px-2 text-center text-slate-500 py-2">
+                {ls?.teams?.[side]?.errors ?? 0}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── component ──────────────────────────────────────────────────────────────
 
 export default function GamePage() {
@@ -180,6 +290,7 @@ export default function GamePage() {
   const [selectedPlay, setSelectedPlay] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('live');
+  const [boxScoreSide, setBoxScoreSide] = useState('away');
   const [vsStats, setVsStats] = useState(null);
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
@@ -380,7 +491,7 @@ export default function GamePage() {
 
   // ── Team Box Score ─────────────────────────────────────────────────────────
 
-  const TeamBoxSection = ({ sideKey, team }) => {
+  const TeamBoxSection = ({ sideKey, team, hideHeader }) => {
     const teamBox = ld.boxscore?.teams?.[sideKey];
     if (!teamBox) return null;
 
@@ -416,7 +527,6 @@ export default function GamePage() {
       (acc, p) => {
         const pt = p.stats?.pitching || {};
         return {
-          ip: acc.ip + parseFloat(pt.inningsPitched || 0),
           h: acc.h + (pt.hits || 0),
           r: acc.r + (pt.runs || 0),
           er: acc.er + (pt.earnedRuns || 0),
@@ -425,21 +535,29 @@ export default function GamePage() {
           hr: acc.hr + (pt.homeRuns || 0),
         };
       },
-      { ip: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0 },
+      { h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0 },
     );
+
+    const pitchingTotalsIp =
+      teamBox.teamStats?.pitching?.inningsPitched ??
+      sumInningsPitched(
+        pitchers.map((p) => p.stats?.pitching?.inningsPitched),
+      );
 
     return (
       <div className="mb-8">
-        <div className="flex items-center gap-2 mb-3">
-          <img
-            src={teamLogoUrl(team.id)}
-            className="w-5 h-5 object-contain"
-            alt={team.abbreviation}
-          />
-          <span className="font-bold text-sm text-slate-100">
-            {team.teamName || team.abbreviation}
-          </span>
-        </div>
+        {!hideHeader && (
+          <div className="flex items-center gap-2 mb-3">
+            <img
+              src={teamLogoUrl(team.id)}
+              className="w-5 h-5 object-contain"
+              alt={team.abbreviation}
+            />
+            <span className="font-bold text-sm text-slate-100">
+              {team.teamName || team.abbreviation}
+            </span>
+          </div>
+        )}
 
         <div className="overflow-x-auto mb-2">
           <table className="w-full text-xs min-w-[520px]">
@@ -641,7 +759,7 @@ export default function GamePage() {
                 <tr className="border-t border-slate-700 font-bold text-slate-300">
                   <td className="py-1.5 pr-2">Totals</td>
                   <td className="px-2 text-center font-mono">
-                    {pitchingTotals.ip.toFixed(1)}
+                    {pitchingTotalsIp}
                   </td>
                   {[
                     pitchingTotals.h,
@@ -1079,23 +1197,9 @@ export default function GamePage() {
           <span>Scores</span>
         </button>
         <div className="flex items-center gap-2 font-bold text-sm">
-          <img
-            src={teamLogoUrl(away.id)}
-            className="w-5 h-5 object-contain"
-            alt={away.abbreviation}
-          />
-          <span className={awayWins ? 'text-white' : 'text-slate-400'}>
-            {awayRuns}
-          </span>
-          <span className="text-slate-600 text-xs">—</span>
-          <span className={homeWins ? 'text-white' : 'text-slate-400'}>
-            {homeRuns}
-          </span>
-          <img
-            src={teamLogoUrl(home.id)}
-            className="w-5 h-5 object-contain"
-            alt={home.abbreviation}
-          />
+          {/* Select button that shows rest of games of current day to select from */}
+          Gameday ↓ 
+       
         </div>
         {isLive ? (
           <div className="flex items-center gap-1 text-[10px] text-red-400">
@@ -1106,7 +1210,9 @@ export default function GamePage() {
             </span>
           </div>
         ) : (
-          <div className="text-[10px] text-slate-500 font-semibold">FINAL</div>
+        <img src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg"
+        className="w-6 h-6 object-contain"
+        />
         )}
       </div>
 
@@ -1143,42 +1249,36 @@ export default function GamePage() {
         )}
       </div>
 
-      <div className="px-3 sm:px-0">
+      <div className="px-0 sm:px-3">
         {/* Scoreboard */}
         <div className="bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden mb-4">
           {/* Game date / venue */}
-          <div className="px-5 pt-3.5 pb-0 flex items-center justify-between">
-            <span className="text-[11px] text-slate-500">{gd.venue?.name}</span>
-            <span
-              className={`text-[11px] font-bold ${isLive ? 'text-red-400' : 'text-slate-400'}`}
-            >
-              {isLive ? '● LIVE' : isFinal ? 'FINAL' : status.abstractGameState}
-            </span>
-          </div>
+         
 
           <div className="flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5">
             {/* Away */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <img
-                src={teamLogoUrl(away.id)}
-                className="w-9 h-9 sm:w-12 sm:h-12 object-contain cursor-pointer hover:opacity-80 transition-opacity"
-                alt={away.abbreviation}
-                onClick={() => navigate(`/team/${away.id}`)}
-              />
+             
               <div>
                 <div className="text-sm font-bold text-slate-200 leading-none mb-1">
                   {away.abbreviation}
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono hidden sm:block">
+                <div className="text-[12px] text-slate-500   sm:block">
                   {away.record
                     ? `${away.record.wins} - ${away.record.losses}`
                     : ''}
                 </div>
               </div>
+               <img
+                src={teamLogoUrl(away.id)}
+                className="w-9 h-9 sm:w-12 sm:h-12 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                alt={away.abbreviation}
+                onClick={() => navigate(`/team/${away.id}`)}
+              />
             </div>
 
             {/* Scores */}
-            <div className="flex items-center gap-3 sm:gap-6">
+            <div className="flex items-center gap-4 sm:gap-6">
               <span
                 className={`font-display text-4xl sm:text-5xl tabular-nums leading-none ${awayWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
               >
@@ -1200,7 +1300,7 @@ export default function GamePage() {
                   </div>
                 ) : (
                   <span className="text-slate-300 font-bold tracking-widest text-xs sm:text-sm">
-                    FINAL
+                    {formatFinalStatus(ls)}
                   </span>
                 )}
               </div>
@@ -1213,88 +1313,34 @@ export default function GamePage() {
 
             {/* Home */}
             <div className="flex items-center gap-2 sm:gap-3 justify-end">
-              <div className="text-right">
-                <div className="text-sm font-bold text-slate-200 leading-none mb-1">
-                  {home.abbreviation}
-                </div>
-                <div className="text-[11px] text-slate-500 font-mono hidden sm:block">
-                  {home.record
-                    ? `${home.record.wins} - ${home.record.losses}`
-                    : ''}
-                </div>
-              </div>
-              <img
+               <img
                 src={teamLogoUrl(home.id)}
                 className="w-9 h-9 sm:w-12 sm:h-12 object-contain cursor-pointer hover:opacity-80 transition-opacity"
                 alt={home.abbreviation}
                 onClick={() => navigate(`/team/${home.id}`)}
               />
+              <div className="text-right">
+                
+                <div className="text-sm font-bold text-slate-200 leading-none mb-1">
+                  {home.abbreviation}
+                </div>
+                <div className="text-[12px] text-slate-500   sm:block">
+                  {home.record
+                    ? `${home.record.wins} - ${home.record.losses}`
+                    : ''}
+                </div>
+              </div>
+             
             </div>
           </div>
 
-          {/* Linescore */}
-          <div className="bg-slate-800/40 border-t border-slate-700/50">
-            <div className="overflow-x-auto px-4 sm:px-6 py-3">
-              <table className="w-full text-sm min-w-[520px]">
-                <thead>
-                  <tr className="text-slate-500">
-                    <th className="text-left py-1.5 w-14" />
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
-                      <th key={i} className="px-2 text-center font-normal w-8">
-                        {i}
-                      </th>
-                    ))}
-                    <th className="px-3 text-center font-bold border-l border-slate-600 w-8">
-                      R
-                    </th>
-                    <th className="px-2 text-center font-normal w-8">H</th>
-                    <th className="px-2 text-center font-normal w-8">E</th>
-                  </tr>
-                </thead>
-                <tbody className="">
-                  {[
-                    { team: away, side: 'away', runs: awayRuns },
-                    { team: home, side: 'home', runs: homeRuns },
-                  ].map(({ team, side, runs }) => (
-                    <tr key={side} className="border-t border-slate-700/40">
-                      <td className="py-2 font-bold text-slate-200 w-14">
-                        {team.abbreviation}
-                      </td>
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
-                        const inn = ls?.innings?.find((n) => n.num === i);
-                        const val = inn?.[side]?.runs;
-                        return (
-                          <td
-                            key={i}
-                            className="px-2 text-center font-mono text-slate-300 w-8"
-                          >
-                            {val > 0 ? (
-                              <span className="text-green-400 font-bold">
-                                {val}
-                              </span>
-                            ) : val === 0 ? (
-                              <span>0</span>
-                            ) : (
-                              <span className="text-slate-600">-</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 text-center font-bold border-l border-slate-600 w-8">
-                        {runs}
-                      </td>
-                      <td className="px-2 text-center text-slate-400 w-8">
-                        {ls?.teams?.[side]?.hits ?? 0}
-                      </td>
-                      <td className="px-2 text-center text-slate-500 w-8">
-                        {ls?.teams?.[side]?.errors ?? 0}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <LinescoreBoard
+            ls={ls}
+            away={away}
+            home={home}
+            awayRuns={awayRuns}
+            homeRuns={homeRuns}
+          />
 
           {/* Pitcher decisions */}
           {decisions &&
@@ -1338,7 +1384,7 @@ export default function GamePage() {
 
         {/* Tab nav */}
         <TabBar
-          className="mb-4"
+        
           variant="page"
           tabs={tabList}
           activeKey={currentTab}
@@ -1683,9 +1729,29 @@ export default function GamePage() {
         )}
 
         {currentTab === 'boxscore' && ld.boxscore && (
-          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-4 sm:p-5">
-            <TeamBoxSection sideKey="away" team={away} />
-            <TeamBoxSection sideKey="home" team={home} />
+          <div className="bg-slate-900 border border-slate-700/60  p-4 sm:p-5">
+            <SegmentedControl
+              value={boxScoreSide}
+              onChange={setBoxScoreSide}
+              variant="pill"
+              size="sm"
+              className="mb-4"
+              options={[
+                {
+                  value: 'away',
+                  label: away.teamName || away.name || away.abbreviation,
+                },
+                {
+                  value: 'home',
+                  label: home.teamName || home.name || home.abbreviation,
+                },
+              ]}
+            />
+            <TeamBoxSection
+              sideKey={boxScoreSide}
+              team={boxScoreSide === 'away' ? away : home}
+              hideHeader
+            />
 
             {ld.boxscore.info?.length > 0 && (
               <div className="mt-2 pt-4 border-t border-slate-700/40 text-[11px] text-slate-500 space-y-1">
@@ -1717,7 +1783,7 @@ export default function GamePage() {
         )}
 
         {currentTab === 'summary' && (
-          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-4 sm:p-5">
+          <div className="bg-slate-900 border border-slate-700/60 p-4 sm:p-5">
             <SegmentedControl
               value={summaryFilter}
               onChange={setSummaryFilter}

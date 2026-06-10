@@ -277,3 +277,42 @@ export const getTodayStr = () => {
   const d = String(t.getDate()).padStart(2, '0');
   return `${m}/${d}/${t.getFullYear()}`;
 };
+
+/** Inning columns for linescore (minimum 9, includes extra innings). */
+export const getLinescoreInningNums = (linescore) => {
+  const fromApi = linescore?.innings?.map((i) => i.num) ?? [];
+  const max = Math.max(9, linescore?.currentInning ?? 0, ...fromApi, 0);
+  return Array.from({ length: max }, (_, i) => i + 1);
+};
+
+/** Convert baseball IP (e.g. "6.1" = 6⅓) to outs. */
+export const ipToOuts = (ip) => {
+  if (ip == null || ip === '') return 0;
+  const [whole, frac = '0'] = String(ip).split('.');
+  return parseInt(whole, 10) * 3 + parseInt(frac, 10);
+};
+
+/** Convert outs back to baseball IP notation. */
+export const outsToIp = (outs, alwaysShowTenths = false) => {
+  const whole = Math.floor(outs / 3);
+  const frac = outs % 3;
+  if (frac === 0 && !alwaysShowTenths) return String(whole);
+  return `${whole}.${frac}`;
+};
+
+/** Sum innings pitched using baseball arithmetic (6.1 + 3.2 = 10.0, not 9.3). */
+export const sumInningsPitched = (values, { alwaysShowTenths = true } = {}) => {
+  const totalOuts = (values ?? []).reduce((sum, ip) => sum + ipToOuts(ip), 0);
+  return outsToIp(totalOuts, alwaysShowTenths);
+};
+
+/** "FINAL" or "FINAL/12" when a game ended after the 9th. */
+export const formatFinalStatus = (linescore) => {
+  if (!linescore) return 'FINAL';
+  const nums = linescore.innings?.map((i) => i.num) ?? [];
+  const count = Math.max(
+    linescore.currentInning ?? 0,
+    nums.length ? Math.max(...nums) : 0,
+  );
+  return count > 9 ? `FINAL/${count}` : 'FINAL';
+};

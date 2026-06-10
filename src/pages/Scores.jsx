@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { teamLogoUrl } from '../utils/mlbHelpers';
+import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
 import { SegmentedControl, SwipeableCarousel } from '../components/ui';
 
 const MIN_DATE = new Date('2024-03-01');
@@ -367,7 +367,7 @@ export default function Scores() {
                       )}
                     </>
                   ) : isFinal ? (
-                    <span className="text-xs font-bold text-slate-400 tracking-widest">FINAL</span>
+                    <span className="text-xs font-bold text-slate-400 tracking-widest">{formatFinalStatus(game.linescore)}</span>
                   ) : (
                     <span className="text-xs text-slate-400 font-semibold">
                       {game.gameDate
@@ -447,7 +447,7 @@ export default function Scores() {
                       <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
                     </span>
                   ) : isFinal ? (
-                    <span className="text-[10px] text-slate-500">FINAL</span>
+                    <span className="text-[10px] text-slate-500">{formatFinalStatus(game.linescore)}</span>
                   ) : (
                     <span className="text-[10px] text-slate-500 font-mono">
                       {game.gameDate ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
@@ -525,7 +525,7 @@ export default function Scores() {
                       <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
                     </span>
                   ) : isFinal ? (
-                    <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">FINAL</span>
+                    <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">{formatFinalStatus(game.linescore)}</span>
                   ) : (
                     <span className="text-xs text-slate-500">
                       {game.gameDate
@@ -655,7 +655,7 @@ export default function Scores() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+    <div className="max-w-7xl mx-auto  sm:px-6 py-5 sm:py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 sm:mb-8">
         <div>
