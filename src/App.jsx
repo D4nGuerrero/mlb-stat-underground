@@ -1,4 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
+import { THEME_COLOR } from './theme/theme.js';
 import { assetUrl } from './utils/baseUrl.js';
 import Scores from './pages/Scores';
 import GameDay from './pages/GameDay';
@@ -22,7 +23,7 @@ function App() {
               <div className="font-display text-xl sm:text-2xl tracking-tighter leading-none">
                 MLB Live
               </div>
-              <div className="nav-tagline-marquee" aria-label="LET'S GOOOOO">
+              <div className={`nav-tagline-marquee text-${THEME_COLOR}-400`} aria-label="LET'S GOOOOO">
                 <div className="nav-tagline-track">
                   {Array.from({ length: 8 }, (_, i) => (
                     <span key={i}>LET&apos;S GOOOOO</span>
@@ -58,8 +59,8 @@ function App() {
             ))}
           </div>
 
-          <div className="hidden sm:flex px-3 py-1.5 bg-emerald-500/10 text-emerald-400 rounded-2xl border border-emerald-500/30 text-xs items-center gap-x-1.5 flex-shrink-0">
-            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+          <div className={`hidden sm:flex px-3 py-1.5 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-400 rounded-2xl border border-${THEME_COLOR}-500/30 text-xs items-center gap-x-1.5 flex-shrink-0`}>
+            <div className={`w-1.5 h-1.5 bg-${THEME_COLOR}-400 rounded-full animate-pulse`} />
             LIVE DATA
           </div>
         </div>

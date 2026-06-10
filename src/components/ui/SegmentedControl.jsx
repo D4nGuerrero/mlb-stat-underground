@@ -1,4 +1,5 @@
 import { RadioGroup, Radio } from '@headlessui/react';
+import { THEME_COLOR } from '../../theme/theme.js';
 
 const VARIANTS = {
   white: {
@@ -6,7 +7,7 @@ const VARIANTS = {
     inactive: 'text-slate-400 hover:text-white',
   },
   emerald: {
-    active: 'bg-emerald-500 text-white shadow-sm',
+    active: `bg-${THEME_COLOR}-500 text-white shadow-sm`,
     inactive: 'text-slate-300 hover:text-white',
   },
   compact: {
@@ -18,7 +19,7 @@ const VARIANTS = {
     inactive: 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-400 hover:text-slate-200',
   },
   category: {
-    active: 'bg-emerald-500 text-white shadow-sm',
+    active: `bg-${THEME_COLOR}-500 text-white shadow-sm`,
     inactive: 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700',
   },
   simulator: {
@@ -26,7 +27,7 @@ const VARIANTS = {
     inactive: 'text-slate-500 hover:text-slate-300',
   },
   speed: {
-    active: 'bg-emerald-600 text-white',
+    active: `bg-${THEME_COLOR}-600 text-white`,
     inactive: 'text-slate-400 hover:text-white',
   },
 };

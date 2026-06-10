@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { SegmentedControl, Select } from '../components/ui';
@@ -275,7 +276,7 @@ export default function StatLeaders() {
     <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isTeam ? 'max-w-7xl' : 'max-w-4xl'}`}>
       {/* Header */}
       <div className="mb-6">
-        <div className="text-emerald-400 text-xs font-mono tracking-[3px] mb-1 uppercase">
+        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
           League Leaders
         </div>
         <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stat Leaders</h1>
@@ -409,7 +410,7 @@ export default function StatLeaders() {
             </div>
           </div>
           {isLoading && (
-            <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <div className={`w-5 h-5 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin flex-shrink-0`} />
           )}
         </div>
 
@@ -430,7 +431,7 @@ export default function StatLeaders() {
                     <th
                       key={col.key}
                       className={`px-2 py-2.5 text-xs font-semibold cursor-pointer select-none whitespace-nowrap text-right transition-colors ${
-                        teamSortCol === col.key ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
+                        teamSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'
                       }`}
                       onClick={() => handleTeamSort(col.key)}
                     >
@@ -458,7 +459,7 @@ export default function StatLeaders() {
                           className="w-7 h-7 object-contain flex-shrink-0"
                           onError={(e) => (e.target.style.display = 'none')}
                         />
-                        <span className="font-medium text-sm truncate hover:text-emerald-400 transition-colors">
+                        <span className={`font-medium text-sm truncate hover:text-${THEME_COLOR}-400 transition-colors`}>
                           {row.team?.name ?? '—'}
                         </span>
                       </div>
@@ -467,7 +468,7 @@ export default function StatLeaders() {
                       <td
                         key={col.key}
                         className={`px-2 py-2 text-right font-mono text-xs tabular-nums ${
-                          teamSortCol === col.key ? 'text-emerald-300' : 'text-slate-300'
+                          teamSortCol === col.key ? `text-${THEME_COLOR}-300` : 'text-slate-300'
                         }`}
                       >
                         {formatValue(row.stat?.[col.key], col.format)}
@@ -525,7 +526,7 @@ export default function StatLeaders() {
               <div className="flex-1 min-w-0">
                 <Link
                   to={`/player/${leader.person?.id}`}
-                  className="font-semibold hover:text-emerald-400 transition-colors truncate block text-sm sm:text-base"
+                  className={`font-semibold hover:text-${THEME_COLOR}-400 transition-colors truncate block text-sm sm:text-base`}
                 >
                   {leader.person?.fullName ?? '—'}
                 </Link>

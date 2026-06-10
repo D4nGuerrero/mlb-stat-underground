@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { THEME_COLOR } from '../../theme/theme.js';
 import useEmblaCarousel from 'embla-carousel-react';
 import AutoHeight from 'embla-carousel-auto-height';
 import { RadioGroup, Radio } from '@headlessui/react';
@@ -183,7 +184,7 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
               className={({ checked }) =>
                 [
                   'w-2 h-2 rounded-full transition-all',
-                  checked ? 'bg-emerald-400 scale-125' : 'bg-slate-600 hover:bg-slate-500',
+                  checked ? `bg-${THEME_COLOR}-400 scale-125` : 'bg-slate-600 hover:bg-slate-500',
                 ].join(' ')
               }
             />

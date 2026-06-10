@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { Collapsible } from '../components/ui';
 
 // ─── NAV SECTIONS ──────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ const CONFIG_ENDPOINTS = [
 const ParamRow = ({ name, type, req, desc }) => (
   <tr className="border-t border-slate-800">
     <td className="py-2 pr-3 align-top">
-      <code className="text-emerald-400 text-xs font-mono">{name}</code>
+      <code className={`text-${THEME_COLOR}-400 text-xs font-mono`}>{name}</code>
       {req && (
         <span className="ml-1.5 text-[10px] text-red-400 font-semibold">required</span>
       )}
@@ -92,7 +93,7 @@ const EndpointCard = ({ method = 'GET', path, summary, description, params, exam
   };
 
   const methodColor = {
-    GET: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+    GET: `bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-400 border border-${THEME_COLOR}-500/30`,
     POST: 'bg-blue-500/15 text-blue-400 border border-blue-500/30',
     PUT: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30',
   }[method] ?? 'bg-slate-700 text-slate-300';
@@ -121,7 +122,7 @@ const EndpointCard = ({ method = 'GET', path, summary, description, params, exam
               onClick={copy}
               className={`flex-shrink-0 text-[11px] px-3 py-1 rounded-lg font-semibold transition-all ${
                 copied
-                  ? 'bg-emerald-500 text-white'
+                  ? `bg-${THEME_COLOR}-500 text-white`
                   : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
               }`}
             >
@@ -165,7 +166,7 @@ const EndpointCard = ({ method = 'GET', path, summary, description, params, exam
               <ul className="space-y-1">
                 {notes.map((n, i) => (
                   <li key={i} className="text-xs text-slate-400 flex gap-2">
-                    <span className="text-emerald-500 flex-shrink-0">•</span>
+                    <span className={`text-${THEME_COLOR}-500 flex-shrink-0`}>•</span>
                     <span>{n}</span>
                   </li>
                 ))}
@@ -183,7 +184,7 @@ const Section = ({ id, title, badge, children }) => (
     <div className="flex items-center gap-3 mb-5">
       <h2 className="font-display text-2xl sm:text-3xl tracking-tight">{title}</h2>
       {badge && (
-        <span className="text-xs px-2.5 py-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg font-mono">
+        <span className={`text-xs px-2.5 py-1 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-400 border border-${THEME_COLOR}-500/30 rounded-lg font-mono`}>
           {badge}
         </span>
       )}
@@ -257,7 +258,7 @@ export default function APIDocs() {
             onClick={() => scrollToSection(item.id)}
             className={`w-full text-left px-3 py-2 rounded-xl transition-all ${
               activeSection === item.id
-                ? 'bg-emerald-500/15 text-emerald-400 font-medium'
+                ? `bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-400 font-medium`
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
@@ -274,7 +275,7 @@ export default function APIDocs() {
       <aside className="hidden lg:flex flex-col w-64 xl:w-72 border-r border-slate-800 bg-slate-900/60 backdrop-blur-xl fixed top-0 h-full overflow-y-auto z-10 pt-4 pb-8">
         <div className="px-5 pb-4 border-b border-slate-800 mb-2">
           <div className="font-display text-lg tracking-tight">MLB Stats API</div>
-          <div className="text-xs text-emerald-400 mt-0.5">v1.0 · No Authentication Required</div>
+          <div className={`text-xs text-${THEME_COLOR}-400 mt-0.5`}>v1.0 · No Authentication Required</div>
         </div>
         <div className="px-3 flex-1 overflow-y-auto">
           <SidebarContent />
@@ -296,7 +297,7 @@ export default function APIDocs() {
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
           <div>
             <div className="font-display text-lg tracking-tight">MLB Stats API</div>
-            <div className="text-xs text-emerald-400">v1.0 · No Auth Required</div>
+            <div className={`text-xs text-${THEME_COLOR}-400`}>v1.0 · No Auth Required</div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -346,7 +347,7 @@ export default function APIDocs() {
                 ].map(({ label, val }) => (
                   <div key={label} className="flex justify-between py-2 border-b border-slate-800">
                     <span className="text-slate-500 font-medium">{label}</span>
-                    <code className="text-emerald-400 font-mono text-xs">{val}</code>
+                    <code className={`text-${THEME_COLOR}-400 font-mono text-xs`}>{val}</code>
                   </div>
                 ))}
               </div>
@@ -410,13 +411,13 @@ export default function APIDocs() {
                 return (
                   <div key={path} className="bg-slate-900 border border-slate-700 rounded-2xl p-3 flex items-start gap-2 group">
                     <div className="flex-1 min-w-0">
-                      <code className="text-emerald-400 text-xs font-mono block truncate">{path}</code>
+                      <code className={`text-${THEME_COLOR}-400 text-xs font-mono block truncate`}>{path}</code>
                       <span className="text-[11px] text-slate-500 mt-0.5 block">{desc}</span>
                     </div>
                     <button
                       onClick={copy}
                       className={`flex-shrink-0 text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-all opacity-0 group-hover:opacity-100 ${
-                        copied ? 'bg-emerald-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                        copied ? `bg-${THEME_COLOR}-500 text-white` : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
                       }`}
                     >
                       {copied ? '✓' : 'Copy'}
@@ -840,7 +841,7 @@ Example: Ian Kinsler 2012 season — b1 shows 500+ ABs batting leadoff for TEX, 
             <div className="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden mb-4">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Team Logos</span>
-                <span className="text-[10px] px-2 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg font-mono">SVG · No Auth</span>
+                <span className={`text-[10px] px-2 py-0.5 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-400 border border-${THEME_COLOR}-500/30 rounded-lg font-mono`}>SVG · No Auth</span>
               </div>
               <div className="p-4 space-y-3">
                 <div className="bg-slate-950 border border-slate-700 rounded-xl p-3">
@@ -1604,7 +1605,7 @@ Example: Ian Kinsler 2012 season — b1 shows 500+ ABs batting leadoff for TEX, 
                 ].map(({ endpoint, hydrates, note }) => (
                   <div key={endpoint + hydrates} className="px-4 py-3">
                     <div className="flex flex-wrap gap-2 items-start">
-                      <code className="text-emerald-400 text-xs font-mono">{endpoint}</code>
+                      <code className={`text-${THEME_COLOR}-400 text-xs font-mono`}>{endpoint}</code>
                       <span className="text-slate-600 text-xs">→</span>
                       <code className="text-blue-300 text-xs font-mono break-all">hydrate={hydrates}</code>
                     </div>
@@ -1632,7 +1633,7 @@ Example: Ian Kinsler 2012 season — b1 shows 500+ ABs batting leadoff for TEX, 
               href="https://statsapi.mlb.com/api/v1"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-emerald-500 hover:underline"
+              className={`text-${THEME_COLOR}-500 hover:underline`}
             >
               Open API
             </a>

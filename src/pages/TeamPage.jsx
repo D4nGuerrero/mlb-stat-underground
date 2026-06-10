@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl } from '../components/ui';
@@ -85,7 +86,7 @@ const FIELD_COLS = [
 function Spinner() {
   return (
     <div className="flex justify-center py-16">
-      <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
     </div>
   );
 }
@@ -117,7 +118,7 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
             {cols.map((c) => (
               <th
                 key={c.key}
-                className={`px-2 py-2.5 text-xs font-medium cursor-pointer select-none whitespace-nowrap text-right ${sortCol === c.key ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`px-2 py-2.5 text-xs font-medium cursor-pointer select-none whitespace-nowrap text-right ${sortCol === c.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`}
                 onClick={() => handleSort(c.key)}
               >
                 {c.label}
@@ -137,7 +138,7 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
                   <div className="flex items-center gap-2.5">
                     
                     <div className="min-w-0">
-                      <Link to={`/player/${playerId}`} className="font-medium hover:text-emerald-400 transition-colors text-xs sm:text-sm leading-tight block truncate">
+                      <Link to={`/player/${playerId}`} className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block truncate`}>
                         {person?.[nameKey] ?? person?.fullName ?? '—'}
                       </Link>
                       {pos && <span className="text-[10px] text-slate-500">{pos}</span>}
@@ -147,7 +148,7 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
                 {cols.map((c) => {
                   const raw = row.stat?.[c.key] ?? row[c.key];
                   return (
-                    <td key={c.key} className={`px-2 py-2 text-right font-mono text-xs tabular-nums ${sortCol === c.key ? 'text-emerald-300' : 'text-slate-300'}`}>
+                    <td key={c.key} className={`px-2 py-2 text-right font-mono text-xs tabular-nums ${sortCol === c.key ? `text-${THEME_COLOR}-300` : 'text-slate-300'}`}>
                       {c.dec === -1 ? (raw ?? '–') : fmt(raw, c.dec)}
                     </td>
                   );
@@ -262,7 +263,7 @@ function StatsTab({ teamId, season }) {
                   className="w-11 h-11 rounded-xl object-cover border border-slate-700 mx-auto mb-1.5 bg-slate-800"
                   onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
                 />
-                <div className="font-display text-lg tabular-nums text-emerald-400 leading-none">
+                <div className={`font-display text-lg tabular-nums text-${THEME_COLOR}-400 leading-none`}>
                   {dec === -1 ? (val ?? '–') : fmt(val, dec)}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5 truncate">{person?.fullName?.split(' ').slice(-1)[0]}</div>
@@ -430,7 +431,7 @@ function ScheduleTab({ teamId, season }) {
               <div
                 key={g.gamePk}
                 ref={(el) => { if (el) gameRefs.current[g.gamePk] = el; }}
-                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? 'bg-emerald-500/[0.06] border-emerald-500/20' : ''}`}
+                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? `bg-${THEME_COLOR}-500/[0.06] border-${THEME_COLOR}-500/20` : ''}`}
                 onClick={() => navigate(`/game/${g.gamePk}`)}
               >
                 <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">{fmtDate(dateStr)}</div>
@@ -439,7 +440,7 @@ function ScheduleTab({ teamId, season }) {
                 <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name}</div>
                 <div className="text-right flex-shrink-0 text-sm">
                   {isFinal ? (
-                    <span className={`font-semibold tabular-nums ${isHome ? (homeWin ? 'text-emerald-400' : 'text-red-400') : (awayWin ? 'text-emerald-400' : 'text-red-400')}`}>
+                    <span className={`font-semibold tabular-nums ${isHome ? (homeWin ? `text-${THEME_COLOR}-400` : 'text-red-400') : (awayWin ? `text-${THEME_COLOR}-400` : 'text-red-400')}`}>
                       {isHome ? (homeWin ? 'W' : 'L') : (awayWin ? 'W' : 'L')}{' '}
                       {isHome ? `${home?.score}-${away?.score}` : `${away?.score}-${home?.score}`}
                     </span>
@@ -480,9 +481,9 @@ function ScheduleTab({ teamId, season }) {
                   return (
                     <div
                       key={key}
-                      className={`min-h-[108px] sm:min-h-[128px] border-b border-r border-slate-800/50 p-1 sm:p-1.5 flex flex-col ${inMonth ? '' : 'opacity-35'} ${isToday ? 'bg-emerald-500/[0.06]' : ''}`}
+                      className={`min-h-[108px] sm:min-h-[128px] border-b border-r border-slate-800/50 p-1 sm:p-1.5 flex flex-col ${inMonth ? '' : 'opacity-35'} ${isToday ? `bg-${THEME_COLOR}-500/[0.06]` : ''}`}
                     >
-                      <div className={`text-[10px] sm:text-[11px] font-mono leading-none mb-1 ${isToday ? 'text-emerald-300' : 'text-slate-400'}`}>
+                      <div className={`text-[10px] sm:text-[11px] font-mono leading-none mb-1 ${isToday ? `text-${THEME_COLOR}-300` : 'text-slate-400'}`}>
                         {d.getDate()}
                       </div>
                       <div className="flex-1 flex flex-col gap-1">
@@ -507,7 +508,7 @@ function ScheduleTab({ teamId, season }) {
                               className={`w-full flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[44px] sm:min-h-[52px] rounded-lg px-1 py-1 transition-colors ${
                                 isFinal
                                   ? won
-                                    ? 'bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25'
+                                    ? `bg-${THEME_COLOR}-500/10 hover:bg-${THEME_COLOR}-500/20 border border-${THEME_COLOR}-500/25`
                                     : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/25'
                                   : isLive
                                   ? 'bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30'
@@ -635,7 +636,7 @@ function DepthChartTab({ teamId, season }) {
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
       {POS_ORDER.filter((pos) => grouped[pos]).map((pos) => (
         <div key={pos} className="bg-slate-800/40 border border-slate-700/40 rounded-2xl p-3">
-          <div className="text-xs font-bold text-emerald-400 mb-2">{pos}</div>
+          <div className={`text-xs font-bold text-${THEME_COLOR}-400 mb-2`}>{pos}</div>
           {grouped[pos].map((p) => (
             <Link key={p.person.id} to={`/player/${p.person.id}`} className="flex items-center gap-2 py-1 hover:opacity-80 transition-opacity">
               <img src={playerHeadshotUrl(p.person.id)} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-700 flex-shrink-0" onError={(e) => (e.target.src = FALLBACK_HEADSHOT)} />
@@ -789,7 +790,7 @@ function TransactionsTab({ teamId }) {
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium">
               {t.person?.id ? (
-                <Link to={`/player/${t.person.id}`} className="hover:text-emerald-400 transition-colors">
+                <Link to={`/player/${t.person.id}`} className={`hover:text-${THEME_COLOR}-400 transition-colors`}>
                   {t.person?.fullName ?? '—'}
                 </Link>
               ) : (t.person?.fullName ?? '—')}
@@ -929,7 +930,7 @@ export default function TeamPage() {
                 {teamInfo?.name ?? `Team #${teamId}`}
               </h1>
               {recordText && (
-                <div className="text-emerald-300 font-semibold text-sm sm:text-base" style={HERO_TEXT_SHADOW}>
+                <div className={`text-${THEME_COLOR}-300 font-semibold text-sm sm:text-base`} style={HERO_TEXT_SHADOW}>
                   {recordText}
                   <span className="text-slate-400 font-normal text-xs sm:text-sm ml-2">{season} Regular Season</span>
                 </div>

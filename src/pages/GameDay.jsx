@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useMLBWebSocket } from '../hooks/useMLBWebSocket';
 import {
@@ -23,15 +24,15 @@ import { TabBar, Modal, SegmentedControl } from '../components/ui';
 const PLAY_BADGE = {
   single: {
     label: 'Single',
-    cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    cls: `bg-${THEME_COLOR}-500/20 text-${THEME_COLOR}-300 border-${THEME_COLOR}-500/40`,
   },
   double: {
     label: 'Double',
-    cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    cls: `bg-${THEME_COLOR}-500/20 text-${THEME_COLOR}-300 border-${THEME_COLOR}-500/40`,
   },
   triple: {
     label: 'Triple',
-    cls: 'bg-emerald-400/20 text-emerald-200 border-emerald-400/50',
+    cls: `bg-${THEME_COLOR}-400/20 text-${THEME_COLOR}-200 border-${THEME_COLOR}-400/50`,
   },
   home_run: {
     label: 'Home Run',
@@ -412,7 +413,7 @@ export default function GamePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-10 h-10 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        <div className={`w-10 h-10 border-4 border-${THEME_COLOR}-400 border-t-transparent rounded-full animate-spin`} />
       </div>
     );
   }
@@ -589,7 +590,7 @@ export default function GamePage() {
                     <td className="py-1.5 pr-2">
                       <button
                         onClick={() => navigate(`/player/${p.person?.id}`)}
-                        className="text-left hover:text-emerald-400 transition-colors"
+                        className={`text-left hover:text-${THEME_COLOR}-400 transition-colors`}
                       >
                         {subLetter && (
                           <span className="text-slate-500 mr-0.5">
@@ -717,7 +718,7 @@ export default function GamePage() {
                       <td className="py-1.5 pr-2 flex items-center gap-1.5">
                         <button
                           onClick={() => navigate(`/player/${p.person?.id}`)}
-                          className="hover:text-emerald-400 transition-colors text-slate-200"
+                          className={`hover:text-${THEME_COLOR}-400 transition-colors text-slate-200`}
                         >
                           {lastName}
                         </button>
@@ -929,7 +930,7 @@ export default function GamePage() {
                       <span
                         className={`text-[11px] px-2.5 py-1 border rounded-full ${
                           hardness === 'hard'
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                            ? `bg-${THEME_COLOR}-500/10 border-${THEME_COLOR}-500/30 text-${THEME_COLOR}-400`
                             : hardness === 'soft'
                               ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
                               : 'bg-slate-800 border-slate-700/40 text-slate-400'
@@ -1231,14 +1232,14 @@ export default function GamePage() {
           <div
             className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
               wsStatus === 'connected'
-                ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                ? `text-${THEME_COLOR}-400 border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10`
                 : wsStatus === 'connecting' || wsStatus === 'reconnecting'
                   ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10'
                   : 'text-slate-500 border-slate-700/40'
             }`}
           >
             <div
-              className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : wsStatus === 'reconnecting' ? 'bg-yellow-400 animate-pulse' : 'bg-slate-600'}`}
+              className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? `bg-${THEME_COLOR}-400 animate-pulse` : wsStatus === 'reconnecting' ? 'bg-yellow-400 animate-pulse' : 'bg-slate-600'}`}
             />
             {wsStatus === 'connected'
               ? 'Live'
@@ -1362,7 +1363,7 @@ export default function GamePage() {
                       </span>
                       <button
                         onClick={() => navigate(`/player/${player.id}`)}
-                        className="font-semibold text-slate-100 hover:text-emerald-400 transition-colors"
+                        className={`font-semibold text-slate-100 hover:text-${THEME_COLOR}-400 transition-colors`}
                       >
                         {lastName}
                       </button>
@@ -1601,7 +1602,7 @@ export default function GamePage() {
                   <div className="text-[8px] text-slate-500 uppercase tracking-widest">
                     At Bat
                   </div>
-                  <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-emerald-500/40 flex-shrink-0">
+                  <div className={`w-14 h-14 rounded-xl overflow-hidden border-2 border-${THEME_COLOR}-500/40 flex-shrink-0`}>
                     <img
                       src={playerActionShotUrl(ls.offense?.batter?.id)}
                       className="w-full h-full object-cover object-top"
@@ -1625,7 +1626,7 @@ export default function GamePage() {
                     return (
                       <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
                         {gs != null && (
-                          <div className="text-emerald-400/80 font-semibold">
+                          <div className={`text-${THEME_COLOR}-400/80 font-semibold`}>
                             {gs.hits ?? 0}-{gs.atBats ?? 0}
                           </div>
                         )}
@@ -1696,7 +1697,7 @@ export default function GamePage() {
                     <div
                       key={i}
                       onClick={() => openSheet(play)}
-                      className={`flex items-start gap-2.5 cursor-pointer px-4 py-3 border-b border-slate-800/40 last:border-0 hover:bg-slate-800/30 active:bg-slate-800/50 transition-colors ${play.about?.isScoringPlay ? 'bg-emerald-500/5' : ''}`}
+                      className={`flex items-start gap-2.5 cursor-pointer px-4 py-3 border-b border-slate-800/40 last:border-0 hover:bg-slate-800/30 active:bg-slate-800/50 transition-colors ${play.about?.isScoringPlay ? `bg-${THEME_COLOR}-500/5` : ''}`}
                     >
                       <span className="text-[9px] font-mono text-slate-600 pt-0.5 flex-shrink-0 w-8 text-center">
                         {half}{inn}
@@ -1810,7 +1811,7 @@ export default function GamePage() {
                         <div
                           key={i}
                           onClick={() => openSheet(play)}
-                          className={`flex items-start gap-2.5 cursor-pointer p-2 rounded-xl hover:bg-slate-800/50 transition-all ${play.about?.isScoringPlay ? 'ring-1 ring-emerald-500/20 bg-emerald-500/5' : ''}`}
+                          className={`flex items-start gap-2.5 cursor-pointer p-2 rounded-xl hover:bg-slate-800/50 transition-all ${play.about?.isScoringPlay ? `ring-1 ring-${THEME_COLOR}-500/20 bg-${THEME_COLOR}-500/5` : ''}`}
                         >
                           <button
                             onClick={(e) => {
@@ -1821,7 +1822,7 @@ export default function GamePage() {
                           >
                             <img
                               src={playerHeadshotUrl(bid)}
-                              className="w-9 h-9 rounded-lg object-cover border border-slate-700 hover:border-emerald-500/60 transition-colors"
+                              className={`w-9 h-9 rounded-lg object-cover border border-slate-700 hover:border-${THEME_COLOR}-500/60 transition-colors`}
                               alt=""
                             />
                           </button>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -286,7 +287,7 @@ export default function Scores() {
       }
       return (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <div className={`w-8 h-8 border-4 border-${THEME_COLOR}-400 border-t-transparent rounded-full animate-spin`} />
         </div>
       );
     }
@@ -694,7 +695,7 @@ export default function Scores() {
               todayButton="Today"
               customInput={
                 <div className="flex items-center gap-x-2 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-2xl px-3 sm:px-4 py-2 cursor-pointer transition-all">
-                  <i className="fa-solid fa-calendar text-emerald-400 text-sm" />
+                  <i className={`fa-solid fa-calendar text-${THEME_COLOR}-400 text-sm`} />
                   <span className="text-white font-medium text-sm">
                     {formatDisplayDate(selectedDate)}
                   </span>
@@ -733,7 +734,7 @@ export default function Scores() {
         {/* Row: label + view mode toggle */}
         <div className="flex items-center justify-between mb-4 px-1">
           <div className="font-semibold flex items-center gap-x-2">
-            <i className="fa-solid fa-baseball-ball text-emerald-400" />
+            <i className={`fa-solid fa-baseball-ball text-${THEME_COLOR}-400`} />
             {isToday(selectedDate)
               ? "Today's Games"
               : `Games on ${formatDisplayDate(selectedDate)}`}
@@ -760,7 +761,7 @@ export default function Scores() {
 
         {!isInitialReady ? (
           <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            <div className={`w-8 h-8 border-4 border-${THEME_COLOR}-400 border-t-transparent rounded-full animate-spin`} />
           </div>
         ) : (
           <SwipeableCarousel
