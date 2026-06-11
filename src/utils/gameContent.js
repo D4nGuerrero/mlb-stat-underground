@@ -48,9 +48,46 @@ export function parseGameHighlightVideos(content) {
     }));
 }
 
-/** Public MLB.com page for a highlight (preferred share target). */
+/** Direct playable video URL (mp4 preferred, then hls). */
+export function getHighlightVideoUrl(video) {
+  return video?.mp4Url || video?.hlsUrl || null;
+}
+
+/** Public MLB.com page for a highlight. */
 export function getHighlightShareUrl(video) {
   return video?.shareUrl ?? (video?.id ? `https://www.mlb.com/video/${video.id}` : null);
+}
+
+/** Copy text with Clipboard API, falling back to execCommand for mobile browsers. */
+export function copyToClipboard(text) {
+  if (!text || typeof document === 'undefined') return Promise.resolve(false);
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text)
+      .then(() => true)
+      .catch(() => copyToClipboardLegacy(text));
+  }
+
+  return Promise.resolve(copyToClipboardLegacy(text));
+}
+
+function copyToClipboardLegacy(text) {
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.cssText =
+      'position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0;';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 /** Native share sheet when available; otherwise copy link to clipboard. */
@@ -70,23 +107,16 @@ export async function shareHighlightVideo(video) {
     }
   }
 
-  try {
-    await navigator.clipboard.writeText(url);
-    return { ok: true, method: 'clipboard' };
-  } catch {
-    return { ok: false, reason: 'clipboard-failed' };
-  }
+  const copied = await copyToClipboard(url);
+  return copied
+    ? { ok: true, method: 'clipboard' }
+    : { ok: false, reason: 'clipboard-failed' };
 }
 
 export async function copyHighlightLink(video) {
-  const url = getHighlightShareUrl(video);
+  const url = getHighlightVideoUrl(video);
   if (!url) return false;
-  try {
-    await navigator.clipboard.writeText(url);
-    return true;
-  } catch {
-    return false;
-  }
+  return copyToClipboard(url);
 }
 
 function tokenize(text) {

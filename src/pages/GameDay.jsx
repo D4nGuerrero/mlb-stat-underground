@@ -31,6 +31,7 @@ import {
   parseGameHighlightVideos,
   buildHighlightMap,
   getHighlightShareUrl,
+  getHighlightVideoUrl,
   shareHighlightVideo,
   copyHighlightLink,
 } from '../utils/gameContent';
@@ -97,7 +98,7 @@ const PLAY_BADGE = {
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   grounded_into_double_play: {
-    label: 'GIDP',
+    label: 'Grounded Into DP',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   double_play: {
@@ -237,30 +238,25 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
 }
 
 function VideoShareMenu({ video }) {
-  const [feedback, setFeedback] = useState(null);
-  const shareUrl = getHighlightShareUrl(video);
+  const videoUrl = getHighlightVideoUrl(video);
+  const pageUrl = getHighlightShareUrl(video);
   const canNativeShare = typeof navigator !== 'undefined' && Boolean(navigator.share);
 
-  const flash = (msg) => {
-    setFeedback(msg);
-    window.setTimeout(() => setFeedback(null), 2000);
-  };
-
-  const handleNativeShare = async (e) => {
+  const handleNativeShare = async (e, close) => {
     e.preventDefault();
     e.stopPropagation();
-    const result = await shareHighlightVideo(video);
-    if (result.ok && result.method === 'clipboard') flash('Link copied');
+    close?.();
+    await shareHighlightVideo(video);
   };
 
-  const handleCopy = async (e) => {
+  const handleCopy = (e, close) => {
     e.preventDefault();
     e.stopPropagation();
-    const ok = await copyHighlightLink(video);
-    flash(ok ? 'Link copied' : 'Could not copy');
+    close?.();
+    if (videoUrl) copyHighlightLink(video);
   };
 
-  if (!shareUrl) return null;
+  if (!videoUrl && !pageUrl && !canNativeShare) return null;
 
   return (
     <Menu as="div" className="absolute top-2 right-2 z-20">
@@ -280,10 +276,10 @@ function VideoShareMenu({ video }) {
       >
         {canNativeShare && (
           <MenuItem>
-            {({ focus }) => (
+            {({ focus, close }) => (
               <button
                 type="button"
-                onClick={handleNativeShare}
+                onClick={(e) => handleNativeShare(e, close)}
                 className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
               >
                 <i className="fa-solid fa-share-nodes text-xs w-4 text-center" aria-hidden />
@@ -292,39 +288,37 @@ function VideoShareMenu({ video }) {
             )}
           </MenuItem>
         )}
-        <MenuItem>
-          {({ focus }) => (
-            <button
-              type="button"
-              onClick={handleCopy}
-              className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
-            >
-              <i className="fa-solid fa-link text-xs w-4 text-center" aria-hidden />
-              Copy link
-            </button>
-          )}
-        </MenuItem>
-        <MenuItem>
-          {({ focus }) => (
-            <a
-              href={shareUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className={`block px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
-            >
-              <i className="fa-solid fa-arrow-up-right-from-square text-xs w-4 text-center" aria-hidden />
-              Open on MLB.com
-            </a>
-          )}
-        </MenuItem>
+        {videoUrl && (
+          <MenuItem>
+            {({ focus, close }) => (
+              <button
+                type="button"
+                onClick={(e) => handleCopy(e, close)}
+                className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
+              >
+                <i className="fa-solid fa-link text-xs w-4 text-center" aria-hidden />
+                Copy link
+              </button>
+            )}
+          </MenuItem>
+        )}
+        {pageUrl && (
+          <MenuItem>
+            {({ focus }) => (
+              <a
+                href={pageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className={`block px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
+              >
+                <i className="fa-solid fa-arrow-up-right-from-square text-xs w-4 text-center" aria-hidden />
+                Open on MLB.com
+              </a>
+            )}
+          </MenuItem>
+        )}
       </MenuItems>
-
-      {feedback && (
-        <div className="absolute top-10 right-0 px-2 py-1 rounded-lg bg-slate-950/90 border border-slate-700 text-[10px] text-slate-300 whitespace-nowrap pointer-events-none">
-          {feedback}
-        </div>
-      )}
     </Menu>
   );
 }
@@ -2077,7 +2071,7 @@ export default function GamePage() {
         )}
 
         {currentTab === 'summary' && (
-          <div className="bg-slate-900 border border-slate-700/60 p-4 sm:p-5">
+          <div className="bg-slate-900 border border-slate-700/60 p-2 sm:p-5">
             <SegmentedControl
               value={summaryFilter}
               onChange={setSummaryFilter}
@@ -2130,11 +2124,17 @@ export default function GamePage() {
                             >
                               {b.label}
                             </span>
-                            <p className="text-lg text-slate-300 leading-snug">
+                            <p className="text-md text-slate-200 leading-snug">
                               {item.description}
+                              {item.outsLabel && (
+                                <>
+                                  {' '}
+                                  <span className="font-bold text-slate-100">{item.outsLabel}</span>
+                                </>
+                              )}
                             </p>
                             {scoreLine && (
-                              <p className="text-sm text-slate-500 mt-1 font-medium">
+                              <p className="text-xl text-white-500 mt-1 font-bold">
                                 {scoreLine}
                               </p>
                             )}
