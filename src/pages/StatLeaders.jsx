@@ -13,6 +13,7 @@ import {
   scrollStatCell,
   TABLE_SCROLL_BODY,
   TABLE_BASE,
+  BaseballSpinner,
 } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
@@ -456,9 +457,7 @@ export default function StatLeaders() {
 
           <div className="flex items-center gap-3 flex-shrink-0">
             <LeagueLogo filter={leagueFilter} />
-            {isLoading && (
-              <div className={`w-5 h-5 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-            )}
+            {isLoading && <BaseballSpinner size="sm" inline />}
           </div>
         </div>
 

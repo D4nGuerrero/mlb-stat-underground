@@ -1,6 +1,6 @@
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
 import { THEME_COLOR } from '../../theme/theme.js';
-import { SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../../components/ui';
+import { SegmentedControl, BaseballSpinner, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../../components/ui';
 import { TABLE_TEXT_CLASS } from '../../theme/tableTheme';
 import TeamAbbrCell from '../../components/TeamAbbrCell';
 import { DEFAULT_PARK, PARK_FACTORS, PITCH_DEFS, PITCH_RESULT_BG, PITCH_RESULT_LABELS } from '../constants';
@@ -16,7 +16,7 @@ export function LineupBuilder({
       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
         <span className="text-xs font-semibold text-slate-300">{title} Lineup</span>
         <div className="flex items-center gap-2">
-          {loading && <span className={`text-[10px] text-${THEME_COLOR}-400 font-mono animate-pulse`}>Loading…</span>}
+          {loading && <BaseballSpinner size="xs" inline />}
           {onModeChange && (
             <SegmentedControl
               value={mode}

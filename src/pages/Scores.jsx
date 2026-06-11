@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
-import { SegmentedControl, SwipeableCarousel } from '../components/ui';
+import { SegmentedControl, SwipeableCarousel, BaseballSpinner, LoadingSpinner } from '../components/ui';
 
 const MIN_DATE = new Date('2024-03-01');
 const WINDOW_PAST = 60;
@@ -285,11 +285,7 @@ export default function Scores() {
       if (!isActive && !isAdjacent) {
         return <div className="min-h-[1px]" aria-hidden />;
       }
-      return (
-        <div className="flex justify-center py-12">
-          <div className={`w-8 h-8 border-4 border-${THEME_COLOR}-400 border-t-transparent rounded-full animate-spin`} />
-        </div>
-      );
+      return <LoadingSpinner size="lg" py="py-12" />;
     }
 
     if (!games?.length) {
@@ -658,13 +654,17 @@ export default function Scores() {
   return (
     <div className="max-w-7xl mx-auto  sm:px-6 py-5 sm:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 px-4 sm:px-0 sm:mb-8 ">
+      <div className="flex items-center justify-between mb-6 px-4 sm:px-0 sm:mb-8 gap-2">
         <div>
           <h1 className="font-display text-3xl sm:text-4xl tracking-tighter">Scores</h1>
-          <p className="text-slate-400 text-sm sm:text-base">Real-time MLB scores — click a game to dive in</p>
+          <p className="text-slate-400 text-sm sm:text-base ">
+            Stay up to date with live scores, recaps, and stats for every MLB game.
+            </p>
+
+          
         </div>
         {liveCount > 0 && (
-          <div className="flex items-center gap-2 text-sm px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400">
+          <div className="flex items-center gap-2 text-sm px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full bg-red-400 live-pulse" />
             {liveCount} Live
           </div>
@@ -724,7 +724,11 @@ export default function Scores() {
           onClick={() => refreshCurrentDay(true)}
           className="flex items-center gap-x-1.5 text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-2xl text-slate-400 hover:text-slate-200 transition-all active:scale-[0.985]"
         >
-          <i className={`fa-solid fa-rotate text-xs ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? (
+            <BaseballSpinner size="xs" inline />
+          ) : (
+            <i className="fa-solid fa-rotate text-xs" />
+          )}
           <span className="hidden xs:inline">Refresh</span>
         </button>
       </div>
@@ -760,9 +764,7 @@ export default function Scores() {
         </p>
 
         {!isInitialReady ? (
-          <div className="flex justify-center py-12">
-            <div className={`w-8 h-8 border-4 border-${THEME_COLOR}-400 border-t-transparent rounded-full animate-spin`} />
-          </div>
+          <LoadingSpinner size="lg" py="py-12" />
         ) : (
           <SwipeableCarousel
             ref={carouselRef}

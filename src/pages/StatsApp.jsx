@@ -7,7 +7,7 @@ import {
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
 } from '../utils/mlbHelpers';
-import { TabBar, Select, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TabBar, Select, BaseballSpinner, LoadingSpinner, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import {
@@ -894,7 +894,11 @@ export default function StatsApp() {
                 aria-label="Search players"
                 className={`w-11 h-11 flex items-center justify-center bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0`}
               >
-                <i className={`fa-solid fa-magnifying-glass text-sm ${isLoading ? 'animate-pulse' : ''}`} />
+                {isLoading ? (
+                  <BaseballSpinner size="xs" inline />
+                ) : (
+                  <i className="fa-solid fa-magnifying-glass text-sm" />
+                )}
               </button>
             </form>
           </div>
@@ -905,11 +909,7 @@ export default function StatsApp() {
             </div>
           )}
 
-          {isLoading && (
-            <div className="flex justify-center py-12">
-              <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-            </div>
-          )}
+          {isLoading && <LoadingSpinner size="lg" py="py-12" />}
 
           {!isLoading && searchResults.length > 0 && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
@@ -954,11 +954,7 @@ export default function StatsApp() {
             </button>
           </div>
 
-          {isHotColdLoading && (
-            <div className="flex justify-center py-16">
-              <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-            </div>
-          )}
+          {isHotColdLoading && <LoadingSpinner size="lg" py="py-16" />}
 
           {!isHotColdLoading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 ">
@@ -1113,11 +1109,7 @@ export default function StatsApp() {
             </button>
           </div>
 
-          {isRankingLoading && (
-            <div className="flex justify-center py-16">
-              <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-            </div>
-          )}
+          {isRankingLoading && <LoadingSpinner size="lg" py="py-16" />}
 
           {exodusRankings.length > 0 && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">

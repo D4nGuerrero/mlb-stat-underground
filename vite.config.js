@@ -20,7 +20,7 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
-        orientation: 'any',
+        orientation: 'portrait',
         scope: base,
         start_url: base,
         icons: [
@@ -37,7 +37,7 @@ export default defineConfig({
             purpose: 'any',
           },
           {
-            src: 'icons/icon-512.png',
+            src: 'icons/maskable_icon.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

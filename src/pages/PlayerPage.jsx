@@ -27,6 +27,7 @@ import {
   TABLE_BASE,
   useStickyColOffset,
   stickyCol1Props,
+  LoadingSpinner,
 } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
@@ -567,13 +568,7 @@ function PlayerTransactionsTab({ playerId }) {
     })();
   }, [playerId]);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <div className={`w-6 h-6 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-      </div>
-    );
-  }
+  if (loading) return <LoadingSpinner size="md" py="py-12" />;
 
   if (!txns.length) {
     return <div className="text-slate-500 text-sm text-center py-12">No transactions found.</div>;
@@ -835,11 +830,7 @@ export default function PlayerPage() {
   return (
     <div className="max-w-5xl mx-auto  sm:px-6  sm:py-8">
  
-      {isLoading && (
-        <div className="flex items-center justify-center py-20">
-          <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-        </div>
-      )}
+      {isLoading && <LoadingSpinner size="lg" py="py-20" />}
 
       {error && <div className="text-center py-20 text-slate-500">{error}</div>}
 
@@ -973,9 +964,7 @@ export default function PlayerPage() {
                         hidePeriod
                       />
                       {gameLogLoading ? (
-                        <div className="flex justify-center py-12">
-                          <div className={`w-6 h-6 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-                        </div>
+                        <LoadingSpinner size="md" py="py-12" />
                       ) : (
                         <GameLogTable
                           cols={gameLogCols}
@@ -1001,9 +990,7 @@ export default function PlayerPage() {
                           Splits breakdown is available for hitters only.
                         </div>
                       ) : splitLoading ? (
-                        <div className="flex justify-center py-12">
-                          <div className={`w-6 h-6 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-                        </div>
+                        <LoadingSpinner size="md" py="py-12" />
                       ) : (
                         <SplitsTable
                           sections={splitSections}
