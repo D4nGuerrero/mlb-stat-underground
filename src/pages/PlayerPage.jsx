@@ -260,6 +260,26 @@ function isCareerHigh(colKey, value, highs) {
 
 const LABEL_SORT_KEY = '__label__';
 
+function isSeasonTotalRow(row) {
+  return Boolean(row?.isSeasonTotal) || !row?.team?.id;
+}
+
+function compareSeasonRows(a, b, sortDir) {
+  const seasonCmp = (Number(a.season) || 0) - (Number(b.season) || 0);
+  if (seasonCmp !== 0) return sortDir === 'asc' ? seasonCmp : -seasonCmp;
+
+  const aTotal = isSeasonTotalRow(a);
+  const bTotal = isSeasonTotalRow(b);
+  if (aTotal !== bTotal) {
+    if (sortDir === 'asc') return aTotal ? 1 : -1;
+    return aTotal ? -1 : 1;
+  }
+  if (aTotal) return 0;
+
+  const teamCmp = getTeamAbbr(a.team).localeCompare(getTeamAbbr(b.team));
+  return sortDir === 'asc' ? teamCmp : -teamCmp;
+}
+
 function cellSortValue(key, row, col) {
   if (key === LABEL_SORT_KEY) {
     if (row.season != null) return Number(row.season) || 0;
@@ -268,7 +288,7 @@ function cellSortValue(key, row, col) {
   }
   const format = col?.format;
   if (format === 'date' && row.date) return new Date(`${row.date}T12:00:00`).getTime();
-  if (format === 'team') return getTeamAbbr(row.team);
+  if (format === 'team') return isSeasonTotalRow(row) ? 'Total' : getTeamAbbr(row.team);
   if (format === 'opponent') {
     const abbr = getTeamAbbr(row.opponent);
     if (abbr === '—') return '';
@@ -282,6 +302,10 @@ function cellSortValue(key, row, col) {
 }
 
 function comparePlayerRows(a, b, sortCol, sortDir, col) {
+  if (sortCol === LABEL_SORT_KEY && (a.season != null || b.season != null)) {
+    return compareSeasonRows(a, b, sortDir);
+  }
+
   const av = cellSortValue(sortCol, a, col);
   const bv = cellSortValue(sortCol, b, col);
   let cmp = 0;
@@ -328,7 +352,10 @@ function formatCell(value, format, row) {
     return new Date(row.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   if (format === 'team') {
-    return <TeamAbbrCell team={row.team} abbrOnly size="xs" abbrClassName="text-[10px] font-medium" />;
+    if (isSeasonTotalRow(row)) {
+      return <span className="text-[10px] font-medium text-slate-400">Total</span>;
+    }
+    return <TeamAbbrCell team={row.team} abbrOnly size="md" abbrClassName="text-[10px] font-medium" />;
   }
   if (format === 'opponent') {
     const abbr = getTeamAbbr(row.opponent);
@@ -429,7 +456,9 @@ function StatsTable({
     return [...rows].sort((a, b) => comparePlayerRows(a, b, sortCol, sortDir, col));
   }, [rows, cols, sortCol, sortDir]);
 
-  const careerHighs = highlightCareerHighs ? computeCareerHighs(rows, cols) : null;
+  const careerHighs = highlightCareerHighs
+    ? computeCareerHighs(rows.filter((row) => !isSeasonTotalRow(row)), cols)
+    : null;
 
   if (!rows?.length && !footerRow) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
@@ -835,10 +864,10 @@ export default function PlayerPage() {
 
   const careerRows = getYearByYearSplits(statGroup)
     .filter((sp) => sp.season && sp.stat)
-    .sort((a, b) => Number(b.season) - Number(a.season) || (b.sport?.id ?? 0) - (a.sport?.id ?? 0))
     .map((sp) => ({
-      id: `${sp.season}-${sp.team?.id ?? 'na'}-${sp.sport?.id ?? 0}`,
+      id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}`,
       season: Number(sp.season),
+      isSeasonTotal: !sp.team?.id,
       label: (
         <SeasonYearLabel
           season={sp.season}
@@ -848,7 +877,8 @@ export default function PlayerPage() {
       ),
       team: sp.team,
       stat: sp.stat,
-    }));
+    }))
+    .sort((a, b) => compareSeasonRows(a, b, 'desc'));
 
   const careerGroupOptions = [
     { value: 'hitting', label: 'Batting' },
