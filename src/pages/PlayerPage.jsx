@@ -195,6 +195,45 @@ function formatBornWithAge(playerInfo) {
   return `${formatted} (${age})`;
 }
 
+function getRosterStatusStyle(code, description) {
+  const isActive = code === 'A';
+  const isInjured = /^D\d/.test(code || '') || /injur/i.test(description || '');
+  if (isActive) {
+    return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+  }
+  if (isInjured) {
+    return 'bg-red-500/15 text-red-300 border-red-500/30';
+  }
+  return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+}
+
+function PlayerRosterStatus({ rosterEntries }) {
+  const entry = rosterEntries?.find((e) => e.isActive) ?? rosterEntries?.[0];
+  if (!entry?.status) return null;
+
+  const { code, description } = entry.status;
+  const badgeCls = getRosterStatusStyle(code, description);
+  const statusDate = entry.statusDate
+    ? new Date(entry.statusDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+
+  return (
+    <div className="px-5 sm:px-8 py-3 border-b border-slate-700/50 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Status</div>
+      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${badgeCls}`}>
+        {code !== 'A' && <i className="fa-solid fa-kit-medical text-[10px]" aria-hidden />}
+        {description || code}
+      </span>
+      {statusDate && code !== 'A' && (
+        <span className="text-xs text-slate-500">since {statusDate}</span>
+      )}
+      {entry.team?.name && (
+        <span className="text-xs text-slate-500">{entry.team.name} 40-man</span>
+      )}
+    </div>
+  );
+}
+
 function parseStatValue(value) {
   if (value == null || value === '—' || value === '-.--') return null;
   if (typeof value === 'number') return value;
@@ -701,7 +740,7 @@ export default function PlayerPage() {
     setIsLoading(true);
     setError(null);
 
-    fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam,awards`)
+    fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam,awards,rosterEntries`)
       .then((r) => r.json())
       .then((bioData) => {
         setPlayerInfo(bioData.people?.[0] || null);
@@ -906,6 +945,8 @@ export default function PlayerPage() {
               </div>
             ))}
           </div>
+
+          <PlayerRosterStatus rosterEntries={playerInfo.rosterEntries} />
 
           <div className=" sm:px-8 py-5 sm:py-6">
             <TabBar variant="page" tabs={PLAYER_TABS} activeKey={activeTab} onChange={setActiveTab}>

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { BaseballSpinner } from '../components/ui';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -18,6 +19,21 @@ import {
   sumInningsPitched,
 } from '../utils/mlbHelpers';
 import PitchCanvas from '../components/PitchCanvas';
+import {
+  buildSummaryItems,
+  filterSummaryItems,
+  groupSummaryByInning,
+  formatUpdatedScore,
+  getSummaryPlayIconKind,
+} from '../utils/gamePlaySummary';
+import {
+  fetchGameContent,
+  parseGameHighlightVideos,
+  buildHighlightMap,
+  getHighlightShareUrl,
+  shareHighlightVideo,
+  copyHighlightLink,
+} from '../utils/gameContent';
 import { TabBar, Modal, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 
@@ -38,6 +54,7 @@ const PLAY_BADGE = {
   },
   home_run: {
     label: 'Home Run',
+    //  cls: ' text-[#5CA5FF] border-[#5CA5FF]',
     cls: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
   },
   strikeout: {
@@ -46,11 +63,11 @@ const PLAY_BADGE = {
   },
   walk: {
     label: 'Walk',
-    cls: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+    cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   },
   intent_walk: {
     label: 'IBB',
-    cls: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+    cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   },
   hit_by_pitch: {
     label: 'HBP',
@@ -93,8 +110,12 @@ const PLAY_BADGE = {
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   field_error: {
-    label: 'Error',
+    label: 'Field Error',
     cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+  },
+   catcher_interf: {
+    label: 'Cathcher Interference',
+   cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
   },
   sac_fly: {
     label: 'Sac Fly',
@@ -105,7 +126,7 @@ const PLAY_BADGE = {
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   stolen_base_2b: {
-    label: 'Stolen Base',
+    label: 'Stolen Base 2B',
     cls: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
   },
   stolen_base_3b: {
@@ -136,6 +157,7 @@ const PLAY_BADGE = {
     label: 'Balk',
     cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
   },
+ 
 };
 
 const getPlayBadge = (et) =>
@@ -173,6 +195,200 @@ const ORDINALS = [
   '13th',
 ];
 
+function SummaryPlayAvatar({ item, onPlayerClick }) {
+  const iconKind = item.kind === 'action' ? getSummaryPlayIconKind(item.eventType) : null;
+
+  if (iconKind === 'shoe') {
+    return (
+      <div
+        className="w-16 h-16 rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0"
+        aria-hidden
+      >
+        <i className="fa-solid fa-shoe-prints text-xl text-blue-400 -rotate-12" />
+      </div>
+    );
+  }
+
+  if (iconKind === 'pitch') {
+    return (
+      <div
+        className="w-16 h-16 rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0"
+        aria-hidden
+      >
+        <i className="fa-solid fa-baseball text-xl text-orange-400" />
+      </div>
+    );
+  }
+
+  if (!item.batterId) {
+    return (
+      <div className="w-16 h-16 rounded-full bg-slate-800/80 border-2 border-slate-600 flex-shrink-0" aria-hidden />
+    );
+  }
+
+  return (
+    <button type="button" onClick={onPlayerClick} className="flex-shrink-0 mt-0.5">
+      <img src={playerHeadshotUrl(item.batterId, 2)} className="w-16 h-16 object-cover" alt="" />
+    </button>
+  );
+}
+
+function VideoShareMenu({ video }) {
+  const [feedback, setFeedback] = useState(null);
+  const shareUrl = getHighlightShareUrl(video);
+  const canNativeShare = typeof navigator !== 'undefined' && Boolean(navigator.share);
+
+  const flash = (msg) => {
+    setFeedback(msg);
+    window.setTimeout(() => setFeedback(null), 2000);
+  };
+
+  const handleNativeShare = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const result = await shareHighlightVideo(video);
+    if (result.ok && result.method === 'clipboard') flash('Link copied');
+  };
+
+  const handleCopy = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ok = await copyHighlightLink(video);
+    flash(ok ? 'Link copied' : 'Could not copy');
+  };
+
+  if (!shareUrl) return null;
+
+  return (
+    <Menu as="div" className="absolute top-2 right-2 z-20">
+      <MenuButton
+        type="button"
+        onClick={(e) => e.stopPropagation()}
+        className="w-8 h-8 rounded-full bg-black/55 hover:bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-white transition-colors"
+        aria-label="Video options"
+      >
+        <i className="fa-solid fa-ellipsis-vertical text-sm" aria-hidden />
+      </MenuButton>
+
+      <MenuItems
+        anchor="bottom end"
+        transition
+        className="z-50 mt-1 min-w-[10.5rem] rounded-xl bg-slate-900 border border-slate-700 py-1 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+      >
+        {canNativeShare && (
+          <MenuItem>
+            {({ focus }) => (
+              <button
+                type="button"
+                onClick={handleNativeShare}
+                className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
+              >
+                <i className="fa-solid fa-share-nodes text-xs w-4 text-center" aria-hidden />
+                Share…
+              </button>
+            )}
+          </MenuItem>
+        )}
+        <MenuItem>
+          {({ focus }) => (
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
+            >
+              <i className="fa-solid fa-link text-xs w-4 text-center" aria-hidden />
+              Copy link
+            </button>
+          )}
+        </MenuItem>
+        <MenuItem>
+          {({ focus }) => (
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className={`block px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
+            >
+              <i className="fa-solid fa-arrow-up-right-from-square text-xs w-4 text-center" aria-hidden />
+              Open on MLB.com
+            </a>
+          )}
+        </MenuItem>
+      </MenuItems>
+
+      {feedback && (
+        <div className="absolute top-10 right-0 px-2 py-1 rounded-lg bg-slate-950/90 border border-slate-700 text-[10px] text-slate-300 whitespace-nowrap pointer-events-none">
+          {feedback}
+        </div>
+      )}
+    </Menu>
+  );
+}
+
+function ScoringPlayVideo({ video, isExpanded, onToggle }) {
+  const videoRef = useRef(null);
+  const playOnExpandRef = useRef(false);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (isExpanded && playOnExpandRef.current && el) {
+      el.play().catch(() => {});
+      playOnExpandRef.current = false;
+    }
+  }, [isExpanded]);
+
+  const handleExpand = () => {
+    playOnExpandRef.current = true;
+    onToggle();
+  };
+
+  if (!video?.thumbnail && !video?.mp4Url) return null;
+  const src = video.mp4Url || video.hlsUrl;
+
+  return (
+    <div className="mt-3 max-w-md" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      {isExpanded && src ? (
+        <div className="relative rounded-xl overflow-hidden border border-slate-700/60 bg-black">
+          <VideoShareMenu video={video} />
+          <video
+            ref={videoRef}
+            controls
+            playsInline
+            poster={video.thumbnail}
+            className="w-full aspect-video"
+            src={src}
+          >
+            <track kind="captions" />
+          </video>
+          {video.headline && (
+            <div className="px-3 py-2 text-xs text-slate-400 border-t border-slate-800">{video.headline}</div>
+          )}
+        </div>
+      ) : (
+        <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-700/60">
+          <VideoShareMenu video={video} />
+          <button
+            type="button"
+            onClick={handleExpand}
+            className="relative w-full h-full group"
+            aria-label={video.headline ? `Play video: ${video.headline}` : 'Play highlight video'}
+          >
+            {video.thumbnail && (
+              <img src={video.thumbnail} alt="" className="w-full h-full object-cover" />
+            )}
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center transition-colors group-hover:bg-black/50">
+              <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center border border-white/30">
+                <i className="fa-solid fa-play text-white text-lg ml-0.5" aria-hidden />
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LinescoreInningCell({ val }) {
   if (val > 0) {
     return <span className="text-green-400 font-bold">{val}</span>;
@@ -193,11 +409,35 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
     return map;
   }, [ls?.innings]);
 
-  useEffect(() => {
+  const prevInningCountRef = useRef(0);
+  const inningCount = inningNums.length;
+  const hasExtras = inningCount > 9;
+
+  const inningGridStyle = useMemo(
+    () => ({
+      gridTemplateColumns: `repeat(${inningCount}, minmax(0, 1fr))`,
+      width: hasExtras ? `calc(100% * ${inningCount} / 9)` : '100%',
+    }),
+    [inningCount, hasExtras],
+  );
+
+  const cellBase = 'text-center tabular-nums font-mono';
+  const headerCell = `h-8 flex items-center justify-center ${cellBase}`;
+  const bodyCell = `h-9 flex items-center justify-center border-t border-slate-700/40 ${cellBase}`;
+  const headerRow = 'h-8 flex items-center shrink-0';
+  const bodyRow = 'h-9 flex items-center shrink-0 border-t border-slate-700/40';
+
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || inningNums.length <= 9) return;
-    el.scrollLeft = el.scrollWidth - el.clientWidth;
-  }, [inningNums.length, ls]);
+    if (!el || !hasExtras) {
+      prevInningCountRef.current = inningCount;
+      return;
+    }
+    if (inningCount > prevInningCountRef.current) {
+      el.scrollLeft = el.scrollWidth - el.clientWidth;
+    }
+    prevInningCountRef.current = inningCount;
+  }, [inningCount, hasExtras]);
 
   const sides = [
     { side: 'away', team: away, runs: awayRuns },
@@ -206,70 +446,54 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
 
   return (
     <div className="bg-slate-800/40 border-t border-slate-700/50">
-      <div className="flex text-sm px-4 sm:px-6 py-3">
+      <div className="flex text-sm px-2 sm:px-6 py-3">
         <div className="flex-shrink-0 w-14">
-          <div className="h-[32px]" />
+          <div className={headerRow} />
           {sides.map(({ side, team }) => (
-            <div
-              key={side}
-              className="py-2 font-bold text-slate-200 border-t border-slate-700/40"
-            >
+            <div key={side} className={`${bodyRow} font-bold text-slate-200`}>
               {team.abbreviation}
             </div>
           ))}
         </div>
 
         <div ref={scrollRef} className="overflow-x-auto flex-1 min-w-0">
-          <div className="inline-block">
-            <div className="flex text-slate-500">
-              {inningNums.map((i) => (
-                <div
-                  key={i}
-                  className="w-6 px-2 text-center font-normal flex-shrink-0 py-1.5"
-                >
-                  {i}
-                </div>
-              ))}
-            </div>
-            {sides.map(({ side }) => (
-              <div
-                key={side}
-                className="flex border-t border-slate-700/40"
-              >
-                {inningNums.map((i) => {
-                  const val = inningByNum[i]?.[side]?.runs;
-                  return (
-                    <div
-                      key={i}
-                      className="w-6 px-2 text-center font-mono text-slate-300 flex-shrink-0 py-2"
-                    >
-                      <LinescoreInningCell val={val} />
-                    </div>
-                  );
-                })}
+          <div
+            className={`grid min-w-full ${hasExtras ? 'sm:pr-6' : ''}`}
+            style={inningGridStyle}
+          >
+            {inningNums.map((i) => (
+              <div key={`hdr-${i}`} className={`${headerCell} text-slate-500 text-xs`}>
+                {i}
               </div>
             ))}
+            {sides.map(({ side }) =>
+              inningNums.map((i) => {
+                const val = inningByNum[i]?.[side]?.runs;
+                return (
+                  <div key={`${side}-${i}`} className={`${bodyCell} text-slate-300 text-sm`}>
+                    <LinescoreInningCell val={val} />
+                  </div>
+                );
+              }),
+            )}
           </div>
         </div>
 
         <div className="flex-shrink-0 border-l border-slate-600">
-          <div className="flex text-slate-500">
-            <div className="w-8 px-3 text-center font-bold py-1.5">R</div>
-            <div className="w-8 px-2 text-center font-normal py-1.5">H</div>
-            <div className="w-8 px-2 text-center font-normal py-1.5">E</div>
+          <div className={`${headerRow} flex text-slate-500`}>
+            <div className="w-8 px-3 text-center font-bold">R</div>
+            <div className="w-8 px-2 text-center font-normal">H</div>
+            <div className="w-8 px-2 text-center font-normal">E</div>
           </div>
           {sides.map(({ side, runs }) => (
-            <div
-              key={side}
-              className="flex border-t border-slate-700/40"
-            >
-              <div className="w-8 px-3 text-center font-bold py-2">
+            <div key={side} className={`${bodyRow} flex`}>
+              <div className="w-8 px-3 text-center font-bold">
                 {runs}
               </div>
-              <div className="w-8 px-2 text-center text-slate-400 py-2">
+              <div className="w-8 px-2 text-center text-slate-400">
                 {ls?.teams?.[side]?.hits ?? 0}
               </div>
-              <div className="w-8 px-2 text-center text-slate-500 py-2">
+              <div className="w-8 px-2 text-center text-slate-500">
                 {ls?.teams?.[side]?.errors ?? 0}
               </div>
             </div>
@@ -298,6 +522,9 @@ export default function GamePage() {
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
   const vsStatsCacheRef = useRef({});
+  const summaryScrollYRef = useRef(0);
+  const [gameContent, setGameContent] = useState(null);
+  const [expandedVideoKey, setExpandedVideoKey] = useState(null);
 
   const fetchGame = useCallback(async () => {
     try {
@@ -318,14 +545,46 @@ export default function GamePage() {
     fetchGame();
   }, [fetchGame]);
 
+  useEffect(() => {
+    summaryScrollYRef.current = 0;
+    setGameContent(null);
+    setExpandedVideoKey(null);
+  }, [gamePk]);
+
   const { status: wsStatus, lastUpdate } = useMLBWebSocket(
     gamePk ? parseInt(gamePk) : null,
     feed?.gameData?.status?.abstractGameState,
   );
 
   useEffect(() => {
-    if (lastUpdate) fetchGame();
-  }, [lastUpdate]);
+    if (!gamePk) return;
+    fetchGameContent(gamePk)
+      .then(setGameContent)
+      .catch(() => setGameContent(null));
+  }, [gamePk, lastUpdate?.timestamp]);
+
+  useEffect(() => {
+    if (!lastUpdate) return;
+    if (lastUpdate.data) {
+      setFeed(lastUpdate.data);
+    } else {
+      fetchGame();
+    }
+  }, [lastUpdate, fetchGame]);
+
+  useEffect(() => {
+    const saveScroll = () => {
+      if (activeTab === 'summary') summaryScrollYRef.current = window.scrollY;
+    };
+    window.addEventListener('scroll', saveScroll, { passive: true });
+    return () => window.removeEventListener('scroll', saveScroll);
+  }, [activeTab]);
+
+  useLayoutEffect(() => {
+    if (activeTab === 'summary' && summaryScrollYRef.current > 0) {
+      window.scrollTo(0, summaryScrollYRef.current);
+    }
+  }, [feed, activeTab]);
 
   // Hide nav bar on mobile while game page is open
   useEffect(() => {
@@ -477,20 +736,11 @@ export default function GamePage() {
   const completePlays = allPlays.filter(
     (p) => p.about?.isComplete && p.result?.event,
   );
-  const summaryPlays =
-    summaryFilter === 'scoring'
-      ? completePlays.filter((p) => p.about?.isScoringPlay)
-      : completePlays;
 
-  const inningGroups = summaryPlays.reduce((acc, play) => {
-    const half = play.about?.halfInning === 'top' ? 'Top' : 'Bot';
-    const ord = ORDINALS[play.about?.inning] || play.about?.inning;
-    const key = `${half} ${ord}`;
-    const group = acc.find((g) => g.key === key);
-    if (group) group.plays.push(play);
-    else acc.push({ key, plays: [play] });
-    return acc;
-  }, []);
+  const summaryItems = filterSummaryItems(buildSummaryItems(allPlays), summaryFilter);
+  const summaryItemGroups = groupSummaryByInning(summaryItems, ORDINALS);
+  const highlightVideos = parseGameHighlightVideos(gameContent);
+  const highlightByItemKey = buildHighlightMap(summaryItems, highlightVideos);
 
   // ── Team Box Score ─────────────────────────────────────────────────────────
 
@@ -1300,6 +1550,7 @@ export default function GamePage() {
           </div>
 
           <LinescoreBoard
+            key={gamePk}
             ls={ls}
             away={away}
             home={home}
@@ -1659,7 +1910,7 @@ export default function GamePage() {
                   const inn = play.about?.inning;
                   return (
                     <div
-                      key={i}
+                      key={play.about?.atBatIndex ?? `recent-${i}`}
                       onClick={() => openSheet(play)}
                       className={`flex items-start gap-2.5 cursor-pointer px-4 py-3 border-b border-slate-800/40 last:border-0 hover:bg-slate-800/30 active:bg-slate-800/50 transition-colors ${play.about?.isScoringPlay ? `bg-${THEME_COLOR}-500/5` : ''}`}
                     >
@@ -1699,7 +1950,7 @@ export default function GamePage() {
               value={boxScoreSide}
               onChange={setBoxScoreSide}
               variant="pill"
-              size="sm"
+              size="md"
               className="mb-4"
               options={[
                 {
@@ -1762,43 +2013,59 @@ export default function GamePage() {
             />
 
             <div className="space-y-5">
-              {inningGroups.map(({ key, plays: groupPlays }) => (
+              {summaryItemGroups.map(({ key, items: groupItems }) => (
                 <div key={key}>
-                  <div className="text-xs font-bold text-slate-300 mb-2">
+                  <div className="text-2xl font-bold text-slate-300 mb-2">
                     {key}
                   </div>
                   <div className="space-y-1.5">
-                    {groupPlays.map((play, i) => {
-                      const b = getPlayBadge(play.result?.eventType);
-                      const bid = play.matchup?.batter?.id;
+                    {groupItems.map((item) => {
+                      const b = getPlayBadge(item.eventType);
+                      const scoreLine = item.isScoring
+                        ? formatUpdatedScore(
+                            away.abbreviation,
+                            home.abbreviation,
+                            item.awayScore,
+                            item.homeScore,
+                          )
+                        : null;
+                      const video = highlightByItemKey[item.key];
                       return (
                         <div
-                          key={i}
-                          onClick={() => openSheet(play)}
-                          className={`flex items-start gap-2.5 cursor-pointer p-2 rounded-xl hover:bg-slate-800/50 transition-all ${play.about?.isScoringPlay ? `ring-1 ring-${THEME_COLOR}-500/20 bg-${THEME_COLOR}-500/5` : ''}`}
+                          key={item.key}
+                          onClick={() => openSheet(item.play)}
+                          className={`flex items-start gap-2.5 cursor-pointer p-2 hover:bg-slate-800/50 transition-all`}
                         >
-                          <button
-                            onClick={(e) => {
+                          <SummaryPlayAvatar
+                            item={item}
+                            onPlayerClick={(e) => {
                               e.stopPropagation();
-                              if (bid) navigate(`/player/${bid}`);
+                              if (item.batterId) navigate(`/player/${item.batterId}`);
                             }}
-                            className="flex-shrink-0 mt-0.5"
-                          >
-                            <img
-                              src={playerHeadshotUrl(bid)}
-                              className={`w-9 h-9 rounded-lg object-cover border border-slate-700 hover:border-${THEME_COLOR}-500/60 transition-colors`}
-                              alt=""
-                            />
-                          </button>
+                          />
                           <div className="min-w-0 flex-1">
                             <span
-                              className={`inline-block text-[9px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${b.cls}`}
+                              className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${b.cls}`}
                             >
                               {b.label}
                             </span>
-                            <p className="text-xs text-slate-300 leading-snug">
-                              {play.result?.description}
+                            <p className="text-lg text-slate-300 leading-snug">
+                              {item.description}
                             </p>
+                            {scoreLine && (
+                              <p className="text-sm text-slate-500 mt-1 font-medium">
+                                {scoreLine}
+                              </p>
+                            )}
+                            {item.isScoring && video && (
+                              <ScoringPlayVideo
+                                video={video}
+                                isExpanded={expandedVideoKey === item.key}
+                                onToggle={() =>
+                                  setExpandedVideoKey((prev) => (prev === item.key ? null : item.key))
+                                }
+                              />
+                            )}
                           </div>
                         </div>
                       );
@@ -1806,7 +2073,7 @@ export default function GamePage() {
                   </div>
                 </div>
               ))}
-              {inningGroups.length === 0 && (
+              {summaryItemGroups.length === 0 && (
                 <div className="text-xs text-slate-600 italic text-center pt-4">
                   No plays yet
                 </div>

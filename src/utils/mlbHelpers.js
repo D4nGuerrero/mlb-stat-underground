@@ -95,8 +95,19 @@ export const teamLogoUrl = (teamId, options = {}) => {
 
 
 // use this instead: https://midfield.mlbstatic.com/v1/people/673962/silo/240
-export const playerHeadshotUrl = (playerId) => 
-  `https://midfield.mlbstatic.com/v1/people/${playerId}/silo/240`;
+export const playerHeadshotUrl = (playerId, type = 1) => {
+
+  if(type == 1) {
+    return `https://midfield.mlbstatic.com/v1/people/${playerId}/silo/240`
+  }
+
+  // https://midfield.mlbstatic.com/v1/people/624413/spots/120
+
+  if(type == 2) {
+    return `https://midfield.mlbstatic.com/v1/people/${playerId}/spots/120`
+  }
+
+}
 
 // Hero shot – batter (horizontal pose)
 export const playerHeroShotUrl = (playerId) =>
