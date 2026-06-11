@@ -1,5 +1,9 @@
+function isSeasonTotalRow(row) {
+  return !row.team?.id;
+}
+
 const HITTING_SUM_KEYS = [
-  'atBats', 'runs', 'hits', 'doubles', 'triples', 'homeRuns', 'rbi',
+  'gamesPlayed', 'atBats', 'runs', 'hits', 'doubles', 'triples', 'homeRuns', 'rbi',
   'baseOnBalls', 'hitByPitch', 'strikeOuts', 'stolenBases', 'caughtStealing',
   'sacFlies',
 ];
@@ -34,10 +38,11 @@ function outsToIp(outs) {
 }
 
 export function computeCareerTotalsRow(rows, group) {
-  if (!rows?.length) return null;
+  const stintRows = rows?.filter((row) => !isSeasonTotalRow(row)) ?? [];
+  if (!stintRows.length) return null;
 
   if (group === 'hitting') {
-    const totals = Object.fromEntries(HITTING_SUM_KEYS.map((k) => [k, sumField(rows, k)]));
+    const totals = Object.fromEntries(HITTING_SUM_KEYS.map((k) => [k, sumField(stintRows, k)]));
     const ab = totals.atBats;
     const h = totals.hits;
     const bb = totals.baseOnBalls;
@@ -70,8 +75,8 @@ export function computeCareerTotalsRow(rows, group) {
   }
 
   if (group === 'pitching') {
-    const totals = Object.fromEntries(PITCHING_SUM_KEYS.map((k) => [k, sumField(rows, k)]));
-    const totalOuts = rows.reduce((acc, row) => acc + ipToOuts(getStat(row).inningsPitched), 0);
+    const totals = Object.fromEntries(PITCHING_SUM_KEYS.map((k) => [k, sumField(stintRows, k)]));
+    const totalOuts = stintRows.reduce((acc, row) => acc + ipToOuts(getStat(row).inningsPitched), 0);
     const ip = outsToIp(totalOuts);
     const er = totals.earnedRuns;
     const ipFloat = totalOuts / 3;
@@ -93,7 +98,7 @@ export function computeCareerTotalsRow(rows, group) {
   }
 
   if (group === 'fielding') {
-    const totals = Object.fromEntries(FIELDING_SUM_KEYS.map((k) => [k, sumField(rows, k)]));
+    const totals = Object.fromEntries(FIELDING_SUM_KEYS.map((k) => [k, sumField(stintRows, k)]));
     const tc = totals.chances || totals.putOuts + totals.assists + totals.errors;
     return {
       id: 'career-totals',

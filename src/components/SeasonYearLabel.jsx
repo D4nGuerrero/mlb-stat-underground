@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import { resolveAssetUrl } from '../utils/baseUrl.js';
+import { SeasonHonorOverlay } from '../config/seasonHonorOverlays.jsx';
+import {
+  getInlineHonorBadges,
+  resolveSeasonYearDecoration,
+} from '../utils/seasonHonors';
 
 function HonorBadge({ badge }) {
   const imageSrc = resolveAssetUrl(badge.image);
@@ -11,7 +16,7 @@ function HonorBadge({ badge }) {
         src={imageSrc}
         alt={badge.alt}
         title={badge.alt}
-        className="inline-block h-4 w-4 md:h-[18px] md:w-[18px] object-contain shrink-0"
+        className="inline-block h-6 w-6 md:h-[18px] md:w-[18px] object-contain shrink-0"
         onError={() => setUseFallback(true)}
       />
     );
@@ -25,35 +30,46 @@ function HonorBadge({ badge }) {
 }
 
 export default function SeasonYearLabel({ season, minorsLevel, badges = [] }) {
-  const hasAllStar = badges.some(b => b.key === 'allStar');
+  const decoration = resolveSeasonYearDecoration(badges);
+  const inlineBadges = getInlineHonorBadges(badges, decoration);
+
+  const yearContent = (
+    <>
+      {season}
+      {decoration?.overlays?.map((overlay) => (
+        <SeasonHonorOverlay
+          key={overlay.type}
+          type={overlay.type}
+          className={overlay.className}
+        />
+      ))}
+      {minorsLevel ? ` (${minorsLevel})` : ''}
+    </>
+  );
+
+  const yearInner = decoration?.yearClassName ? (
+    <span className={decoration.yearClassName}>{yearContent}</span>
+  ) : (
+    <span>{yearContent}</span>
+  );
+
+  const yearBlock = decoration?.wrapperClassName ? (
+    <span className={decoration.wrapperClassName}>{yearInner}</span>
+  ) : (
+    yearInner
+  );
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      {/* Special sparkle treatment for All-Star years */}
-      {hasAllStar ? (
-        <span className="sparkle">
-          <span className="name gradient">
-            {season}
-            {minorsLevel ? ` (${minorsLevel})` : ''}
-          </span>
-        </span>
-      ) : (
-        <span>
-          {season}
-          {minorsLevel ? ` (${minorsLevel})` : ''}
+      {yearBlock}
+
+      {inlineBadges.length > 0 && (
+        <span className="inline-flex items-center gap-0.5">
+          {inlineBadges.map((badge) => (
+            <HonorBadge key={badge.key} badge={badge} />
+          ))}
         </span>
       )}
-
-      {/* Render all badges (including All-Star) */}
-      {badges.length > 0 && (
-        <span className="inline-flex items-center gap-0.5">
-          {badges.map((badge) => {
-            if (badge.key === 'allStar') return null;
-            return <HonorBadge key={badge.key} badge={badge} />;
-          }
-          )}
-        </span>
-      )}  
     </span>
   );
 }
