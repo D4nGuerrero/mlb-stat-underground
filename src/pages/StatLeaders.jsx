@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { restoreListScroll, saveListScroll } from '../utils/listScrollRestore';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import {
   SegmentedControl,
@@ -139,6 +140,84 @@ const TEAM_SORT_DEFAULTS = {
   fielding: { col: 'fielding', dir: 'desc' },
 };
 
+const STAT_LEADERS_SCROLL_KEY = 'stat-leaders';
+const DEFAULT_SEASON = '2026';
+const DEFAULT_LIMIT = 25;
+const VALID_GROUPS = new Set(['hitting', 'pitching', 'fielding']);
+const VALID_LEAGUES = new Set(['all', 'AL', 'NL']);
+
+function defaultCategoryForGroup(group) {
+  return (GROUP_CATS[group] ?? HITTING_CATS)[0].key;
+}
+
+function parseStatLeadersState(searchParams) {
+  const playerOrTeam = searchParams.get('view') === 'team' ? 'team' : 'player';
+  const groupParam = searchParams.get('group');
+  const activeGroup = VALID_GROUPS.has(groupParam) ? groupParam : 'hitting';
+
+  const season = SEASON_OPTIONS.some((o) => o.value === searchParams.get('season'))
+    ? searchParams.get('season')
+    : DEFAULT_SEASON;
+
+  const leagueFilter = VALID_LEAGUES.has(searchParams.get('league'))
+    ? searchParams.get('league')
+    : 'all';
+
+  const limitRaw = Number(searchParams.get('limit'));
+  const limit = LIMIT_OPTIONS.some((o) => o.value === limitRaw) ? limitRaw : DEFAULT_LIMIT;
+
+  const playerGroup = playerOrTeam === 'player' ? activeGroup : 'hitting';
+  const cats = GROUP_CATS[playerGroup] ?? HITTING_CATS;
+  const categoryParam = searchParams.get('category');
+  const category = cats.some((c) => c.key === categoryParam)
+    ? categoryParam
+    : defaultCategoryForGroup(playerGroup);
+
+  const teamGroup = playerOrTeam === 'team' ? activeGroup : 'hitting';
+  const teamDefaults = TEAM_SORT_DEFAULTS[teamGroup] ?? TEAM_SORT_DEFAULTS.hitting;
+  const teamCols = TEAM_STAT_COLS[teamGroup] ?? TEAM_BATTING_COLS;
+  const sortParam = searchParams.get('sort');
+  const teamSortCol = teamCols.some((c) => c.key === sortParam) ? sortParam : teamDefaults.col;
+  const dirParam = searchParams.get('dir');
+  const teamSortDir = dirParam === 'asc' || dirParam === 'desc' ? dirParam : teamDefaults.dir;
+
+  return {
+    playerOrTeam,
+    group: playerGroup,
+    category,
+    season,
+    leagueFilter,
+    limit,
+    teamGroup,
+    teamSortCol,
+    teamSortDir,
+  };
+}
+
+function buildStatLeadersParams(state) {
+  const params = new URLSearchParams();
+  if (state.playerOrTeam === 'team') params.set('view', 'team');
+
+  const activeGroup = state.playerOrTeam === 'team' ? state.teamGroup : state.group;
+  if (activeGroup !== 'hitting') params.set('group', activeGroup);
+
+  if (state.season !== DEFAULT_SEASON) params.set('season', state.season);
+  if (state.leagueFilter !== 'all') params.set('league', state.leagueFilter);
+
+  if (state.playerOrTeam === 'player') {
+    if (state.category !== defaultCategoryForGroup(state.group)) {
+      params.set('category', state.category);
+    }
+    if (state.limit !== DEFAULT_LIMIT) params.set('limit', String(state.limit));
+  } else {
+    const defaults = TEAM_SORT_DEFAULTS[state.teamGroup] ?? TEAM_SORT_DEFAULTS.hitting;
+    if (state.teamSortCol !== defaults.col) params.set('sort', state.teamSortCol);
+    if (state.teamSortDir !== defaults.dir) params.set('dir', state.teamSortDir);
+  }
+
+  return params;
+}
+
 const GROUP_CATS = {
   hitting: HITTING_CATS,
   pitching: PITCHING_CATS,
@@ -203,20 +282,54 @@ function LeagueLogo({ filter }) {
 
 export default function StatLeaders() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const cache = useRef({});
-  const [playerOrTeam, setPlayerOrTeam] = useState('player');
-  const [group, setGroup] = useState('hitting');
-  const [category, setCategory] = useState('homeRuns');
-  const [season, setSeason] = useState('2026');
+  const initial = parseStatLeadersState(searchParams);
+
+  const [playerOrTeam, setPlayerOrTeam] = useState(initial.playerOrTeam);
+  const [group, setGroup] = useState(initial.group);
+  const [category, setCategory] = useState(initial.category);
+  const [season, setSeason] = useState(initial.season);
   const [leaders, setLeaders] = useState([]);
-  const [leagueFilter, setLeagueFilter] = useState('all');
+  const [leagueFilter, setLeagueFilter] = useState(initial.leagueFilter);
   const [teamStats, setTeamStats] = useState([]);
-  const [teamGroup, setTeamGroup] = useState('hitting');
-  const [teamSortCol, setTeamSortCol] = useState(TEAM_SORT_DEFAULTS.hitting.col);
-  const [teamSortDir, setTeamSortDir] = useState(TEAM_SORT_DEFAULTS.hitting.dir);
+  const [teamGroup, setTeamGroup] = useState(initial.teamGroup);
+  const [teamSortCol, setTeamSortCol] = useState(initial.teamSortCol);
+  const [teamSortDir, setTeamSortDir] = useState(initial.teamSortDir);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [limit, setLimit] = useState(25);
+  const [limit, setLimit] = useState(initial.limit);
+
+  const syncToUrl = useCallback((overrides = {}) => {
+    setSearchParams(
+      buildStatLeadersParams({
+        playerOrTeam,
+        group,
+        category,
+        season,
+        leagueFilter,
+        limit,
+        teamGroup,
+        teamSortCol,
+        teamSortDir,
+        ...overrides,
+      }),
+      { replace: true },
+    );
+  }, [
+    playerOrTeam,
+    group,
+    category,
+    season,
+    leagueFilter,
+    limit,
+    teamGroup,
+    teamSortCol,
+    teamSortDir,
+    setSearchParams,
+  ]);
+
+  const saveScroll = () => saveListScroll(STAT_LEADERS_SCROLL_KEY);
 
   const isTeam = playerOrTeam === 'team';
   const teamCols = TEAM_STAT_COLS[teamGroup] ?? TEAM_BATTING_COLS;
@@ -291,62 +404,107 @@ export default function StatLeaders() {
   };
 
   useEffect(() => {
-    fetchLeaders();
+    if (initial.playerOrTeam === 'team') {
+      fetchTeamStats({
+        statGroup: initial.teamGroup,
+        season: initial.season,
+      });
+    } else {
+      fetchLeaders({
+        statGroup: initial.group,
+        leaderCategory: initial.category,
+        season: initial.season,
+        resultLimit: initial.limit,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isTeam && leaders.length === 0 && !error) return;
+    if (isTeam && teamStats.length === 0 && !error) return;
+    restoreListScroll(STAT_LEADERS_SCROLL_KEY);
+  }, [isLoading, isTeam, leaders.length, teamStats.length, error]);
 
   const handlePlayerOrTeamChange = (opt) => {
     setPlayerOrTeam(opt);
     if (opt === 'team') {
+      const defaults = TEAM_SORT_DEFAULTS.hitting;
       setTeamGroup('hitting');
-      setTeamSortCol(TEAM_SORT_DEFAULTS.hitting.col);
-      setTeamSortDir(TEAM_SORT_DEFAULTS.hitting.dir);
+      setTeamSortCol(defaults.col);
+      setTeamSortDir(defaults.dir);
+      syncToUrl({
+        playerOrTeam: opt,
+        teamGroup: 'hitting',
+        teamSortCol: defaults.col,
+        teamSortDir: defaults.dir,
+      });
       fetchTeamStats({ statGroup: 'hitting' });
     } else {
+      syncToUrl({ playerOrTeam: opt });
       fetchLeaders();
     }
   };
 
   const handleGroupChange = (g) => {
-    setGroup(g);
     const cats = GROUP_CATS[g] ?? HITTING_CATS;
     const nextCategory = cats[0].key;
+    setGroup(g);
     setCategory(nextCategory);
+    syncToUrl({ group: g, category: nextCategory });
     fetchLeaders({ statGroup: g, leaderCategory: nextCategory });
   };
 
   const handleTeamGroupChange = (g) => {
-    setTeamGroup(g);
     const defaults = TEAM_SORT_DEFAULTS[g];
+    setTeamGroup(g);
     setTeamSortCol(defaults.col);
     setTeamSortDir(defaults.dir);
+    syncToUrl({
+      teamGroup: g,
+      teamSortCol: defaults.col,
+      teamSortDir: defaults.dir,
+    });
     fetchTeamStats({ statGroup: g });
   };
 
   const handleSeasonChange = (s) => {
     setSeason(s);
+    syncToUrl({ season: s });
     if (isTeam) fetchTeamStats({ season: s });
     else fetchLeaders({ season: s });
   };
 
+  const handleLeagueChange = (league) => {
+    setLeagueFilter(league);
+    syncToUrl({ leagueFilter: league });
+  };
+
   const handleCategoryChange = (cat) => {
     setCategory(cat);
+    syncToUrl({ category: cat });
     fetchLeaders({ leaderCategory: cat });
   };
 
   const handleLimitChange = (n) => {
     setLimit(n);
+    syncToUrl({ limit: n });
     fetchLeaders({ resultLimit: n });
   };
 
   const handleTeamSort = (col) => {
     if (teamSortCol === col) {
-      setTeamSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      const nextDir = teamSortDir === 'asc' ? 'desc' : 'asc';
+      setTeamSortDir(nextDir);
+      syncToUrl({ teamSortDir: nextDir });
       return;
     }
     const meta = teamCols.find((c) => c.key === col);
+    const nextDir = meta?.lowerBetter ? 'asc' : 'desc';
     setTeamSortCol(col);
-    setTeamSortDir(meta?.lowerBetter ? 'asc' : 'desc');
+    setTeamSortDir(nextDir);
+    syncToUrl({ teamSortCol: col, teamSortDir: nextDir });
   };
 
   const currentCat = allCats.find((c) => c.key === category) ?? allCats[0];
@@ -411,7 +569,7 @@ export default function StatLeaders() {
           <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
             <SegmentedControl
               value={leagueFilter}
-              onChange={setLeagueFilter}
+              onChange={handleLeagueChange}
               options={[
                 { value: 'all', label: 'MLB' },
                 { value: 'AL', label: 'AL' },
@@ -494,7 +652,10 @@ export default function StatLeaders() {
                   <tr
                     key={row.team?.id}
                     className="group border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/team/${row.team?.id}`)}
+                    onClick={() => {
+                      saveScroll();
+                      navigate(`/team/${row.team?.id}`);
+                    }}
                   >
                     <td className={`${stickyRankCell('bg-slate-900')} font-mono text-xs text-slate-500`}>{row.rank}</td>
                     <td className={stickyTeamAbbrCellAfterRank('bg-slate-900')}>
@@ -558,6 +719,7 @@ export default function StatLeaders() {
               <div className="flex-1 min-w-0">
                 <Link
                   to={`/player/${leader.person?.id}`}
+                  onClick={saveScroll}
                   className={`font-semibold hover:text-${THEME_COLOR}-400 transition-colors truncate block text-sm sm:text-base`}
                 >
                   {leader.person?.fullName ?? '—'}
@@ -568,7 +730,10 @@ export default function StatLeaders() {
                       src={teamLogoUrl(leader.team.id)}
                       alt=""
                       className="w-6 h-6 object-contain cursor-pointer"
-                      onClick={() => navigate(`/team/${leader.team.id}`)}
+                      onClick={() => {
+                        saveScroll();
+                        navigate(`/team/${leader.team.id}`);
+                      }}
                       onError={(e) => (e.target.style.display = 'none')}
                     />
                   )}

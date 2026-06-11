@@ -276,8 +276,9 @@ function compareSeasonRows(a, b, sortDir) {
   }
   if (aTotal) return 0;
 
-  const teamCmp = getTeamAbbr(a.team).localeCompare(getTeamAbbr(b.team));
-  return sortDir === 'asc' ? teamCmp : -teamCmp;
+  // MLB API returns stints in chronological order within a season
+  const stintCmp = (a.stintOrder ?? 0) - (b.stintOrder ?? 0);
+  return sortDir === 'asc' ? stintCmp : -stintCmp;
 }
 
 function cellSortValue(key, row, col) {
@@ -864,9 +865,10 @@ export default function PlayerPage() {
 
   const careerRows = getYearByYearSplits(statGroup)
     .filter((sp) => sp.season && sp.stat)
-    .map((sp) => ({
-      id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}`,
+    .map((sp, stintOrder) => ({
+      id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}-${stintOrder}`,
       season: Number(sp.season),
+      stintOrder,
       isSeasonTotal: !sp.team?.id,
       label: (
         <SeasonYearLabel
