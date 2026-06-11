@@ -36,6 +36,9 @@ import {
 } from '../utils/gameContent';
 import { TabBar, Modal, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
+import GamePreviewView from '../components/GamePreviewView';
+import { formatGameStartDisplay, formatVenueLine } from '../utils/gamePreview';
+import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../utils/liveFeedMerge';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -329,6 +332,7 @@ function VideoShareMenu({ video }) {
 function ScoringPlayVideo({ video, isExpanded, onToggle }) {
   const videoRef = useRef(null);
   const playOnExpandRef = useRef(false);
+  const src = video?.mp4Url || video?.hlsUrl;
 
   useEffect(() => {
     const el = videoRef.current;
@@ -343,8 +347,7 @@ function ScoringPlayVideo({ video, isExpanded, onToggle }) {
     onToggle();
   };
 
-  if (!video?.thumbnail && !video?.mp4Url) return null;
-  const src = video.mp4Url || video.hlsUrl;
+  if (!video?.thumbnail && !src) return null;
 
   return (
     <div className="mt-3 max-w-md" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
@@ -352,6 +355,7 @@ function ScoringPlayVideo({ video, isExpanded, onToggle }) {
         <div className="relative rounded-xl overflow-hidden border border-slate-700/60 bg-black">
           <VideoShareMenu video={video} />
           <video
+            key={video.id ?? src}
             ref={videoRef}
             controls
             playsInline
@@ -523,8 +527,11 @@ export default function GamePage() {
   const sheetHistoryRef = useRef(false);
   const vsStatsCacheRef = useRef({});
   const summaryScrollYRef = useRef(0);
+  const feedTimecodeRef = useRef(null);
+  const scoringPlaysCountRef = useRef(-1);
   const [gameContent, setGameContent] = useState(null);
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
+  const [pinnedVideo, setPinnedVideo] = useState(null);
 
   const fetchGame = useCallback(async () => {
     try {
@@ -533,7 +540,10 @@ export default function GamePage() {
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setFeed(data);
+      if (isValidLiveFeed(data)) {
+        feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
+        setFeed(data);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -547,8 +557,11 @@ export default function GamePage() {
 
   useEffect(() => {
     summaryScrollYRef.current = 0;
+    feedTimecodeRef.current = null;
+    scoringPlaysCountRef.current = -1;
     setGameContent(null);
     setExpandedVideoKey(null);
+    setPinnedVideo(null);
   }, [gamePk]);
 
   const { status: wsStatus, lastUpdate } = useMLBWebSocket(
@@ -560,13 +573,36 @@ export default function GamePage() {
     if (!gamePk) return;
     fetchGameContent(gamePk)
       .then(setGameContent)
-      .catch(() => setGameContent(null));
-  }, [gamePk, lastUpdate?.timestamp]);
+      .catch(() => {});
+  }, [gamePk]);
+
+  useEffect(() => {
+    if (!gamePk || !feed) return;
+    const scoringCount = feed.liveData?.plays?.scoringPlays?.length ?? 0;
+    if (scoringCount === scoringPlaysCountRef.current) return;
+    scoringPlaysCountRef.current = scoringCount;
+    fetchGameContent(gamePk)
+      .then(setGameContent)
+      .catch(() => {});
+  }, [gamePk, feed?.liveData?.plays?.scoringPlays?.length]);
 
   useEffect(() => {
     if (!lastUpdate) return;
     if (lastUpdate.data) {
-      setFeed(lastUpdate.data);
+      setFeed((prev) => {
+        const merged = mergeLiveFeed(prev, lastUpdate.data);
+        const nextTc = merged?.metaData?.timeStamp;
+        if (
+          nextTc &&
+          feedTimecodeRef.current &&
+          compareTimecodes(nextTc, feedTimecodeRef.current) < 0
+        ) {
+          return prev;
+        }
+        if (!isValidLiveFeed(merged)) return prev;
+        if (nextTc) feedTimecodeRef.current = nextTc;
+        return merged;
+      });
     } else {
       fetchGame();
     }
@@ -581,10 +617,11 @@ export default function GamePage() {
   }, [activeTab]);
 
   useLayoutEffect(() => {
+    if (expandedVideoKey) return;
     if (activeTab === 'summary' && summaryScrollYRef.current > 0) {
       window.scrollTo(0, summaryScrollYRef.current);
     }
-  }, [feed, activeTab]);
+  }, [feed, activeTab, expandedVideoKey]);
 
   // Hide nav bar on mobile while game page is open
   useEffect(() => {
@@ -679,7 +716,7 @@ export default function GamePage() {
     );
   }
 
-  if (error || !feed) {
+  if (error || !feed || !isValidLiveFeed(feed)) {
     return (
       <div className="max-w-xl mx-auto px-4 py-16 text-center">
         <div className="text-4xl mb-4">⚾</div>
@@ -707,6 +744,11 @@ export default function GamePage() {
   const ls = ld.linescore;
   const isLive = status.abstractGameState === 'Live';
   const isFinal = status.abstractGameState === 'Final';
+  const isPreview = status.abstractGameState === 'Preview';
+  const isPostponed = /postponed/i.test(status.detailedState ?? '');
+  const gameStart = formatGameStartDisplay(gd.datetime, gd.venue);
+  const venueLine = formatVenueLine(gd.venue);
+  const previewSeason = gd.datetime?.officialDate?.slice(0, 4) || String(new Date().getFullYear());
   const decisions = ld.decisions;
 
   const allPitchEvents = ld.plays?.currentPlay?.playEvents || [];
@@ -1466,11 +1508,11 @@ export default function GamePage() {
 
       <div className="px-0 sm:px-3">
         {/* Scoreboard */}
-        <div className="bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden mb-4">
+        <div className={`bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden ${isPreview ? 'mb-3' : 'mb-4'}`}>
           {/* Game date / venue */}
          
 
-          <div className="flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5">
+          <div className={`flex items-center justify-between px-4 sm:px-6 ${isPreview ? 'py-3' : 'py-4 sm:py-5'}`}>
             {/* Away */}
             <div className="flex items-center gap-2 sm:gap-3">
              
@@ -1492,39 +1534,58 @@ export default function GamePage() {
               />
             </div>
 
-            {/* Scores */}
-            <div className="flex items-center gap-4 sm:gap-6">
-              <span
-                className={`font-display text-4xl sm:text-5xl tabular-nums leading-none ${awayWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
-              >
-                {awayRuns}
-              </span>
-              <div className="text-center min-w-[56px] sm:min-w-[80px]">
-                {isLive ? (
-                  <div className="flex flex-col items-center gap-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 bg-red-400 rounded-full live-pulse" />
-                      <span className="text-red-400 font-bold text-xs sm:text-sm tracking-wide">
-                        LIVE
-                      </span>
-                    </div>
-                    <span className="text-slate-300 text-xs font-semibold">
-                      {ls?.inningHalf === 'Top' ? '▲' : '▼'}{' '}
-                      {ls?.currentInningOrdinal}
-                    </span>
-                  </div>
+            {/* Scores or scheduled start time */}
+            {isPreview ? (
+              <div className="text-center min-w-[120px] sm:min-w-[160px] px-2">
+                {isPostponed ? (
+                  <span className="text-orange-400 font-bold text-sm tracking-wide">POSTPONED</span>
                 ) : (
-                  <span className="text-slate-300 font-bold tracking-widest text-xs sm:text-sm">
-                    {formatFinalStatus(ls)}
-                  </span>
+                  <>
+                    <div className="text-slate-200 font-semibold text-sm sm:text-base leading-tight">
+                      {gameStart.dateLine}
+                    </div>
+                    {gameStart.timeLine && (
+                      <div className="text-slate-400 text-xs sm:text-sm mt-1 font-mono">
+                        {gameStart.timeLine}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-              <span
-                className={`font-display text-4xl sm:text-5xl tabular-nums leading-none ${homeWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
-              >
-                {homeRuns}
-              </span>
-            </div>
+            ) : (
+              <div className="flex items-center gap-4 sm:gap-6">
+                <span
+                  className={`font-display text-4xl sm:text-5xl tabular-nums leading-none ${awayWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
+                >
+                  {awayRuns}
+                </span>
+                <div className="text-center min-w-[56px] sm:min-w-[80px]">
+                  {isLive ? (
+                    <div className="flex flex-col items-center gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 bg-red-400 rounded-full live-pulse" />
+                        <span className="text-red-400 font-bold text-xs sm:text-sm tracking-wide">
+                          LIVE
+                        </span>
+                      </div>
+                      <span className="text-slate-300 text-xs font-semibold">
+                        {ls?.inningHalf === 'Top' ? '▲' : '▼'}{' '}
+                        {ls?.currentInningOrdinal}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-300 font-bold tracking-widest text-xs sm:text-sm">
+                      {formatFinalStatus(ls)}
+                    </span>
+                  )}
+                </div>
+                <span
+                  className={`font-display text-4xl sm:text-5xl tabular-nums leading-none ${homeWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
+                >
+                  {homeRuns}
+                </span>
+              </div>
+            )}
 
             {/* Home */}
             <div className="flex items-center gap-2 sm:gap-3 justify-end">
@@ -1549,17 +1610,25 @@ export default function GamePage() {
             </div>
           </div>
 
-          <LinescoreBoard
-            key={gamePk}
-            ls={ls}
-            away={away}
-            home={home}
-            awayRuns={awayRuns}
-            homeRuns={homeRuns}
-          />
+          {isPreview && venueLine && (
+            <div className="px-4 sm:px-6 py-2 border-t border-slate-700/50 text-center text-xs text-slate-400">
+              {venueLine}
+            </div>
+          )}
+
+          {!isPreview && (
+            <LinescoreBoard
+              key={gamePk}
+              ls={ls}
+              away={away}
+              home={home}
+              awayRuns={awayRuns}
+              homeRuns={homeRuns}
+            />
+          )}
 
           {/* Pitcher decisions */}
-          {decisions &&
+          {!isPreview && decisions &&
             (decisions.winner || decisions.loser || decisions.save) && (
               <div className="px-4 sm:px-6 py-3 grid grid-cols-3 gap-2 sm:gap-4 border-t border-slate-700/50 text-sm">
                 {[
@@ -1598,9 +1667,18 @@ export default function GamePage() {
             )}
         </div>
 
+        {isPreview ? (
+          <GamePreviewView
+            gamePk={gamePk}
+            probablePitchers={gd.probablePitchers}
+            away={away}
+            home={home}
+            season={previewSeason}
+          />
+        ) : (
+          <>
         {/* Tab nav */}
         <TabBar
-        
           variant="page"
           tabs={tabList}
           activeKey={currentTab}
@@ -2029,7 +2107,10 @@ export default function GamePage() {
                             item.homeScore,
                           )
                         : null;
-                      const video = highlightByItemKey[item.key];
+                      const video =
+                        expandedVideoKey === item.key && pinnedVideo
+                          ? pinnedVideo
+                          : highlightByItemKey[item.key];
                       return (
                         <div
                           key={item.key}
@@ -2061,9 +2142,15 @@ export default function GamePage() {
                               <ScoringPlayVideo
                                 video={video}
                                 isExpanded={expandedVideoKey === item.key}
-                                onToggle={() =>
-                                  setExpandedVideoKey((prev) => (prev === item.key ? null : item.key))
-                                }
+                                onToggle={() => {
+                                  if (expandedVideoKey === item.key) {
+                                    setExpandedVideoKey(null);
+                                    setPinnedVideo(null);
+                                  } else {
+                                    setExpandedVideoKey(item.key);
+                                    setPinnedVideo(video);
+                                  }
+                                }}
                               />
                             )}
                           </div>
@@ -2083,6 +2170,8 @@ export default function GamePage() {
         )}
 
         <PlayDetailSheet />
+          </>
+        )}
       </div>
       {/* end px-3 sm:px-0 */}
     </div>
