@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
+import { BaseballSpinner } from '../components/ui';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useMLBWebSocket } from '../hooks/useMLBWebSocket';
 import {
@@ -414,7 +415,7 @@ export default function GamePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className={`w-10 h-10 border-4 border-${THEME_COLOR}-400 border-t-transparent rounded-full animate-spin`} />
+        <BaseballSpinner size="xl" />
       </div>
     );
   }

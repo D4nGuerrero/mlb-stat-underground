@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { TabBar, Select, SegmentedControl, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
+import { TabBar, Select, SegmentedControl, LoadingSpinner, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
 const SEASON = new Date().getFullYear();
@@ -103,15 +103,6 @@ const FIELD_COLS = [
   { key: 'doublePlays', label: 'DP', dec: 0 },
   { key: 'chances', label: 'TC', dec: 0 },
 ];
-
-// ─── Spinner ──────────────────────────────────────────────────────────────────
-function Spinner() {
-  return (
-    <div className="flex justify-center py-16">
-      <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-    </div>
-  );
-}
 
 // ─── Sortable table ───────────────────────────────────────────────────────────
 function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id' }) {
@@ -290,7 +281,7 @@ function StatsTab({ teamId, season }) {
         </div>
       )}
 
-      {loading && <Spinner />}
+      {loading && <LoadingSpinner size="lg" py="py-16" />}
       {error && <div className="py-8 text-center text-red-400 text-sm">{error}</div>}
       {!loading && !error && rows.length > 0 && (
         <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
@@ -395,7 +386,7 @@ function ScheduleTab({ teamId, season }) {
     return { days, byDate, monthDate: first };
   };
 
-  if (loading) return <Spinner />;
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   const todayStr = localDateKey(new Date());
@@ -590,7 +581,7 @@ function RosterTab({ teamId, season }) {
     })();
   }, [teamId, season]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   const grouped = {};
@@ -648,7 +639,7 @@ function DepthChartTab({ teamId, season }) {
     })();
   }, [teamId, season]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
 
   const POS_ORDER = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'];
   const grouped = {};
@@ -693,7 +684,7 @@ function SplitsTab({ teamId, season }) {
     })();
   }, [teamId, season]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   const SPLIT_LABELS = { vl: 'vs LHP', vr: 'vs RHP', h: 'Home', a: 'Away' };
@@ -747,7 +738,7 @@ function InjuriesTab({ teamId, season }) {
     })();
   }, [teamId, season]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   return (
@@ -803,7 +794,7 @@ function TransactionsTab({ teamId }) {
     })();
   }, [teamId]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   return (

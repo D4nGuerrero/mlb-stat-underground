@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { mlbTeams } from '../utils/mlbHelpers';
-import { TeamPicker, SegmentedControl } from '../components/ui';
+import { TeamPicker, SegmentedControl, BaseballSpinner } from '../components/ui';
 import { simulateGame } from '../simulator/game';
 import { CURRENT_SEASON } from '../simulator/constants';
 import { defaultPlayer, loadTeamForGame } from '../simulator/roster';
@@ -291,7 +291,12 @@ export default function BaseballSimulator() {
               className="w-full mb-4 py-2 bg-slate-800/60 hover:bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2"
             >
               <span>{showLineup ? '▲ Hide' : '▼ Edit'} Lineups & Pitchers</span>
-              {(awayLoading || homeLoading) && <span className={`text-${THEME_COLOR}-400 animate-pulse`}>Loading real stats…</span>}
+              {(awayLoading || homeLoading) && (
+                <>
+                  <BaseballSpinner size="xs" inline />
+                  <span className={`text-${THEME_COLOR}-400`}>Loading real stats…</span>
+                </>
+              )}
             </button>
           )}
 
@@ -342,7 +347,7 @@ export default function BaseballSimulator() {
             >
               {simming ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <BaseballSpinner size="xs" inline />
                   Simulating…
                 </>
               ) : '▶ Simulate Game'}

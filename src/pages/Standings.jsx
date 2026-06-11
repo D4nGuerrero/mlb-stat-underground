@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate } from 'react-router-dom';
 import TeamAbbrCell from '../components/TeamAbbrCell';
-import { TabBar, Select, SegmentedControl, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
+import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
+import { assetUrl } from '../utils/baseUrl.js';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2003 + 1 }, (_, i) => {
@@ -567,7 +568,9 @@ export default function Standings() {
     <div className="max-w-7xl mx-auto sm:px-6 py-6 sm:py-8 max-w-3xl">
       <div className="mb-6 px-3 sm:px-0">
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
-          MLB Standings
+          MLB Standings 
+
+          <img src={assetUrl('/standings_flag.svg')} alt="Standings" className="inline-block w-4 h-4 -mt-0.5 ml-1" />
         </div>
         <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Standings</h1>
         <p className="text-slate-400 mt-1 text-sm">
@@ -598,9 +601,8 @@ export default function Standings() {
       </div>
 
       {isLoading && (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
-          <div className={`w-8 h-8 border-2 border-${THEME_COLOR}-500 border-t-transparent rounded-full animate-spin`} />
-          Loading standings…
+        <div className="flex justify-center py-24">
+          <BaseballSpinner size="lg" label="Loading standings…" />
         </div>
       )}
 
