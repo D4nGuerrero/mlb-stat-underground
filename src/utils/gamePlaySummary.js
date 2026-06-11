@@ -46,6 +46,58 @@ export function isScoringDescription(description) {
   return /\bscores?\b/i.test(description || '');
 }
 
+const OUTS_SUFFIX_RE = /\s*\b\d+\s+outs?\.?\s*$/i;
+
+export function formatOutsLabel(outs) {
+  if (outs == null) return null;
+  const n = Number(outs);
+  if (Number.isNaN(n)) return null;
+  return `${n} out${n === 1 ? '' : 's'}.`;
+}
+
+function stripOutsSuffix(description) {
+  return (description || '').trim().replace(OUTS_SUFFIX_RE, '').trim();
+}
+
+function normalizeDescription(description) {
+  const desc = stripOutsSuffix(description);
+  if (!desc) return '';
+  return desc.endsWith('.') ? desc : `${desc}.`;
+}
+
+function getPlayStartOuts(playEvents) {
+  return playEvents.find((e) => e.count?.outs != null)?.count?.outs ?? null;
+}
+
+function getOutsBeforeEvent(playEvents, eventIdx) {
+  for (let i = eventIdx - 1; i >= 0; i -= 1) {
+    if (playEvents[i].count?.outs != null) return playEvents[i].count.outs;
+  }
+  return getPlayStartOuts(playEvents);
+}
+
+export function playRecordedOut(play) {
+  const startOuts = getPlayStartOuts(play.playEvents || []);
+  const endOuts = play.count?.outs;
+  if (startOuts == null || endOuts == null) return false;
+  return endOuts > startOuts;
+}
+
+export function playEventRecordedOut(play, eventIdx, event) {
+  const playEvents = play.playEvents || [];
+  const outsAfter = event.count?.outs ?? play.count?.outs;
+  const outsBefore = getOutsBeforeEvent(playEvents, eventIdx);
+  if (outsAfter == null || outsBefore == null) return false;
+  return outsAfter > outsBefore;
+}
+
+/** Build summary copy; outsLabel is set only when an out was recorded on the play. */
+export function buildPlayDescription(description, outs, outOccurred) {
+  const text = normalizeDescription(description);
+  const outsLabel = outOccurred ? formatOutsLabel(outs) : null;
+  return { description: text, outsLabel };
+}
+
 export function buildSummaryItems(allPlays) {
   const items = [];
 
@@ -55,13 +107,20 @@ export function buildSummaryItems(allPlays) {
       const eventType = ev.details?.eventType;
       if (!eventType || !SUMMARY_ACTION_TYPES.has(eventType)) return;
 
-      const description = ev.details?.description || ev.details?.call?.description || '';
+      const rawDescription = ev.details?.description || ev.details?.call?.description || '';
+      const outOccurred = playEventRecordedOut(play, eventIdx, ev);
+      const { description, outsLabel } = buildPlayDescription(
+        rawDescription,
+        ev.count?.outs ?? play.count?.outs,
+        outOccurred,
+      );
       items.push({
         kind: 'action',
         key: `action-${play.about?.atBatIndex}-${eventIdx}`,
         play,
         eventType,
         description,
+        outsLabel,
         about: play.about,
         batterId: play.matchup?.batter?.id,
         awayScore: ev.details?.awayScore,
@@ -71,12 +130,18 @@ export function buildSummaryItems(allPlays) {
     });
 
     if (play.about?.isComplete && play.result?.event) {
+      const { description, outsLabel } = buildPlayDescription(
+        play.result?.description,
+        play.count?.outs,
+        playRecordedOut(play),
+      );
       items.push({
         kind: 'atbat',
         key: `atbat-${play.about?.atBatIndex}`,
         play,
         eventType: play.result?.eventType,
-        description: play.result?.description,
+        description,
+        outsLabel,
         about: play.about,
         batterId: play.matchup?.batter?.id,
         awayScore: play.result?.awayScore,
