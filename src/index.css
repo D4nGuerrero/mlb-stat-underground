@@ -20,6 +20,29 @@ body {
   animation: livePulse 1.5s ease-in-out infinite;
 }
 
+.pitch-toast-float {
+  animation: pitchToastFloat 2.4s ease-out forwards;
+}
+
+@keyframes pitchToastFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.94);
+  }
+  10% {
+    opacity: 1;
+    transform: translate(-50%, 6px) scale(1);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(-50%, 44px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 68px) scale(0.97);
+  }
+}
+
 @keyframes livePulse {
   0%,
   100% {

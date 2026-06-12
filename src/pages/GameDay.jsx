@@ -9,11 +9,8 @@ import {
   playerHeadshotUrl,
   playerActionShotUrl,
   pitcherActionShotUrl,
-  stadiumInfieldUrl,
   stadiumExteriorUrl,
   stadiumTimeOfDay,
-  batterSilhouetteUrl,
-  renderBaseDiamond,
   getLinescoreInningNums,
   formatFinalStatus,
   sumInningsPitched,
@@ -21,6 +18,7 @@ import {
 import PitchCanvas from '../components/PitchCanvas';
 import {
   buildSummaryItems,
+  buildSummaryLeadIn,
   filterSummaryItems,
   groupSummaryByInning,
   formatUpdatedScore,
@@ -40,6 +38,13 @@ import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import GamePreviewView from '../components/GamePreviewView';
 import { formatGameStartDisplay, formatVenueLine } from '../utils/gamePreview';
 import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../utils/liveFeedMerge';
+import {
+  buildLiveRecentPlaysFeed,
+  groupLiveRecentRows,
+} from '../utils/liveRecentPlays';
+import LiveRecentPlaysTimeline from '../components/LiveRecentPlaysTimeline';
+import LiveAtBatVisual from '../components/LiveAtBatVisual';
+import { BaseDiamondIndicator, OutsIndicator } from '../components/LiveGameIndicators';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -199,16 +204,61 @@ const ORDINALS = [
   '13th',
 ];
 
+const STATUS_CHANGE_BADGE = {
+  label: 'Status Change',
+  cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+};
+
+const PITCHING_CHANGE_BADGE = {
+  label: 'Pitching Substitution',
+  cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+};
+
 function SummaryPlayAvatar({ item, onPlayerClick }) {
-  const iconKind = item.kind === 'action' ? getSummaryPlayIconKind(item.eventType) : null;
+  const iconKind = getSummaryPlayIconKind(item);
+  const sizeClass = 'w-16 h-16';
+  const iconSize = 'text-xl';
+
+  if (iconKind === 'baseball') {
+    return (
+      <div
+        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        aria-hidden
+      >
+        <i className={`fa-solid fa-baseball ${iconSize} text-orange-400`} />
+      </div>
+    );
+  }
+
+  if (iconKind === 'status') {
+    return (
+      <div
+        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        aria-hidden
+      >
+        <i className={`fa-solid fa-cloud-showers-heavy ${iconSize} text-amber-400`} />
+      </div>
+    );
+  }
+
+  if (iconKind === 'pitching_sub') {
+    return (
+      <div
+        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        aria-hidden
+      >
+        <i className={`fa-solid fa-right-left ${iconSize} text-sky-400`} />
+      </div>
+    );
+  }
 
   if (iconKind === 'shoe') {
     return (
       <div
-        className="w-16 h-16 rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0"
+        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
         aria-hidden
       >
-        <i className="fa-solid fa-shoe-prints text-xl text-blue-400 -rotate-12" />
+        <i className={`fa-solid fa-shoe-prints ${iconSize} text-blue-400 -rotate-12`} />
       </div>
     );
   }
@@ -216,24 +266,129 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
   if (iconKind === 'pitch') {
     return (
       <div
-        className="w-16 h-16 rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0"
+        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
         aria-hidden
       >
-        <i className="fa-solid fa-baseball text-xl text-orange-400" />
+        <i className={`fa-solid fa-baseball ${iconSize} text-orange-400`} />
       </div>
     );
   }
 
   if (!item.batterId) {
     return (
-      <div className="w-16 h-16 rounded-full bg-slate-800/80 border-2 border-slate-600 flex-shrink-0" aria-hidden />
+      <div className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex-shrink-0`} aria-hidden />
     );
   }
 
   return (
     <button type="button" onClick={onPlayerClick} className="flex-shrink-0 mt-0.5">
-      <img src={playerHeadshotUrl(item.batterId, 2)} className="w-16 h-16 object-cover" alt="" />
+      <img src={playerHeadshotUrl(item.batterId, 2)} className={`${sizeClass} object-cover`} alt="" />
     </button>
+  );
+}
+
+function SummaryFirstPitchRow({ item }) {
+  return (
+    <div className="flex items-start gap-2.5 p-2">
+      <SummaryPlayAvatar item={item} />
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="font-semibold text-slate-100 text-base">{item.title}</div>
+        <div className="text-slate-400 font-mono text-sm">{item.timeLine}</div>
+        <div className="text-slate-500 text-sm">{item.venueLine}</div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryStatusChangeRow({ item }) {
+  return (
+    <div className="flex items-start gap-2.5 p-2">
+      <SummaryPlayAvatar item={item} />
+      <div className="min-w-0 flex-1">
+        <span className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${STATUS_CHANGE_BADGE.cls}`}>
+          {STATUS_CHANGE_BADGE.label}
+        </span>
+        <p className="text-md text-slate-200 leading-snug">{item.description}</p>
+        {item.timeLine && (
+          <p className="text-slate-500 font-mono mt-0.5 text-xs">{item.timeLine}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SummaryPitchingChangeRow({ item }) {
+  return (
+    <div className="flex items-start gap-2.5 p-2">
+      <SummaryPlayAvatar item={item} />
+      <div className="min-w-0 flex-1">
+        <span className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${PITCHING_CHANGE_BADGE.cls}`}>
+          {PITCHING_CHANGE_BADGE.label}
+        </span>
+        <p className="text-md text-slate-200 leading-snug">{item.description}</p>
+      </div>
+    </div>
+  );
+}
+
+function SummaryPlayItemRow({
+  item,
+  awayAbbr,
+  homeAbbr,
+  highlightByItemKey,
+  expandedVideoKey,
+  pinnedVideo,
+  onPlayerClick,
+  onOpenPlay,
+  onToggleVideo,
+}) {
+  if (item.kind === 'status_change') {
+    return <SummaryStatusChangeRow item={item} />;
+  }
+  if (item.kind === 'pitching_change') {
+    return <SummaryPitchingChangeRow item={item} />;
+  }
+
+  const b = getPlayBadge(item.eventType);
+  const scoreLine = item.isScoring
+    ? formatUpdatedScore(awayAbbr, homeAbbr, item.awayScore, item.homeScore)
+    : null;
+  const video =
+    expandedVideoKey === item.key && pinnedVideo
+      ? pinnedVideo
+      : highlightByItemKey[item.key];
+
+  return (
+    <div
+      onClick={() => item.play && onOpenPlay(item.play)}
+      className={`flex items-start gap-2.5 p-2 transition-all ${item.play ? 'cursor-pointer hover:bg-slate-800/50' : ''}`}
+    >
+      <SummaryPlayAvatar item={item} onPlayerClick={onPlayerClick} />
+      <div className="min-w-0 flex-1">
+        <span className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${b.cls}`}>
+          {b.label}
+        </span>
+        <p className="text-md text-slate-200 leading-snug">
+          {item.description}
+          {item.outsLabel && (
+            <>
+              {' '}
+              <span className="font-bold text-slate-100">{item.outsLabel}</span>
+            </>
+          )}
+        </p>
+        {scoreLine && (
+          <p className="text-xl text-white-500 mt-1 font-bold">{scoreLine}</p>
+        )}
+        {item.isScoring && video && (
+          <ScoringPlayVideo
+            video={video}
+            isExpanded={expandedVideoKey === item.key}
+            onToggle={() => onToggleVideo(item.key, video)}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -561,6 +716,7 @@ export default function GamePage() {
   const { status: wsStatus, lastUpdate } = useMLBWebSocket(
     gamePk ? parseInt(gamePk) : null,
     feed?.gameData?.status?.abstractGameState,
+    feed?.metaData?.timeStamp,
   );
 
   useEffect(() => {
@@ -580,27 +736,54 @@ export default function GamePage() {
       .catch(() => {});
   }, [gamePk, feed?.liveData?.plays?.scoringPlays?.length]);
 
+  const applyFeedPatch = useCallback((patch) => {
+    if (!patch) return;
+    setFeed((prev) => {
+      const merged = mergeLiveFeed(prev, patch);
+      const nextTc = merged?.metaData?.timeStamp;
+      if (
+        nextTc &&
+        feedTimecodeRef.current &&
+        compareTimecodes(nextTc, feedTimecodeRef.current) < 0
+      ) {
+        return prev;
+      }
+      if (!isValidLiveFeed(merged)) return prev;
+      if (nextTc) feedTimecodeRef.current = nextTc;
+      return merged;
+    });
+  }, []);
+
   useEffect(() => {
     if (!lastUpdate) return;
     if (lastUpdate.data) {
-      setFeed((prev) => {
-        const merged = mergeLiveFeed(prev, lastUpdate.data);
-        const nextTc = merged?.metaData?.timeStamp;
-        if (
-          nextTc &&
-          feedTimecodeRef.current &&
-          compareTimecodes(nextTc, feedTimecodeRef.current) < 0
-        ) {
-          return prev;
-        }
-        if (!isValidLiveFeed(merged)) return prev;
-        if (nextTc) feedTimecodeRef.current = nextTc;
-        return merged;
-      });
+      applyFeedPatch(lastUpdate.data);
     } else {
       fetchGame();
     }
-  }, [lastUpdate, fetchGame]);
+  }, [lastUpdate, fetchGame, applyFeedPatch]);
+
+  useEffect(() => {
+    if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Live') return;
+
+    const pollDiff = async () => {
+      const tc = feedTimecodeRef.current;
+      if (!tc) return;
+      try {
+        const res = await fetch(
+          `https://ws.statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live/diffPatch?language=en&startTimecode=${tc}`,
+        );
+        if (res.status === 204 || !res.ok) return;
+        const data = await res.json();
+        applyFeedPatch(data);
+      } catch {
+        /* backup poll — WS remains primary */
+      }
+    };
+
+    const id = setInterval(pollDiff, 8000);
+    return () => clearInterval(id);
+  }, [gamePk, feed?.gameData?.status?.abstractGameState, applyFeedPatch]);
 
   useEffect(() => {
     const saveScroll = () => {
@@ -769,14 +952,42 @@ export default function GamePage() {
   };
 
   const allPlays = ld.plays?.allPlays || [];
-  const completePlays = allPlays.filter(
-    (p) => p.about?.isComplete && p.result?.event,
-  );
 
-  const summaryItems = filterSummaryItems(buildSummaryItems(allPlays), summaryFilter);
+  const summaryLeadIn = buildSummaryLeadIn(gd);
+  const allSummaryItems = buildSummaryItems(allPlays, gd);
+  const summaryItems = filterSummaryItems(allSummaryItems, summaryFilter);
   const summaryItemGroups = groupSummaryByInning(summaryItems, ORDINALS);
   const highlightVideos = parseGameHighlightVideos(gameContent);
-  const highlightByItemKey = buildHighlightMap(summaryItems, highlightVideos);
+  const { displayRows: liveRecentRows, firstPitch: liveFirstPitch } = buildLiveRecentPlaysFeed({
+    allPlays,
+    gameData: gd,
+    boxscore: ld.boxscore,
+    linescore: ls,
+    currentPlay,
+    isLive,
+    ordinals: ORDINALS,
+  });
+  const liveRecentGroups = groupLiveRecentRows(liveRecentRows, {
+    isLive,
+    currentInning: ls?.currentInning,
+    currentHalf: ls?.inningHalf === 'Top' ? 'top' : 'bottom',
+  });
+  const highlightByItemKey = buildHighlightMap(allSummaryItems, highlightVideos);
+
+  const handleSummaryPlayerClick = (e, batterId) => {
+    e.stopPropagation();
+    if (batterId) navigate(`/player/${batterId}`);
+  };
+
+  const handleSummaryVideoToggle = (itemKey, video) => {
+    if (expandedVideoKey === itemKey) {
+      setExpandedVideoKey(null);
+      setPinnedVideo(null);
+    } else {
+      setExpandedVideoKey(itemKey);
+      setPinnedVideo(video);
+    }
+  };
 
   // ── Team Box Score ─────────────────────────────────────────────────────────
 
@@ -1610,7 +1821,7 @@ export default function GamePage() {
             </div>
           )}
 
-          {!isPreview && (
+          {!isPreview && !(isLive && currentTab === 'live') && (
             <LinescoreBoard
               key={gamePk}
               ls={ls}
@@ -1683,102 +1894,22 @@ export default function GamePage() {
         {currentTab === 'live' && isLive && ls && (
           <div className="space-y-3">
 
-            {/* ── AT-BAT VISUAL: Composite stadium (exterior top + infield bottom) + PitchCanvas + silhouette ── */}
-            <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[320px] flex flex-col">
-              {/* Background stack: top half exterior, bottom half infield */}
-              <div className="absolute inset-0 flex flex-col pointer-events-none">
-                <div
-                  className="h-[48%] min-h-[130px] bg-cover bg-center bg-top"
-                  style={{
-                    backgroundImage:
-                      venueId && !exteriorFailed
-                        ? `url(${stadiumExteriorUrl(venueId, exteriorTimeOfDay)})`
-                        : undefined,
-                    backgroundColor:
-                      !venueId || exteriorFailed ? '#0f172a' : undefined,
-                  }}
-                />
-                <div
-                  className="flex-1 min-h-[130px] bg-cover"
-                  style={{
-                    backgroundImage: `url(${stadiumInfieldUrl()})`,
-                    backgroundPosition: 'center 30%',
-                  }}
-                />
-              </div>
-              {/* Seam blend between halves */}
-              <div
-                className="absolute left-0 right-0 top-[48%] h-16 -translate-y-1/2 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-black/35 to-transparent"
-                aria-hidden
-              />
-              {/* Gradient overlay for readability */}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/25 to-black/80 pointer-events-none z-[2]" />
-
-              {/* Top bar: LIVE badge + inning indicator + count summary */}
-              <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
-                <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
-                  <div className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
-                  <span className="text-[10px] font-bold text-red-400 tracking-wide">LIVE</span>
-                  <span className="text-[10px] text-white/80 font-mono ml-1">
-                    {ls.inningHalf === 'Top' ? '▲' : '▼'}{ls.currentInningOrdinal}
-                  </span>
-                </div>
-                <div className="bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
-                  <span className="text-[10px] font-mono text-white font-bold">
-                    {ls.balls ?? 0}–{ls.strikes ?? 0} · {ls.outs ?? 0} out{ls.outs !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              </div>
-
-              {/* Pitch canvas centered */}
-              <div className="relative z-10 flex flex-col items-center pt-12 pb-20 px-3">
-                {latestPitch && (
-                  <div className="flex items-center gap-2 mb-2 flex-wrap justify-center">
-                    {latestPitch.details?.type?.description && (
-                      <span className="text-[11px] bg-white/10 backdrop-blur-sm border border-white/10 px-2.5 py-0.5 rounded-full text-white font-medium">
-                        {latestPitch.details.type.description}
-                      </span>
-                    )}
-                    {latestPitch.pitchData?.startSpeed && (
-                      <span className="text-base font-bold font-mono text-white">
-                        {Math.round(latestPitch.pitchData.startSpeed)}
-                        <span className="text-xs text-white/50 ml-0.5">mph</span>
-                      </span>
-                    )}
-                  </div>
-                )}
-                {latestPitch?.details?.description && (
-                  <div className="text-[10px] text-white/55 mb-2 italic text-center">
-                    {latestPitch.details.description}
-                  </div>
-                )}
-                <PitchCanvas
-                  playEvents={allPitchEvents}
-                  szTop={szTop}
-                  szBot={szBot}
-                  width={280}
-                  height={300}
-                  gamePk={gamePk}
-                  variant="gamedayDark"
-                  className="mx-auto"
-                />
-              </div>
-
-              {/* Batter silhouette at plate bottom */}
-              <div
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
-                style={{ height: '90px' }}
-              >
-                <img
-                  src={batterSilhouetteUrl(batSide, batterIsAway ? 'away' : 'home')}
-                  className="h-full w-auto object-contain"
-                  alt=""
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                  }}
-                />
-              </div>
-            </div>
+            <LiveAtBatVisual
+              venueId={venueId}
+              exteriorFailed={exteriorFailed}
+              gameDateTime={gd.datetime?.dateTime}
+              playEvents={allPitchEvents}
+              szTop={szTop}
+              szBot={szBot}
+              gamePk={gamePk}
+              batSide={batSide}
+              batterIsAway={batterIsAway}
+              inningHalf={ls.inningHalf}
+              currentInningOrdinal={ls.currentInningOrdinal}
+              balls={ls.balls}
+              strikes={ls.strikes}
+              outs={ls.outs}
+            />
 
             {/* ── MATCHUP ROW: Pitcher | Count+Outs+Diamond | Batter ── */}
             <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
@@ -1832,53 +1963,18 @@ export default function GamePage() {
                   })()}
                 </button>
 
-                {/* Center: BSO indicators + base diamond */}
-                <div className="flex flex-col items-center justify-center gap-2 p-3">
-                  <div className="flex flex-col gap-1">
-                    {[
-                      {
-                        label: 'B',
-                        max: 3,
-                        val: ls.balls || 0,
-                        dot: 'bg-green-400 border-green-400',
-                      },
-                      {
-                        label: 'S',
-                        max: 2,
-                        val: ls.strikes || 0,
-                        dot: 'bg-amber-400 border-amber-400',
-                      },
-                      {
-                        label: 'O',
-                        max: 3,
-                        val: ls.outs || 0,
-                        dot: 'bg-red-400 border-red-400',
-                      },
-                    ].map(({ label, max, val, dot }) => (
-                      <div key={label} className="flex items-center gap-1.5">
-                        <span className="text-[7px] text-slate-500 w-2.5 font-bold">
-                          {label}
-                        </span>
-                        <div className="flex gap-0.5">
-                          {Array.from({ length: max }).map((_, i) => (
-                            <div
-                              key={i}
-                              className={`w-2.5 h-2.5 rounded-full border ${i < val ? dot : 'border-slate-600'}`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: renderBaseDiamond(
-                        !!ls.offense?.first,
-                        !!ls.offense?.second,
-                        !!ls.offense?.third,
-                      ),
-                    }}
+                {/* Center: bases, count, outs */}
+                <div className="flex flex-col items-center justify-center gap-2.5 p-3">
+                  <BaseDiamondIndicator
+                    onFirst={Boolean(ls.offense?.first)}
+                    onSecond={Boolean(ls.offense?.second)}
+                    onThird={Boolean(ls.offense?.third)}
+                    size="md"
                   />
+                  <span className="text-sm font-bold font-mono text-slate-200 tabular-nums">
+                    {ls.balls ?? 0}-{ls.strikes ?? 0}
+                  </span>
+                  <OutsIndicator outs={ls.outs ?? 0} size="md" />
                 </div>
 
                 {/* Batter */}
@@ -1962,56 +2058,32 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* ── RECENT PLAYS: reversed, most recent first ── */}
+            {/* ── RECENT PLAYS: live timeline ── */}
             <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest">
                   Recent Plays
                 </span>
                 <span className="text-[9px] text-slate-600">
-                  {completePlays.length} plays
+                  {liveRecentRows.length} events
                 </span>
               </div>
-              {[...completePlays]
-                .reverse()
-                .slice(0, 20)
-                .map((play, i) => {
-                  const b = getPlayBadge(play.result?.eventType);
-                  const bid = play.matchup?.batter?.id;
-                  const half = play.about?.halfInning === 'top' ? '▲' : '▼';
-                  const inn = play.about?.inning;
-                  return (
-                    <div
-                      key={play.about?.atBatIndex ?? `recent-${i}`}
-                      onClick={() => openSheet(play)}
-                      className={`flex items-start gap-2.5 cursor-pointer px-4 py-3 border-b border-slate-800/40 last:border-0 hover:bg-slate-800/30 active:bg-slate-800/50 transition-colors ${play.about?.isScoringPlay ? `bg-${THEME_COLOR}-500/5` : ''}`}
-                    >
-                      <span className="text-[9px] font-mono text-slate-600 pt-0.5 flex-shrink-0 w-8 text-center">
-                        {half}{inn}
-                      </span>
-                      <img
-                        src={playerHeadshotUrl(bid)}
-                        className="w-7 h-7 rounded-lg object-cover border border-slate-700 flex-shrink-0"
-                        alt=""
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span
-                          className={`inline-block text-[8px] px-1.5 py-0.5 rounded-full border font-semibold mb-0.5 ${b.cls}`}
-                        >
-                          {b.label}
-                        </span>
-                        <p className="text-xs text-slate-400 leading-snug line-clamp-2">
-                          {play.result?.description}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              {completePlays.length === 0 && (
-                <div className="px-4 py-6 text-center text-slate-600 text-xs">
-                  No plays yet
-                </div>
-              )}
+              <div className="p-2 sm:p-5">
+                <LiveRecentPlaysTimeline
+                  groups={liveRecentGroups}
+                  firstPitch={liveFirstPitch}
+                  away={away}
+                  home={home}
+                  getPlayBadge={getPlayBadge}
+                  highlightByItemKey={highlightByItemKey}
+                  expandedVideoKey={expandedVideoKey}
+                  pinnedVideo={pinnedVideo}
+                  onPlayerClick={(e, batterId) => handleSummaryPlayerClick(e, batterId)}
+                  onOpenPlay={openSheet}
+                  onToggleVideo={handleSummaryVideoToggle}
+                  ScoringPlayVideo={ScoringPlayVideo}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -2085,78 +2157,32 @@ export default function GamePage() {
             />
 
             <div className="space-y-5">
+              {summaryFilter === 'all' && (
+                <div className="pb-2 border-b border-slate-800/60">
+                  <SummaryFirstPitchRow item={summaryLeadIn} />
+                </div>
+              )}
               {summaryItemGroups.map(({ key, items: groupItems }) => (
                 <div key={key}>
                   <div className="text-2xl font-bold text-slate-300 mb-2">
                     {key}
                   </div>
                   <div className="space-y-1.5">
-                    {groupItems.map((item) => {
-                      const b = getPlayBadge(item.eventType);
-                      const scoreLine = item.isScoring
-                        ? formatUpdatedScore(
-                            away.abbreviation,
-                            home.abbreviation,
-                            item.awayScore,
-                            item.homeScore,
-                          )
-                        : null;
-                      const video =
-                        expandedVideoKey === item.key && pinnedVideo
-                          ? pinnedVideo
-                          : highlightByItemKey[item.key];
-                      return (
-                        <div
-                          key={item.key}
-                          onClick={() => openSheet(item.play)}
-                          className={`flex items-start gap-2.5 cursor-pointer p-2 hover:bg-slate-800/50 transition-all`}
-                        >
-                          <SummaryPlayAvatar
-                            item={item}
-                            onPlayerClick={(e) => {
-                              e.stopPropagation();
-                              if (item.batterId) navigate(`/player/${item.batterId}`);
-                            }}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <span
-                              className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${b.cls}`}
-                            >
-                              {b.label}
-                            </span>
-                            <p className="text-md text-slate-200 leading-snug">
-                              {item.description}
-                              {item.outsLabel && (
-                                <>
-                                  {' '}
-                                  <span className="font-bold text-slate-100">{item.outsLabel}</span>
-                                </>
-                              )}
-                            </p>
-                            {scoreLine && (
-                              <p className="text-xl text-white-500 mt-1 font-bold">
-                                {scoreLine}
-                              </p>
-                            )}
-                            {item.isScoring && video && (
-                              <ScoringPlayVideo
-                                video={video}
-                                isExpanded={expandedVideoKey === item.key}
-                                onToggle={() => {
-                                  if (expandedVideoKey === item.key) {
-                                    setExpandedVideoKey(null);
-                                    setPinnedVideo(null);
-                                  } else {
-                                    setExpandedVideoKey(item.key);
-                                    setPinnedVideo(video);
-                                  }
-                                }}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {groupItems.map((item) => (
+                      <div key={item.key}>
+                        <SummaryPlayItemRow
+                          item={item}
+                          awayAbbr={away.abbreviation}
+                          homeAbbr={home.abbreviation}
+                          highlightByItemKey={highlightByItemKey}
+                          expandedVideoKey={expandedVideoKey}
+                          pinnedVideo={pinnedVideo}
+                          onPlayerClick={(e) => handleSummaryPlayerClick(e, item.batterId)}
+                          onOpenPlay={openSheet}
+                          onToggleVideo={handleSummaryVideoToggle}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
