@@ -39,7 +39,53 @@ const buildDateRange = (min, max) => {
 const getMaxDate = () => addDays(new Date(), FUTURE_DAYS);
 
 const VIEW_MODE_KEY = 'mlbScoresViewMode';
+const SCORES_DATE_KEY = 'mlbScoresSelectedDate';
 const VIEW_MODES = new Set(['card', 'list', 'grid']);
+
+const resolveScoresCenterDate = (returnDate) => {
+  if (returnDate) return startOfDay(new Date(returnDate));
+  try {
+    const saved = sessionStorage.getItem(SCORES_DATE_KEY);
+    if (saved) return startOfDay(new Date(saved));
+  } catch {
+    /* ignore */
+  }
+  return startOfDay(new Date());
+};
+
+const LIST_GAME_ROW_GRID = 'grid grid-cols-[4rem_3.5rem_minmax(0,1fr)_3.5rem_4rem] items-center gap-x-3';
+
+function ListTeamLogo({ team, record, onTeamClick }) {
+  return (
+    <div className="flex flex-col items-center gap-1 justify-self-center w-16">
+      <img
+        src={teamLogoUrl(team.id)}
+        className="w-14 h-14 object-contain"
+        alt={team.abbreviation}
+        onClick={onTeamClick}
+      />
+      <span className="text-[14px] font-bold text-slate-500 font-mono h-3.5 leading-none tabular-nums">
+        {record ? `${record.wins}-${record.losses}` : '\u00A0'}
+      </span>
+    </div>
+  );
+}
+
+function ListGameScore({ score, isWinner, isFinal, show }) {
+  return (
+    <div className="flex items-center justify-center min-h-[3rem] justify-self-center w-full">
+      {show && (
+        <span
+          className={`font-display text-5xl tabular-nums leading-none ${
+            isWinner ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'
+          }`}
+        >
+          {score}
+        </span>
+      )}
+    </div>
+  );
+}
 
 const loadViewMode = () => {
   try {
@@ -73,10 +119,11 @@ export default function Scores() {
   const [loadingDates, setLoadingDates] = useState(() => new Set());
   const [liveCount, setLiveCount] = useState(0);
   const maxDate = useMemo(() => getMaxDate(), []);
-  const initialCenter = useMemo(() => {
-    const rd = location.state?.returnDate;
-    return rd ? startOfDay(new Date(rd)) : startOfDay(new Date());
-  }, [location.state?.returnDate]);
+  const initialCenter = useMemo(
+    () => resolveScoresCenterDate(location.state?.returnDate),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const [dates, setDates] = useState(() => computeDateWindow(initialCenter, getMaxDate()));
   const [selectedIndex, setSelectedIndex] = useState(() => {
     const windowDates = computeDateWindow(initialCenter, getMaxDate());
@@ -88,6 +135,7 @@ export default function Scores() {
   const [viewMode, setViewMode] = useState(loadViewMode);
   const carouselRef = useRef(null);
   const carouselStartIndex = useRef(selectedIndex);
+  const returnDateAppliedRef = useRef(false);
 
   const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
 
@@ -239,6 +287,38 @@ export default function Scores() {
   }, [viewMode]);
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem(SCORES_DATE_KEY, selectedDate.toISOString());
+    } catch {
+      /* ignore */
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (returnDateAppliedRef.current) return;
+    const rd = location.state?.returnDate;
+    if (!rd) return;
+    returnDateAppliedRef.current = true;
+
+    const target = startOfDay(new Date(rd));
+    setDates((prev) => {
+      const next = (target < prev[0] || target > prev[prev.length - 1])
+        ? computeDateWindow(target, maxDate)
+        : prev;
+      const idx = next.findIndex((d) => isSameDay(d, target));
+      if (idx >= 0) {
+        queueMicrotask(() => {
+          setSelectedIndex(idx);
+          carouselStartIndex.current = idx;
+          requestAnimationFrame(() => carouselRef.current?.scrollTo(idx, true));
+          prefetchAroundIndex(idx);
+        });
+      }
+      return next;
+    });
+  }, [location.state?.returnDate, maxDate, prefetchAroundIndex]);
+
+  useEffect(() => {
     // When coming back from TeamPage, favorites may have changed.
     const refreshFav = () => {
       try {
@@ -314,25 +394,20 @@ export default function Scores() {
               <div
                 key={game.gamePk}
                 onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
-                className="flex items-center px-4 py-4 cursor-pointer hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors gap-2"
+                className={`${LIST_GAME_ROW_GRID} px-4 py-4 cursor-pointer hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors`}
               >
-                <div className="flex flex-col items-center gap-1 w-[64px] flex-shrink-0">
-                  <img
-                    src={teamLogoUrl(game.teams.away.team.id)}
-                    className="w-14 h-14 object-contain"
-                    alt={game.teams.away.team.abbreviation}
-                    onClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.away.team.id}`); }}
-                  />
-                  {awayRec && (
-                    <span className="text-[10px] text-slate-500 font-mono">{awayRec.wins}-{awayRec.losses}</span>
-                  )}
-                </div>
-                {!isPreview && (
-                  <span className={`font-display text-5xl tabular-nums leading-none mx-1 flex-shrink-0 ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}>
-                    {awayScore}
-                  </span>
-                )}
-                <div className="flex-1 flex flex-col items-center justify-center text-center min-w-0 px-1 gap-1">
+                <ListTeamLogo
+                  team={game.teams.away.team}
+                  record={awayRec}
+                  onTeamClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.away.team.id}`); }}
+                />
+                <ListGameScore
+                  score={awayScore}
+                  isWinner={awayWin}
+                  isFinal={isFinal}
+                  show={!isPreview}
+                />
+                <div className="flex flex-col items-center justify-center text-center min-w-0 gap-1 justify-self-center">
                   {isPostponed ? (
                     <span className="text-[10px] font-bold text-orange-400 tracking-widest">PPD</span>
                   ) : isDelayed && isLive && game.linescore ? (
@@ -377,22 +452,17 @@ export default function Scores() {
                     </span>
                   ))}
                 </div>
-                {!isPreview && (
-                  <span className={`font-display text-5xl tabular-nums leading-none mx-1 flex-shrink-0 ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}>
-                    {homeScore}
-                  </span>
-                )}
-                <div className="flex flex-col items-center gap-1 w-[64px] flex-shrink-0">
-                  <img
-                    src={teamLogoUrl(game.teams.home.team.id)}
-                    className="w-14 h-14 object-contain"
-                    alt={game.teams.home.team.abbreviation}
-                    onClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.home.team.id}`); }}
-                  />
-                  {homeRec && (
-                    <span className="text-[10px] text-slate-500 font-mono">{homeRec.wins}-{homeRec.losses}</span>
-                  )}
-                </div>
+                <ListGameScore
+                  score={homeScore}
+                  isWinner={homeWin}
+                  isFinal={isFinal}
+                  show={!isPreview}
+                />
+                <ListTeamLogo
+                  team={game.teams.home.team}
+                  record={homeRec}
+                  onTeamClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.home.team.id}`); }}
+                />
               </div>
             );
           })}
