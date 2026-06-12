@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
+import { LiveSituationStack } from '../components/LiveGameIndicators';
 import { SegmentedControl, SwipeableCarousel, BaseballSpinner, LoadingSpinner } from '../components/ui';
 
 const MIN_DATE = new Date('2024-03-01');
@@ -334,15 +335,13 @@ export default function Scores() {
                 <div className="flex-1 flex flex-col items-center justify-center text-center min-w-0 px-1 gap-1">
                   {isPostponed ? (
                     <span className="text-[10px] font-bold text-orange-400 tracking-widest">PPD</span>
+                  ) : isDelayed && isLive && game.linescore ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[9px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
+                      <LiveSituationStack linescore={game.linescore} size="sm" />
+                    </div>
                   ) : isDelayed && isLive ? (
-                    <>
-                      <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
-                      {game.linescore && (
-                        <span className="text-[9px] text-slate-500 font-mono">
-                          {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInning}
-                        </span>
-                      )}
-                    </>
+                    <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
                   ) : isDelayed ? (
                     <>
                       <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
@@ -352,17 +351,12 @@ export default function Scores() {
                         </span>
                       )}
                     </>
+                  ) : isLive && game.linescore ? (
+                    <LiveSituationStack linescore={game.linescore} size="sm" />
                   ) : isLive ? (
-                    <>
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-red-400">
-                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />LIVE
-                      </span>
-                      {game.linescore && (
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInning}
-                        </span>
-                      )}
-                    </>
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-red-400">
+                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />LIVE
+                    </span>
                   ) : isFinal ? (
                     <span className="text-xs font-bold text-slate-400 tracking-widest">{formatFinalStatus(game.linescore)}</span>
                   ) : (

@@ -1,3 +1,5 @@
+import { formatGameStartDisplay, formatVenueLine } from './gamePreview';
+
 /** Non-pitch action events shown as their own summary rows. */
 export const SUMMARY_ACTION_TYPES = new Set([
   'stolen_base_2b',
@@ -36,10 +38,122 @@ const PITCH_ICON_TYPES = new Set([
   'defensive_indiff',
 ]);
 
-export function getSummaryPlayIconKind(eventType) {
+export function getSummaryPlayIconKind(item) {
+  if (item?.kind === 'first_pitch') return 'baseball';
+  if (item?.kind === 'status_change') return 'status';
+  if (item?.kind === 'pitching_change') return 'pitching_sub';
+  const eventType = item?.eventType;
   if (SHOE_ICON_TYPES.has(eventType)) return 'shoe';
   if (PITCH_ICON_TYPES.has(eventType)) return 'pitch';
   return null;
+}
+
+const ROUTINE_STATUS_CHANGES = new Set([
+  'pre-game',
+  'warmup',
+  'in progress',
+  'game in progress',
+]);
+
+function parseStatusChangeLabel(description) {
+  const match = (description || '').match(/^status change\s*-\s*(.+)$/i);
+  return (match?.[1] || description || '').trim();
+}
+
+function isNotableStatusChange(label) {
+  const normalized = label.toLowerCase();
+  if (!normalized) return false;
+  if (ROUTINE_STATUS_CHANGES.has(normalized)) return false;
+  return /delay|rain|injur|suspend|postpon|cancel|eject|review|warning|curfew|lightning|weather|death|emergency/i.test(normalized);
+}
+
+function formatStatusChangeTime(iso, venue) {
+  if (!iso) return null;
+  const tz = venue?.timeZone?.id || 'America/New_York';
+  return new Date(iso).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: tz,
+    timeZoneName: 'short',
+  });
+}
+
+export function buildFirstPitchItem(gameData) {
+  const venue = gameData?.venue;
+  const firstPitchIso = gameData?.gameInfo?.firstPitch;
+  const scheduled = gameData?.datetime;
+  const startDisplay = formatGameStartDisplay(
+    firstPitchIso ? { dateTime: firstPitchIso } : scheduled,
+    venue,
+  );
+  const venueLine = formatVenueLine(venue) || venue?.name || '—';
+  const timeLine = startDisplay.timeLine
+    ? `${startDisplay.timeLine}`
+    : startDisplay.dateLine;
+
+  return {
+    kind: 'first_pitch',
+    key: 'first-pitch',
+    title: 'First Pitch',
+    timeLine,
+    venueLine,
+    sortTime: firstPitchIso || scheduled?.dateTime || null,
+  };
+}
+
+function buildStatusChangeItems(allPlays, alerts, venue) {
+  const items = [];
+  const seen = new Set();
+
+  for (const play of allPlays) {
+    for (const [eventIdx, ev] of (play.playEvents || []).entries()) {
+      if (ev.details?.eventType !== 'game_advisory') continue;
+      const raw = ev.details?.description || '';
+      if (!/^status change\s*-/i.test(raw)) continue;
+
+      const label = parseStatusChangeLabel(raw);
+      if (!isNotableStatusChange(label)) continue;
+
+      const key = `status-${ev.startTime || `${play.about?.atBatIndex}-${eventIdx}`}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      items.push({
+        kind: 'status_change',
+        key,
+        eventType: 'game_advisory',
+        title: 'Status Change',
+        description: label,
+        timeLine: formatStatusChangeTime(ev.startTime, venue),
+        about: play.about,
+        sortTime: ev.startTime || play.about?.startTime || null,
+      });
+    }
+  }
+
+  for (const [idx, alert] of (alerts ?? []).entries()) {
+    const message = alert?.message || alert?.detail || alert?.description;
+    if (!message) continue;
+    const key = `alert-${alert?.timestamp || idx}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({
+      kind: 'status_change',
+      key,
+      eventType: 'alert',
+      title: 'Status Change',
+      description: message,
+      timeLine: formatStatusChangeTime(alert?.timestamp, venue),
+      about: { inning: 1, halfInning: 'top' },
+      sortTime: alert?.timestamp || null,
+    });
+  }
+
+  return items;
+}
+
+export function buildSummaryLeadIn(gameData) {
+  return buildFirstPitchItem(gameData);
 }
 
 export function isScoringDescription(description) {
@@ -91,6 +205,15 @@ export function playEventRecordedOut(play, eventIdx, event) {
   return outsAfter > outsBefore;
 }
 
+export function formatPitchingChangeDescription(raw) {
+  const text = (raw || '').trim();
+  if (!text) return '';
+  const body = /^pitching change:\s*/i.test(text)
+    ? text
+    : `Pitching Change: ${text}`;
+  return normalizeDescription(body);
+}
+
 /** Build summary copy; outsLabel is set only when an out was recorded on the play. */
 export function buildPlayDescription(description, outs, outOccurred) {
   const text = normalizeDescription(description);
@@ -98,14 +221,30 @@ export function buildPlayDescription(description, outs, outOccurred) {
   return { description: text, outsLabel };
 }
 
-export function buildSummaryItems(allPlays) {
+export function buildSummaryItems(allPlays, gameData) {
   const items = [];
 
   for (const play of allPlays) {
     const events = play.playEvents || [];
     events.forEach((ev, eventIdx) => {
       const eventType = ev.details?.eventType;
-      if (!eventType || !SUMMARY_ACTION_TYPES.has(eventType)) return;
+      if (!eventType) return;
+
+      if (eventType === 'pitching_substitution') {
+        const rawDescription = ev.details?.description || ev.details?.call?.description || '';
+        items.push({
+          kind: 'pitching_change',
+          key: `pitching-${play.about?.atBatIndex}-${eventIdx}`,
+          eventType,
+          title: 'Pitching Substitution',
+          description: formatPitchingChangeDescription(rawDescription),
+          about: play.about,
+          sortTime: ev.startTime || play.about?.startTime || null,
+        });
+        return;
+      }
+
+      if (!SUMMARY_ACTION_TYPES.has(eventType)) return;
 
       const rawDescription = ev.details?.description || ev.details?.call?.description || '';
       const outOccurred = playEventRecordedOut(play, eventIdx, ev);
@@ -126,6 +265,7 @@ export function buildSummaryItems(allPlays) {
         awayScore: ev.details?.awayScore,
         homeScore: ev.details?.homeScore,
         isScoring: isScoringDescription(description),
+        sortTime: ev.startTime || play.about?.startTime || null,
       });
     });
 
@@ -147,11 +287,19 @@ export function buildSummaryItems(allPlays) {
         awayScore: play.result?.awayScore,
         homeScore: play.result?.homeScore,
         isScoring: Boolean(play.about?.isScoringPlay),
+        sortTime: play.about?.startTime || play.about?.endTime || null,
       });
     }
   }
 
-  return items;
+  const statusChanges = buildStatusChangeItems(allPlays, gameData?.alerts, gameData?.venue);
+  const merged = [...items, ...statusChanges];
+  merged.sort((a, b) => {
+    const ta = a.sortTime ? new Date(a.sortTime).getTime() : Number.MAX_SAFE_INTEGER;
+    const tb = b.sortTime ? new Date(b.sortTime).getTime() : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+  return merged;
 }
 
 export function filterSummaryItems(items, filter) {
@@ -171,6 +319,13 @@ export function groupSummaryByInning(items, ordinals) {
     else acc.push({ key, items: [item] });
     return acc;
   }, []);
+}
+
+/** Same inning groups as groupSummaryByInning, but newest inning half and plays first. */
+export function groupSummaryByInningReversed(items, ordinals) {
+  return groupSummaryByInning(items, ordinals)
+    .reverse()
+    .map((group) => ({ ...group, items: [...group.items].reverse() }));
 }
 
 export function formatUpdatedScore(awayAbbr, homeAbbr, awayScore, homeScore) {

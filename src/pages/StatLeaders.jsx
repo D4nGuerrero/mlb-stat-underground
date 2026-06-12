@@ -19,9 +19,12 @@ import {
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 
-const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019, 2018, 2017].map((y) => ({
-  value: String(y),
-  label: `${y} Season`,
+const SEASON_OPTIONS = Array.from(
+  { length: CURRENT_YEAR - 2003 + 1 },
+  (_, i) => CURRENT_YEAR - i
+).map((year) => ({
+  value: String(year),
+  label: `${year} Season`,
 }));
 const LIMIT_OPTIONS = [
   { value: 10, label: 'Top 10' },

@@ -18,7 +18,7 @@ export const PITCH_TRAIL_FALLBACK_RELEASE_X_FT = 0;
 export const PITCH_TRAIL_FALLBACK_RELEASE_Z_FT = 6.5;
 const ANIMATION_MS = 520;
 const FADE_MS = 180;
-const OLD_PITCH_ALPHA = 0.22;
+const OLD_PITCH_ALPHA = 0.14;
 
 const FONT_UI = '600 9px Inter, system-ui, sans-serif';
 const FONT_UI_SM = '500 8px Inter, system-ui, sans-serif';
@@ -171,9 +171,15 @@ function buildTrajectory(pitchData, n = N_TRAIL_POINTS) {
   if (pX != null && pZ != null) {
     const startX = PITCH_TRAIL_FALLBACK_RELEASE_X_FT;
     const startZ = PITCH_TRAIL_FALLBACK_RELEASE_Z_FT;
+    const breakSign = pX === 0 ? 1 : Math.sign(pX);
     for (let i = 0; i <= n; i++) {
       const frac = i / n;
-      points.push({ x: startX + frac * pX, z: startZ + frac * (pZ - startZ) });
+      const ease = frac * frac * (3 - 2 * frac);
+      const arc = Math.sin(frac * Math.PI);
+      points.push({
+        x: startX + ease * pX + breakSign * arc * 0.22 * (1 - frac),
+        z: startZ + ease * (pZ - startZ) - arc * 0.55 * (1 - frac * 0.35),
+      });
     }
     return points;
   }
@@ -284,30 +290,52 @@ function drawStrikeZone(ctx, proj, szTop, szBot, variant = 'default') {
   ctx.restore();
 }
 
+function strokeSmoothTrail(ctx, points, endIdx) {
+  if (endIdx < 1) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].cx, points[0].cy);
+  if (endIdx === 1) {
+    ctx.lineTo(points[1].cx, points[1].cy);
+    ctx.stroke();
+    return;
+  }
+  for (let i = 1; i < endIdx; i += 1) {
+    const curr = points[i];
+    const next = points[i + 1];
+    const mx = (curr.cx + next.cx) / 2;
+    const my = (curr.cy + next.cy) / 2;
+    ctx.quadraticCurveTo(curr.cx, curr.cy, mx, my);
+  }
+  const last = points[endIdx];
+  ctx.lineTo(last.cx, last.cy);
+  ctx.stroke();
+}
+
 function drawPitchTrail(ctx, points, colors, alpha = 1, progress = 1) {
   if (!points || points.length < 2) return;
-  const n = Math.floor(points.length * progress);
-  if (n < 2) return;
+  const endIdx = Math.min(Math.max(1, Math.floor((points.length - 1) * progress)), points.length - 1);
+  if (endIdx < 1) return;
+
+  const start = points[0];
+  const end = points[endIdx];
 
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
-  for (let i = 1; i < n; i++) {
-    const frac = i / (points.length - 1);
-    const trailAlpha = 0.15 + frac * 0.85;
-    const width = 1.5 + frac * 3.5;
+  ctx.globalAlpha = alpha * 0.22;
+  ctx.strokeStyle = colors.glow;
+  ctx.lineWidth = 9;
+  strokeSmoothTrail(ctx, points, endIdx);
 
-    ctx.beginPath();
-    ctx.moveTo(points[i - 1].cx, points[i - 1].cy);
-    ctx.lineTo(points[i].cx, points[i].cy);
-    ctx.lineWidth = width;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = colors.trail;
-    ctx.globalAlpha = alpha * trailAlpha * 0.75;
-    ctx.shadowColor = colors.glow;
-    ctx.shadowBlur = 8;
-    ctx.stroke();
-  }
+  const grad = ctx.createLinearGradient(start.cx, start.cy, end.cx, end.cy);
+  grad.addColorStop(0, `${colors.trail}18`);
+  grad.addColorStop(0.45, `${colors.trail}88`);
+  grad.addColorStop(1, colors.trail);
+  ctx.globalAlpha = alpha * 0.92;
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2.75;
+  strokeSmoothTrail(ctx, points, endIdx);
 
   ctx.restore();
 }

@@ -146,6 +146,13 @@ export const stadiumInfieldUrl = () =>
 export const batterSilhouetteUrl = (stand = 'R', homeOrAway = 'home') =>
   `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/batters/immortal/GENERIC-${homeOrAway}-${stand}@2x.png`;
 
+/** Plate stance art (cut = in-box); falls back to immortal via onError in UI. */
+export const batterPlateUrl = (stand = 'R', homeOrAway = 'home') =>
+  `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/batters/cut/GENERIC-${homeOrAway}-${stand}@2x.png`;
+
+export const batterPlateFallbackUrl = (stand = 'R', homeOrAway = 'home') =>
+  batterSilhouetteUrl(stand, homeOrAway);
+
 // Stadium exterior background (prod-gameday.mlbstatic.com)
 const getStadiumUrl = (venueId, timeOfDay = 'day') => {
   return `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/${venueId}@2x.jpg`;
