@@ -19,6 +19,8 @@ import {
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 const SEASON_OPTIONS = Array.from(
   { length: CURRENT_YEAR - 2003 + 1 },
   (_, i) => CURRENT_YEAR - i

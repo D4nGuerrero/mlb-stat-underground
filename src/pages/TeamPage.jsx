@@ -2,14 +2,21 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { TabBar, Select, SegmentedControl, LoadingSpinner, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
+import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
-const SEASON = new Date().getFullYear();
-const SEASON_OPTIONS = Array.from({ length: SEASON - 2002 + 1 }, (_, i) => {
-  const y = SEASON - i;
+const CURRENT_YEAR = new Date().getFullYear();
+const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2002 + 1 }, (_, i) => {
+  const y = CURRENT_YEAR - i;
   return { value: String(y), label: String(y) };
 });
+const SCHEDULE_SEASON_OPTIONS = Array.from(
+  { length: CURRENT_YEAR - 2003 + 1 },
+  (_, i) => CURRENT_YEAR - i,
+).map((year) => ({
+  value: String(year),
+  label: `${year} Season`,
+}));
 
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
 
@@ -30,25 +37,95 @@ const fmtGameTime = (gameDate) => {
   return new Date(gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 };
 
-const formatCalendarGameLabel = (g, teamId) => {
+const getScheduleOpponent = (g, teamId) => {
   const home = g.teams?.home;
   const away = g.teams?.away;
   const isHome = home?.team?.id?.toString() === teamId?.toString();
+  const opp = isHome ? away : home;
+  return { isHome, opp };
+};
+
+const scheduleGameScore = (side, g) => {
+  const teamScore = g.teams?.[side]?.score;
+  if (teamScore != null) return teamScore;
+  return g.linescore?.teams?.[side]?.runs ?? null;
+};
+
+const formatCalendarGameLabel = (g, teamId) => {
+  const { isHome } = getScheduleOpponent(g, teamId);
   const isFinal = g.status?.abstractGameState === 'Final';
   const isLive = g.status?.abstractGameState === 'Live';
+  const homeScore = scheduleGameScore('home', g);
+  const awayScore = scheduleGameScore('away', g);
 
-  if (isFinal) {
-    const homeWin = (home?.score ?? 0) > (away?.score ?? 0);
-    const awayWin = (away?.score ?? 0) > (home?.score ?? 0);
+  if (isFinal && homeScore != null && awayScore != null) {
+    const homeWin = homeScore > awayScore;
+    const awayWin = awayScore > homeScore;
     const won = isHome ? homeWin : awayWin;
     const wl = won ? 'W' : 'L';
-    const score = isHome
-      ? `${home?.score ?? 0}-${away?.score ?? 0}`
-      : `${away?.score ?? 0}-${home?.score ?? 0}`;
+    const score = isHome ? `${homeScore}-${awayScore}` : `${awayScore}-${homeScore}`;
     return { text: `${wl} ${score}`, type: won ? 'win' : 'loss' };
   }
   if (isLive) return { text: 'LIVE', type: 'live' };
   return { text: fmtGameTime(g.gameDate), type: 'upcoming' };
+};
+
+const calendarLabelClass = (type) => {
+  if (type === 'win') return 'text-emerald-400';
+  if (type === 'loss') return 'text-red-400';
+  if (type === 'live') return 'text-yellow-300';
+  return 'text-slate-400';
+};
+
+const calendarGameSurfaceClass = (isHome) => (
+  isHome
+    ? `bg-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/20 border border-${THEME_COLOR}-500/25`
+    : 'bg-slate-600/25 hover:bg-slate-600/40 border border-slate-500/35'
+);
+
+const scheduleGameDateKey = (g) => g.officialDate ?? (g.gameDate ? g.gameDate.split('T')[0] : '');
+
+const isDoubleHeaderGame = (g) => g?.doubleHeader === 'Y' || g?.doubleHeader === 'S';
+
+const scheduleGameEntryQuality = (g) => {
+  let score = 0;
+  if (isDoubleHeaderGame(g)) score += 4;
+  if (scheduleGameScore('home', g) != null) score += 2;
+  if (scheduleGameScore('away', g) != null) score += 2;
+  if (g.linescore) score += 1;
+  return score;
+};
+
+const dedupeScheduleGames = (games) => {
+  const byPk = new Map();
+  for (const g of games) {
+    if (g.gamePk == null) continue;
+    const prev = byPk.get(g.gamePk);
+    if (!prev || scheduleGameEntryQuality(g) > scheduleGameEntryQuality(prev)) {
+      byPk.set(g.gamePk, g);
+    }
+  }
+  return [...byPk.values()].sort(sortScheduleGames);
+};
+
+const isDoubleHeaderDay = (dayGames) => {
+  const unique = dedupeScheduleGames(dayGames);
+  return unique.length >= 2 && unique.some(isDoubleHeaderGame);
+};
+
+const getDoubleHeaderLabel = (g) => {
+  if (!isDoubleHeaderGame(g) || !g?.gameNumber) return null;
+  return `G${g.gameNumber}`;
+};
+
+const sortScheduleGames = (a, b) => {
+  const dateA = scheduleGameDateKey(a);
+  const dateB = scheduleGameDateKey(b);
+  if (dateA !== dateB) return dateA.localeCompare(dateB);
+  const numA = a.gameNumber ?? 1;
+  const numB = b.gameNumber ?? 1;
+  if (numA !== numB) return numA - numB;
+  return new Date(a.gameDate ?? 0) - new Date(b.gameDate ?? 0);
 };
 const fmt = (v, dec = 3) => {
   if (v == null || v === '') return '–';
@@ -296,13 +373,14 @@ function StatsTab({ teamId, season }) {
 }
 
 // ─── Schedule Tab ─────────────────────────────────────────────────────────────
-function ScheduleTab({ teamId, season }) {
+function ScheduleTab({ teamId, season, setSeason }) {
   const navigate = useNavigate();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('month');
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [gamePicker, setGamePicker] = useState(null);
   const gameRefs = useRef({});
 
   useEffect(() => {
@@ -317,9 +395,9 @@ function ScheduleTab({ teamId, season }) {
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        const allGames = (json.dates ?? [])
-          .flatMap((d) => d.games ?? [])
-          .sort((a, b) => new Date(a.officialDate ?? a.gameDate) - new Date(b.officialDate ?? b.gameDate));
+        const allGames = dedupeScheduleGames(
+          (json.dates ?? []).flatMap((d) => d.games ?? []),
+        );
         setGames(allGames);
       } catch (e) {
         setError(e.message);
@@ -330,7 +408,7 @@ function ScheduleTab({ teamId, season }) {
   }, [teamId, season]);
 
   const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  const monthLabel = (d) => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const monthName = (mm) => new Date(Number(season), Number(mm) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
 
   const gamesByMonth = useMemo(() => {
     const map = {};
@@ -342,28 +420,50 @@ function ScheduleTab({ teamId, season }) {
       (map[k] = map[k] ?? []).push(g);
     }
     Object.values(map).forEach((arr) => {
-      arr.sort((a, b) => new Date(a.officialDate ?? a.gameDate) - new Date(b.officialDate ?? b.gameDate));
+      arr.sort(sortScheduleGames);
     });
     return map;
   }, [games]);
 
   const months = useMemo(() => Object.keys(gamesByMonth).sort(), [gamesByMonth]);
 
-  useEffect(() => {
-    if (!months.length || selectedMonth) return;
-    const now = new Date();
-    const k = monthKey(now);
-    setSelectedMonth(months.includes(k) ? k : months[0]);
-  }, [months, selectedMonth]);
+  const monthsForYear = useMemo(
+    () => months.filter((m) => m.startsWith(`${season}-`)),
+    [months, season],
+  );
+
+  const selectedMonthKey = selectedMonth ? `${season}-${selectedMonth}` : '';
+
+  const filteredGames = useMemo(() => {
+    if (!selectedMonth) return games;
+    const monthPrefix = `${season}-${selectedMonth}`;
+    return games.filter((g) => scheduleGameDateKey(g).startsWith(monthPrefix));
+  }, [games, season, selectedMonth]);
 
   useEffect(() => {
-    if (view !== 'list' || !games.length) return;
+    if (!monthsForYear.length) {
+      setSelectedMonth('');
+      return;
+    }
+    setSelectedMonth((prev) => {
+      if (prev && monthsForYear.includes(`${season}-${prev}`)) return prev;
+      const now = new Date();
+      const currentKey = monthKey(now);
+      if (season === String(now.getFullYear()) && monthsForYear.includes(currentKey)) {
+        return currentKey.split('-')[1];
+      }
+      return monthsForYear[0].split('-')[1];
+    });
+  }, [monthsForYear, season]);
+
+  useEffect(() => {
+    if (view !== 'list' || !filteredGames.length) return;
     const todayKey = localDateKey(new Date());
-    const idx = games.findIndex((g) => (g.officialDate ?? g.gameDate?.split('T')[0] ?? '') >= todayKey);
-    const target = idx >= 0 ? games[idx] : games[games.length - 1];
+    const idx = filteredGames.findIndex((g) => scheduleGameDateKey(g) >= todayKey);
+    const target = idx >= 0 ? filteredGames[idx] : filteredGames[filteredGames.length - 1];
     const el = target?.gamePk ? gameRefs.current[target.gamePk] : null;
     el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-  }, [games, view]);
+  }, [filteredGames, view, selectedMonth, season]);
 
   const buildMonthGrid = (monthStr) => {
     const [yy, mm] = monthStr.split('-').map((x) => Number(x));
@@ -391,6 +491,15 @@ function ScheduleTab({ teamId, season }) {
 
   const todayStr = localDateKey(new Date());
 
+  const openGamePicker = (dateKey, dayGames) => {
+    setGamePicker({ dateKey, games: dayGames });
+  };
+
+  const pickGame = (gamePk) => {
+    setGamePicker(null);
+    navigate(`/game/${gamePk}`);
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 my-4">
@@ -406,36 +515,39 @@ function ScheduleTab({ teamId, season }) {
           />
         </div>
 
-        {view === 'month' && months.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
           <Select
-            value={selectedMonth}
-            onChange={setSelectedMonth}
-            options={months.map((m) => {
-              const [yy, mm] = m.split('-').map((x) => Number(x));
-              return { value: m, label: monthLabel(new Date(yy, mm - 1, 1)) };
-            })}
+            value={season}
+            onChange={setSeason}
+            options={SCHEDULE_SEASON_OPTIONS}
             buttonClassName="bg-slate-900 min-w-[140px]"
           />
-        )}
+          {monthsForYear.length > 0 && (
+            <Select
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              options={monthsForYear.map((m) => {
+                const mm = m.split('-')[1];
+                return { value: mm, label: monthName(mm) };
+              })}
+              buttonClassName="bg-slate-900 min-w-[120px]"
+            />
+          )}
+        </div>
       </div>
 
       {games.length === 0 && (
         <div className="py-12 text-center text-slate-500 text-sm">No schedule found for {season}.</div>
       )}
 
-      {view === 'list' && games.length > 0 && (
+      {view === 'list' && filteredGames.length > 0 && (
         <div className="space-y-1">
-          {games.map((g) => {
-            const home = g.teams?.home;
-            const away = g.teams?.away;
-            const isFinal = g.status?.abstractGameState === 'Final';
-            const isLive = g.status?.abstractGameState === 'Live';
-            const homeWin = isFinal && home?.score > away?.score;
-            const awayWin = isFinal && away?.score > home?.score;
-            const isHome = home?.team?.id?.toString() === teamId?.toString();
-            const opp = isHome ? away : home;
-            const dateStr = g.officialDate ?? g.gameDate?.split('T')[0];
+          {filteredGames.map((g) => {
+            const { isHome, opp } = getScheduleOpponent(g, teamId);
+            const gameLabel = formatCalendarGameLabel(g, teamId);
+            const dateStr = scheduleGameDateKey(g);
             const isToday = dateStr === todayStr;
+            const dhLabel = getDoubleHeaderLabel(g);
             return (
               <div
                 key={g.gamePk}
@@ -443,23 +555,17 @@ function ScheduleTab({ teamId, season }) {
                 className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? `bg-${THEME_COLOR}-500/[0.06] border-${THEME_COLOR}-500/20` : ''}`}
                 onClick={() => navigate(`/game/${g.gamePk}`)}
               >
-                <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">{fmtDate(dateStr)}</div>
+                <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">
+                  <div>{fmtDate(dateStr)}</div>
+                  {dhLabel && <div className="text-[10px] text-slate-400 mt-0.5">{dhLabel}</div>}
+                </div>
                 <div className="w-5 sm:w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
                 <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
-                <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name}</div>
+                <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name ?? opp?.team?.abbreviation ?? 'Opponent'}</div>
                 <div className="text-right flex-shrink-0 text-sm">
-                  {isFinal ? (
-                    <span className={`font-semibold tabular-nums ${isHome ? (homeWin ? `text-emerald-400` : 'text-red-400') : (awayWin ? `text-emerald-400` : 'text-red-400')}`}>
-                      {isHome ? (homeWin ? 'W' : 'L') : (awayWin ? 'W' : 'L')}{' '}
-                      {isHome ? `${home?.score}-${away?.score}` : `${away?.score}-${home?.score}`}
-                    </span>
-                  ) : isLive ? (
-                    <span className="text-yellow-400 text-xs font-bold">LIVE</span>
-                  ) : (
-                    <span className="text-slate-500 text-xs">
-                      {g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'TBD'}
-                    </span>
-                  )}
+                  <span className={`font-semibold tabular-nums ${calendarLabelClass(gameLabel.type)}`}>
+                    {gameLabel.text}
+                  </span>
                 </div>
               </div>
             );
@@ -467,8 +573,12 @@ function ScheduleTab({ teamId, season }) {
         </div>
       )}
 
-      {view === 'month' && months.length > 0 && selectedMonth && (() => {
-        const { days, byDate, monthDate } = buildMonthGrid(selectedMonth);
+      {view === 'list' && games.length > 0 && filteredGames.length === 0 && selectedMonth && (
+        <div className="py-12 text-center text-slate-500 text-sm">No games in {monthName(selectedMonth)} {season}.</div>
+      )}
+
+      {view === 'month' && monthsForYear.length > 0 && selectedMonthKey && (() => {
+        const { days, byDate, monthDate } = buildMonthGrid(selectedMonthKey);
         const monthIdx = monthDate.getMonth();
 
         return (
@@ -485,69 +595,73 @@ function ScheduleTab({ teamId, season }) {
                 {days.map((d) => {
                   const inMonth = d.getMonth() === monthIdx;
                   const key = localDateKey(d);
-                  const dayGames = byDate[key] ?? [];
+                  const dayGames = dedupeScheduleGames(byDate[key] ?? []);
                   const isToday = key === todayStr;
+                  const doubleHeader = isDoubleHeaderDay(dayGames);
+                  const primaryGame = dayGames[0];
+                  const { isHome, opp } = primaryGame
+                    ? getScheduleOpponent(primaryGame, teamId)
+                    : { isHome: true, opp: null };
                   return (
                     <div
                       key={key}
-                      className={`aspect-square sm:aspect-auto sm:min-h-[128px] border-b border-r border-slate-800/50 p-0.5 sm:p-1.5 flex flex-col overflow-hidden ${inMonth ? '' : 'opacity-35'} ${isToday ? `bg-${THEME_COLOR}-500/[0.06]` : ''}`}
+                      className={`aspect-square sm:aspect-auto sm:min-h-[128px] border-b border-r border-slate-800/50 p-0.5 sm:p-1.5 flex flex-col overflow-hidden ${inMonth ? '' : 'opacity-35'} ${isToday ? `bg-slate-800` : ''}`}
                     >
                       <div className={`text-[9px] sm:text-[11px] font-mono leading-none mb-0.5 sm:mb-1 flex-shrink-0 ${isToday ? `text-${THEME_COLOR}-300` : 'text-slate-400'}`}>
                         {inMonth ? d.getDate() : ''}
                       </div>
                       <div className="flex-1 flex flex-col gap-0.5 sm:gap-1 min-h-0">
-                        {dayGames.slice(0, 2).map((g, gi) => {
-                          const home = g.teams?.home;
-                          const away = g.teams?.away;
-                          const isHome = home?.team?.id?.toString() === teamId?.toString();
-                          const opp = isHome ? away : home;
-                          const isFinal = g.status?.abstractGameState === 'Final';
-                          const isLive = g.status?.abstractGameState === 'Live';
-                          const homeWin = isFinal && home?.score > away?.score;
-                          const awayWin = isFinal && away?.score > home?.score;
-                          const won = isHome ? homeWin : awayWin;
-                          const gameLabel = formatCalendarGameLabel(g, teamId);
-                          return (
+                        {primaryGame && (
+                          doubleHeader ? (
                             <button
-                              key={g.gamePk}
                               type="button"
-                              onClick={() => navigate(`/game/${g.gamePk}`)}
-                              className={`w-full flex-1 flex flex-col items-center justify-between gap-0 min-h-0 sm:min-h-[52px] rounded sm:rounded-lg px-0.5 py-0.5 sm:px-1 sm:py-1 transition-colors ${gi > 0 ? 'hidden sm:flex' : ''} ${
-                                isFinal
-                                  ? won
-                                    ? `bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25`
-                                    : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/25'
-                                  : isLive
-                                  ? 'bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30'
-                                  : 'bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/50'
-                              }`}
-                              title={`${isHome ? 'vs' : '@'} ${opp?.team?.name ?? 'Opponent'} · ${gameLabel.text}`}
+                              onClick={() => openGamePicker(key, dayGames)}
+                              className={`w-full flex-1 flex flex-col items-center justify-between gap-0.5 min-h-0 sm:min-h-[52px] rounded sm:rounded-lg px-0.5 py-0.5 sm:px-1 sm:py-1 transition-colors ${calendarGameSurfaceClass(isHome)}`}
+                              title={`${isHome ? 'vs' : '@'} ${opp?.team?.name ?? 'Opponent'} · Doubleheader`}
                             >
                               <img
                                 src={teamLogoUrl(opp?.team?.id)}
                                 alt={opp?.team?.name ?? 'Opponent'}
-                                className="w-7 h-7 sm:w-11 sm:h-11 object-contain flex-shrink-0 drop-shadow-sm"
+                                className="w-6 h-6 sm:w-9 sm:h-9 object-contain flex-shrink-0 drop-shadow-sm"
                                 onError={(e) => (e.target.style.display = 'none')}
                               />
-                              <span
-                                className={[
-                                  'text-[9px] sm:text-[10px] font-semibold tabular-nums leading-none flex-shrink-0',
-                                  gameLabel.type === 'win' ? `text-emerald-400`
-                                    : gameLabel.type === 'loss' ? 'text-red-400'
-                                    : gameLabel.type === 'live' ? 'text-yellow-300'
-                                    : 'text-slate-400',
-                                ].join(' ')}
-                              >
-                                {gameLabel.text}
-                              </span>
+                              <div className="flex flex-col items-center gap-0.5 w-full min-w-0">
+                                {dayGames.map((g) => {
+                                  const label = formatCalendarGameLabel(g, teamId);
+                                  return (
+                                    <span
+                                      key={g.gamePk}
+                                      className={`text-[8px] sm:text-[9px] font-semibold tabular-nums leading-none ${calendarLabelClass(label.type)}`}
+                                    >
+                                      {label.text}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </button>
-                          );
-                        })}
-                        {dayGames.length > 1 && (
-                          <div className="sm:hidden text-[7px] text-slate-500 text-center leading-none">+{dayGames.length - 1}</div>
-                        )}
-                        {dayGames.length > 2 && (
-                          <div className="hidden sm:block text-[9px] text-slate-500 text-center">+{dayGames.length - 2}</div>
+                          ) : (
+                            (() => {
+                              const gameLabel = formatCalendarGameLabel(primaryGame, teamId);
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/game/${primaryGame.gamePk}`)}
+                                  className={`w-full flex-1 flex flex-col items-center justify-between gap-0 min-h-0 sm:min-h-[52px] rounded sm:rounded-lg px-0.5 py-0.5 sm:px-1 sm:py-1 transition-colors ${calendarGameSurfaceClass(isHome)}`}
+                                  title={`${isHome ? 'vs' : '@'} ${opp?.team?.name ?? 'Opponent'} · ${gameLabel.text}`}
+                                >
+                                  <img
+                                    src={teamLogoUrl(opp?.team?.id)}
+                                    alt={opp?.team?.name ?? 'Opponent'}
+                                    className="w-7 h-7 sm:w-11 sm:h-11 object-contain flex-shrink-0 drop-shadow-sm"
+                                    onError={(e) => (e.target.style.display = 'none')}
+                                  />
+                                  <span className={`text-[9px] sm:text-[10px] font-semibold tabular-nums leading-none flex-shrink-0 ${calendarLabelClass(gameLabel.type)}`}>
+                                    {gameLabel.text}
+                                  </span>
+                                </button>
+                              );
+                            })()
+                          )
                         )}
                       </div>
                     </div>
@@ -558,6 +672,43 @@ function ScheduleTab({ teamId, season }) {
           </div>
         );
       })()}
+
+      <Modal
+        open={Boolean(gamePicker)}
+        onClose={() => setGamePicker(null)}
+        title={gamePicker ? `${fmtDate(gamePicker.dateKey)} · Doubleheader` : 'Doubleheader'}
+        size="sm"
+      >
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {dedupeScheduleGames(gamePicker?.games ?? []).map((g) => {
+            const { isHome, opp } = getScheduleOpponent(g, teamId);
+            const label = formatCalendarGameLabel(g, teamId);
+            const dhLabel = getDoubleHeaderLabel(g) ?? `G${g.gameNumber ?? '?'}`;
+            return (
+              <button
+                key={g.gamePk}
+                type="button"
+                onClick={() => pickGame(g.gamePk)}
+                className={`aspect-square flex flex-col items-center justify-between gap-1 rounded-xl px-2 py-3 transition-colors active:scale-[0.98] ${calendarGameSurfaceClass(isHome)}`}
+              >
+                <span className="text-[10px] font-semibold text-slate-400 leading-none">{dhLabel}</span>
+                <img
+                  src={teamLogoUrl(opp?.team?.id)}
+                  alt={opp?.team?.name ?? 'Opponent'}
+                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0 drop-shadow-sm"
+                  onError={(e) => (e.target.style.display = 'none')}
+                />
+                <span className={`text-xs sm:text-sm font-semibold tabular-nums leading-none ${calendarLabelClass(label.type)}`}>
+                  {label.text}
+                </span>
+                <span className="text-[10px] text-slate-500 leading-none truncate max-w-full">
+                  {isHome ? 'vs' : '@'} {opp?.team?.abbreviation ?? opp?.team?.name ?? 'Opp'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -828,7 +979,7 @@ export default function TeamPage() {
   const navigate = useNavigate();
   const [teamInfo, setTeamInfo] = useState(null);
   const [teamRecord, setTeamRecord] = useState(null);
-  const [season, setSeason] = useState(SEASON.toString());
+  const [season, setSeason] = useState(String(CURRENT_YEAR));
   const [activeTab, setActiveTab] = useState('stats');
   const [favoriteTeams, setFavoriteTeams] = useState(() => {
     try {
@@ -973,7 +1124,7 @@ export default function TeamPage() {
           <TabBar variant="page" tabs={TABS} activeKey={activeTab} onChange={setActiveTab}>
             {(key) => {
               if (key === 'stats') return <StatsTab teamId={teamId} season={season} />;
-              if (key === 'schedule') return <ScheduleTab teamId={teamId} season={season} />;
+              if (key === 'schedule') return <ScheduleTab teamId={teamId} season={season} setSeason={setSeason} />;
               if (key === 'roster') return <RosterTab teamId={teamId} season={season} />;
               if (key === 'depth') return <DepthChartTab teamId={teamId} season={season} />;
               if (key === 'splits') return <SplitsTab teamId={teamId} season={season} />;
