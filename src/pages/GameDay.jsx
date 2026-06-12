@@ -991,6 +991,10 @@ export default function GamePage() {
 
   // ── Team Box Score ─────────────────────────────────────────────────────────
 
+  const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-fixed w-full`;
+  const BOX_SCORE_LABEL_COL = 'w-[34%]';
+  const BOX_SCORE_STAT_COL = 'w-[8.25%]';
+
   const TeamBoxSection = ({ sideKey, team, hideHeader }) => {
     const teamBox = ld.boxscore?.teams?.[sideKey];
     if (!teamBox) return null;
@@ -1060,12 +1064,12 @@ export default function GamePage() {
         )}
 
         <div className={`${TABLE_SCROLL} mb-2`}>
-          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+          <table className={BOX_SCORE_TABLE}>
             <thead>
               <tr className="text-slate-500 border-b border-slate-700/60">
-                <th className={`${stickyHead('bg-slate-900')} font-normal`}>BATTING</th>
+                <th className={`${stickyHead('bg-slate-900')} ${BOX_SCORE_LABEL_COL} font-normal`}>BATTING</th>
                 {['AB', 'R', 'H', 'RBI', 'BB', 'SO', 'AVG', 'OPS'].map((h) => (
-                  <th key={h} className={statHead('text-center font-normal')}>
+                  <th key={h} className={statHead(`${BOX_SCORE_STAT_COL} text-center font-normal`)}>
                     {h}
                   </th>
                 ))}
@@ -1084,7 +1088,7 @@ export default function GamePage() {
                     key={p.person?.id}
                     className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                   >
-                    <td className={stickyCell('bg-slate-900')}>
+                    <td className={`${stickyCell('bg-slate-900')} ${BOX_SCORE_LABEL_COL}`}>
                       <button
                         onClick={() => navigate(`/player/${p.person?.id}`)}
                         className={`text-left hover:text-${THEME_COLOR}-400 transition-colors whitespace-nowrap`}
@@ -1103,19 +1107,19 @@ export default function GamePage() {
                         {pos}
                       </span>
                     </td>
-                    <td className={statCell('text-slate-400')}>{b.atBats ?? '-'}</td>
-                    <td className={statCell('text-slate-400')}>{b.runs ?? '-'}</td>
-                    <td className={statCell('text-slate-400')}>{b.hits ?? '-'}</td>
-                    <td className={statCell('text-slate-400')}>{b.rbi ?? '-'}</td>
-                    <td className={statCell('text-slate-400')}>{b.baseOnBalls ?? '-'}</td>
-                    <td className={statCell('text-slate-400')}>{b.strikeOuts ?? '-'}</td>
-                    <td className={statCell('text-slate-500')}>{sb.avg ?? '-'}</td>
-                    <td className={statCell('text-slate-500')}>{sb.ops ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.atBats ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.runs ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.hits ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.rbi ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.baseOnBalls ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.strikeOuts ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-500`)}>{sb.avg ?? '-'}</td>
+                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-500`)}>{sb.ops ?? '-'}</td>
                   </tr>
                 );
               })}
               <tr className="group border-t border-slate-700 font-bold text-slate-300">
-                <td className={stickyCell('bg-slate-900', { footer: true })}>Totals</td>
+                <td className={`${stickyCell('bg-slate-900', { footer: true })} ${BOX_SCORE_LABEL_COL}`}>Totals</td>
                 {[
                   battingTotals.ab,
                   battingTotals.r,
@@ -1124,12 +1128,12 @@ export default function GamePage() {
                   battingTotals.bb,
                   battingTotals.so,
                 ].map((v, i) => (
-                  <td key={i} className={statCell()}>
+                  <td key={i} className={statCell(`${BOX_SCORE_STAT_COL} text-center`)}>
                     {v}
                   </td>
                 ))}
-                <td className={statCell()} />
-                <td className={statCell()} />
+                <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)} />
+                <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)} />
               </tr>
             </tbody>
           </table>
@@ -1163,12 +1167,12 @@ export default function GamePage() {
 
         {pitchers.length > 0 && (
           <div className={`${TABLE_SCROLL} mt-4`}>
-            <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
+            <table className={BOX_SCORE_TABLE}>
               <thead>
                 <tr className="text-slate-500 border-b border-slate-700/60">
-                  <th className={`${stickyHead('bg-slate-900')} font-normal`}>PITCHING</th>
+                  <th className={`${stickyHead('bg-slate-900')} ${BOX_SCORE_LABEL_COL} font-normal`}>PITCHING</th>
                   {['IP', 'H', 'R', 'ER', 'BB', 'K', 'HR', 'ERA'].map((h) => (
-                    <th key={h} className={statHead('text-center font-normal')}>
+                    <th key={h} className={statHead(`${BOX_SCORE_STAT_COL} text-center font-normal`)}>
                       {h}
                     </th>
                   ))}
@@ -1193,7 +1197,7 @@ export default function GamePage() {
                       key={p.person?.id}
                       className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                     >
-                      <td className={stickyCell('bg-slate-900')}>
+                      <td className={`${stickyCell('bg-slate-900')} ${BOX_SCORE_LABEL_COL}`}>
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <button
                           onClick={() => navigate(`/player/${p.person?.id}`)}
@@ -1209,22 +1213,22 @@ export default function GamePage() {
                         )}
                         </div>
                       </td>
-                      <td className={statCell('text-slate-400')}>{pt.inningsPitched ?? '-'}</td>
-                      <td className={statCell('text-slate-400')}>{pt.hits ?? '-'}</td>
-                      <td className={statCell('text-slate-400')}>{pt.runs ?? '-'}</td>
-                      <td className={statCell('text-slate-400')}>{pt.earnedRuns ?? '-'}</td>
-                      <td className={statCell('text-slate-400')}>{pt.baseOnBalls ?? '-'}</td>
-                      <td className={statCell('text-slate-400')}>{pt.strikeOuts ?? '-'}</td>
-                      <td className={statCell('text-slate-400')}>{pt.homeRuns ?? '-'}</td>
-                      <td className={statCell('text-slate-500')}>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.inningsPitched ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.hits ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.runs ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.earnedRuns ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.baseOnBalls ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.strikeOuts ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.homeRuns ?? '-'}</td>
+                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-500`)}>
                         {seasonEra != null ? parseFloat(seasonEra).toFixed(2) : '-'}
                       </td>
                     </tr>
                   );
                 })}
                 <tr className="group border-t border-slate-700 font-bold text-slate-300">
-                  <td className={stickyCell('bg-slate-900', { footer: true })}>Totals</td>
-                  <td className={statCell()}>{pitchingTotalsIp}</td>
+                  <td className={`${stickyCell('bg-slate-900', { footer: true })} ${BOX_SCORE_LABEL_COL}`}>Totals</td>
+                  <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)}>{pitchingTotalsIp}</td>
                   {[
                     pitchingTotals.h,
                     pitchingTotals.r,
@@ -1233,9 +1237,9 @@ export default function GamePage() {
                     pitchingTotals.k,
                     pitchingTotals.hr,
                   ].map((v, i) => (
-                    <td key={i} className={statCell()}>{v}</td>
+                    <td key={i} className={statCell(`${BOX_SCORE_STAT_COL} text-center`)}>{v}</td>
                   ))}
-                  <td className={statCell()} />
+                  <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)} />
                 </tr>
               </tbody>
             </table>
@@ -2090,23 +2094,25 @@ export default function GamePage() {
 
         {currentTab === 'boxscore' && ld.boxscore && (
           <div className="bg-slate-900 border border-slate-700/60  p-4 sm:p-5">
-            <SegmentedControl
-              value={boxScoreSide}
-              onChange={setBoxScoreSide}
-              variant="pill"
-              size="md"
-              className="mb-4"
-              options={[
-                {
-                  value: 'away',
-                  label: away.teamName || away.name || away.abbreviation,
-                },
-                {
-                  value: 'home',
-                  label: home.teamName || home.name || home.abbreviation,
-                },
-              ]}
-            />
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <SegmentedControl
+                value={boxScoreSide}
+                onChange={setBoxScoreSide}
+                variant="pill"
+                size="md"
+                options={[
+                  {
+                    value: 'away',
+                    label: away.teamName || away.name || away.abbreviation,
+                  },
+                  {
+                    value: 'home',
+                    label: home.teamName || home.name || home.abbreviation,
+                  },
+                ]}
+              />
+              <span className="text-sm text-slate-400 tabular-nums">{gameStart.dateLine}</span>
+            </div>
             <TeamBoxSection
               sideKey={boxScoreSide}
               team={boxScoreSide === 'away' ? away : home}
