@@ -75,11 +75,11 @@ const PLAY_BADGE = {
     cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   },
   intent_walk: {
-    label: 'IBB',
+    label: 'Intentional Walk',
     cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   },
   hit_by_pitch: {
-    label: 'HBP',
+    label: 'Hit By Pitch',
     cls: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
   },
   field_out: {
@@ -117,6 +117,10 @@ const PLAY_BADGE = {
   force_out: {
     label: 'Force Out',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
+  },
+  fielders_choice: {
+    label: 'Fielder\'s Choice',
+   cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
   },
   field_error: {
     label: 'Field Error',
@@ -657,6 +661,118 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
   );
 }
 
+function dedupeDaySchedule(games) {
+  const byPk = new Map();
+  for (const g of games) {
+    if (g.gamePk == null) continue;
+    const prev = byPk.get(g.gamePk);
+    const score = (game) => (
+      (game.teams?.home?.score != null ? 2 : 0)
+      + (game.teams?.away?.score != null ? 2 : 0)
+      + (game.linescore ? 1 : 0)
+    );
+    if (!prev || score(g) > score(prev)) byPk.set(g.gamePk, g);
+  }
+  return [...byPk.values()].sort((a, b) => {
+    const numA = a.gameNumber ?? 1;
+    const numB = b.gameNumber ?? 1;
+    if (numA !== numB) return numA - numB;
+    return new Date(a.gameDate ?? 0) - new Date(b.gameDate ?? 0);
+  });
+}
+
+function formatDayGameStatus(game) {
+  const away = game.teams?.away;
+  const home = game.teams?.home;
+  const isFinal = game.status?.abstractGameState === 'Final';
+  const isLive = game.status?.abstractGameState === 'Live';
+  if (isFinal) {
+    const awayScore = away?.score ?? game.linescore?.teams?.away?.runs ?? 0;
+    const homeScore = home?.score ?? game.linescore?.teams?.home?.runs ?? 0;
+    return `${awayScore}-${homeScore}`;
+  }
+  if (isLive) return 'LIVE';
+  if (game.gameDate) {
+    return new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  return 'TBD';
+}
+
+function GamedayDayPicker({ games, currentGamePk, loading, onSelect }) {
+  const count = games.length;
+  return (
+    <Menu as="div" className="relative justify-self-center">
+      <MenuButton
+        type="button"
+        className="flex items-center gap-1.5 font-bold text-sm text-slate-100 active:text-white"
+      >
+        <span>Gameday</span>
+        <i className="fa-solid fa-chevron-down text-[10px] text-slate-400" aria-hidden />
+      </MenuButton>
+      <MenuItems
+        anchor="bottom"
+        transition
+        className="z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] max-h-80 overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 py-1 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+      >
+        {loading && (
+          <div className="px-4 py-3 text-xs text-slate-500">Loading games…</div>
+        )}
+        {!loading && count === 0 && (
+          <div className="px-4 py-3 text-xs text-slate-500">No other games today</div>
+        )}
+        {!loading && games.map((game) => {
+          const away = game.teams?.away;
+          const home = game.teams?.home;
+          const isCurrent = String(game.gamePk) === String(currentGamePk);
+          const dhLabel = game.gameNumber > 1 ? `G${game.gameNumber}` : null;
+          return (
+            <MenuItem key={game.gamePk} disabled={isCurrent}>
+              {({ focus, close }) => (
+                <button
+                  type="button"
+                  disabled={isCurrent}
+                  onClick={() => {
+                    close();
+                    onSelect(game.gamePk);
+                  }}
+                  className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
+                    isCurrent
+                      ? 'bg-slate-800/80 text-slate-400 cursor-default'
+                      : focus
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-200'
+                  }`}
+                >
+                  <img
+                    src={teamLogoUrl(away?.team?.id)}
+                    alt=""
+                    className="w-7 h-7 object-contain flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {dhLabel && <span className="text-slate-500 mr-1">{dhLabel}</span>}
+                      {away?.team?.abbreviation} @ {home?.team?.abbreviation}
+                    </div>
+                    <div className="text-[11px] text-slate-500">{formatDayGameStatus(game)}</div>
+                  </div>
+                  <img
+                    src={teamLogoUrl(home?.team?.id)}
+                    alt=""
+                    className="w-7 h-7 object-contain flex-shrink-0"
+                  />
+                  {isCurrent && (
+                    <i className="fa-solid fa-check text-[10px] text-slate-500 flex-shrink-0" aria-hidden />
+                  )}
+                </button>
+              )}
+            </MenuItem>
+          );
+        })}
+      </MenuItems>
+    </Menu>
+  );
+}
+
 // ─── component ──────────────────────────────────────────────────────────────
 
 export default function GamePage() {
@@ -681,6 +797,8 @@ export default function GamePage() {
   const [gameContent, setGameContent] = useState(null);
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
   const [pinnedVideo, setPinnedVideo] = useState(null);
+  const [daySchedule, setDaySchedule] = useState([]);
+  const [dayScheduleLoading, setDayScheduleLoading] = useState(false);
 
   const fetchGame = useCallback(async () => {
     try {
@@ -703,6 +821,30 @@ export default function GamePage() {
   useEffect(() => {
     fetchGame();
   }, [fetchGame]);
+
+  useEffect(() => {
+    const officialDate = feed?.gameData?.datetime?.officialDate;
+    if (!officialDate) {
+      setDaySchedule([]);
+      return;
+    }
+    let cancelled = false;
+    setDayScheduleLoading(true);
+    fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${officialDate}&hydrate=team,linescore`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        const games = dedupeDaySchedule((json.dates ?? []).flatMap((d) => d.games ?? []));
+        setDaySchedule(games);
+      })
+      .catch(() => {
+        if (!cancelled) setDaySchedule([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDayScheduleLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [feed?.gameData?.datetime?.officialDate]);
 
   useEffect(() => {
     summaryScrollYRef.current = 0;
@@ -992,8 +1134,18 @@ export default function GamePage() {
   // ── Team Box Score ─────────────────────────────────────────────────────────
 
   const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-fixed w-full`;
-  const BOX_SCORE_LABEL_COL = 'w-[34%]';
-  const BOX_SCORE_STAT_COL = 'w-[8.25%]';
+  const BOX_SCORE_LABEL_COL = 'w-[24%]';
+  const BOX_SCORE_STAT_COL = 'w-[9.5%]';
+  const boxScoreStatHead = (className = '') => (
+    statHead(`${BOX_SCORE_STAT_COL} font-normal ${className}`, { align: 'text-center' })
+  );
+  const boxScoreStatCell = (className = '') => (
+    statCell(`${BOX_SCORE_STAT_COL} ${className}`, { align: 'text-center' })
+  );
+  const formatBoxRate = (v) => {
+    if (v == null || v === '' || v === '-') return '-';
+    return String(v).replace(/^0(?=\.)/, '');
+  };
 
   const TeamBoxSection = ({ sideKey, team, hideHeader }) => {
     const teamBox = ld.boxscore?.teams?.[sideKey];
@@ -1065,11 +1217,17 @@ export default function GamePage() {
 
         <div className={`${TABLE_SCROLL} mb-2`}>
           <table className={BOX_SCORE_TABLE}>
+            <colgroup>
+              <col className={BOX_SCORE_LABEL_COL} />
+              {Array.from({ length: 8 }, (_, i) => (
+                <col key={i} className={BOX_SCORE_STAT_COL} />
+              ))}
+            </colgroup>
             <thead>
               <tr className="text-slate-500 border-b border-slate-700/60">
                 <th className={`${stickyHead('bg-slate-900')} ${BOX_SCORE_LABEL_COL} font-normal`}>BATTING</th>
                 {['AB', 'R', 'H', 'RBI', 'BB', 'SO', 'AVG', 'OPS'].map((h) => (
-                  <th key={h} className={statHead(`${BOX_SCORE_STAT_COL} text-center font-normal`)}>
+                  <th key={h} className={boxScoreStatHead()}>
                     {h}
                   </th>
                 ))}
@@ -1107,14 +1265,14 @@ export default function GamePage() {
                         {pos}
                       </span>
                     </td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.atBats ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.runs ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.hits ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.rbi ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.baseOnBalls ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{b.strikeOuts ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-500`)}>{sb.avg ?? '-'}</td>
-                    <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-500`)}>{sb.ops ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{b.atBats ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{b.runs ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{b.hits ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{b.rbi ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{b.baseOnBalls ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{b.strikeOuts ?? '-'}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{formatBoxRate(sb.avg)}</td>
+                    <td className={boxScoreStatCell('text-slate-400')}>{formatBoxRate(sb.ops)}</td>
                   </tr>
                 );
               })}
@@ -1128,12 +1286,12 @@ export default function GamePage() {
                   battingTotals.bb,
                   battingTotals.so,
                 ].map((v, i) => (
-                  <td key={i} className={statCell(`${BOX_SCORE_STAT_COL} text-center`)}>
+                  <td key={i} className={boxScoreStatCell()}>
                     {v}
                   </td>
                 ))}
-                <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)} />
-                <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)} />
+                <td className={boxScoreStatCell()} />
+                <td className={boxScoreStatCell()} />
               </tr>
             </tbody>
           </table>
@@ -1168,11 +1326,17 @@ export default function GamePage() {
         {pitchers.length > 0 && (
           <div className={`${TABLE_SCROLL} mt-4`}>
             <table className={BOX_SCORE_TABLE}>
+              <colgroup>
+                <col className={BOX_SCORE_LABEL_COL} />
+                {Array.from({ length: 8 }, (_, i) => (
+                  <col key={i} className={BOX_SCORE_STAT_COL} />
+                ))}
+              </colgroup>
               <thead>
                 <tr className="text-slate-500 border-b border-slate-700/60">
                   <th className={`${stickyHead('bg-slate-900')} ${BOX_SCORE_LABEL_COL} font-normal`}>PITCHING</th>
                   {['IP', 'H', 'R', 'ER', 'BB', 'K', 'HR', 'ERA'].map((h) => (
-                    <th key={h} className={statHead(`${BOX_SCORE_STAT_COL} text-center font-normal`)}>
+                    <th key={h} className={boxScoreStatHead()}>
                       {h}
                     </th>
                   ))}
@@ -1213,14 +1377,14 @@ export default function GamePage() {
                         )}
                         </div>
                       </td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.inningsPitched ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.hits ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.runs ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.earnedRuns ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.baseOnBalls ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.strikeOuts ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-400`)}>{pt.homeRuns ?? '-'}</td>
-                      <td className={statCell(`${BOX_SCORE_STAT_COL} text-center text-slate-500`)}>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.inningsPitched ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.hits ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.runs ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.earnedRuns ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.baseOnBalls ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.strikeOuts ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>{pt.homeRuns ?? '-'}</td>
+                      <td className={boxScoreStatCell('text-slate-400')}>
                         {seasonEra != null ? parseFloat(seasonEra).toFixed(2) : '-'}
                       </td>
                     </tr>
@@ -1228,7 +1392,7 @@ export default function GamePage() {
                 })}
                 <tr className="group border-t border-slate-700 font-bold text-slate-300">
                   <td className={`${stickyCell('bg-slate-900', { footer: true })} ${BOX_SCORE_LABEL_COL}`}>Totals</td>
-                  <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)}>{pitchingTotalsIp}</td>
+                  <td className={boxScoreStatCell()}>{pitchingTotalsIp}</td>
                   {[
                     pitchingTotals.h,
                     pitchingTotals.r,
@@ -1237,9 +1401,9 @@ export default function GamePage() {
                     pitchingTotals.k,
                     pitchingTotals.hr,
                   ].map((v, i) => (
-                    <td key={i} className={statCell(`${BOX_SCORE_STAT_COL} text-center`)}>{v}</td>
+                    <td key={i} className={boxScoreStatCell()}>{v}</td>
                   ))}
-                  <td className={statCell(`${BOX_SCORE_STAT_COL} text-center`)} />
+                  <td className={boxScoreStatCell()} />
                 </tr>
               </tbody>
             </table>
@@ -1652,34 +1816,39 @@ export default function GamePage() {
   return (
     <div className="max-w-5xl mx-auto px-0 sm:px-6 py-0 sm:py-8">
       {/* Mobile compact sticky header — shows instead of nav */}
-      <div className="sm:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur border-b border-slate-800/60 flex items-center justify-between px-4 py-3">
+      <div className="sm:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur border-b border-slate-800/60 grid grid-cols-[1fr_auto_1fr] items-center px-4 py-3">
         <button
           onClick={() =>
             navigate('/', { state: { returnDate: location.state?.returnDate } })
           }
-          className="flex items-center gap-2 text-sm text-slate-300 active:text-white"
+          className="flex items-center gap-2 text-sm text-slate-300 active:text-white justify-self-start"
         >
           <i className="fa-solid fa-arrow-left text-xs" />
           <span>Scores</span>
         </button>
-        <div className="flex items-center gap-2 font-bold text-sm">
-          {/* Select button that shows rest of games of current day to select from */}
-          Gameday ↓ 
-       
-        </div>
-        {isLive ? (
-          <div className="flex items-center gap-1 text-[10px] text-red-400">
-            <div className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />
-            <span>
-              {ls?.inningHalf === 'Top' ? '▲' : '▼'}
-              {ls?.currentInning}
-            </span>
-          </div>
-        ) : (
-        <img src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg"
-        className="w-6 h-6 object-contain"
+        <GamedayDayPicker
+          games={daySchedule}
+          currentGamePk={gamePk}
+          loading={dayScheduleLoading}
+          onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
         />
-        )}
+        <div className="justify-self-end flex items-center justify-end min-w-[4.5rem]">
+          {isLive ? (
+            <div className="flex items-center gap-1 text-[10px] text-red-400">
+              <div className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />
+              <span>
+                {ls?.inningHalf === 'Top' ? '▲' : '▼'}
+                {ls?.currentInning}
+              </span>
+            </div>
+          ) : (
+            <img
+              src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg"
+              alt="MLB"
+              className="w-6 h-6 object-contain"
+            />
+          )}
+        </div>
       </div>
 
       {/* Desktop: back + ws status */}

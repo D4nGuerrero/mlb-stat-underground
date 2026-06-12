@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
+import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
 import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
 import { computeCareerTotalsRow } from '../utils/careerTotals';
@@ -15,10 +16,6 @@ import {
   scrollStickyYearCell,
   scrollStickyTeamAbbrHead,
   scrollStickyTeamAbbrCell,
-  scrollStickyDateHead,
-  scrollStickyDateCell,
-  scrollStickyTeamAfterDateHead,
-  scrollStickyTeamAfterDateCell,
   scrollStickyHead,
   scrollStickyCell,
   scrollStatHead,
@@ -29,7 +26,7 @@ import {
   stickyCol1Props,
   LoadingSpinner,
 } from '../components/ui';
-import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
+import { TABLE_TEXT_CLASS, TABLE_MIN_W, TABLE_YEAR_COL_CLASS } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -126,7 +123,6 @@ const fieldCols = [
 
 const gameLogHitCols = [
   { key: 'date', label: 'Date', format: 'date' },
-  { key: 'team', label: 'Team', format: 'team' },
   { key: 'opponent', label: 'OPP', format: 'opponent' },
   { key: 'atBats', label: 'AB' },
   { key: 'runs', label: 'R' },
@@ -151,30 +147,62 @@ const gameLogHitCols = [
 
 const gameLogPitchCols = [
   { key: 'date', label: 'Date', format: 'date' },
-  { key: 'team', label: 'Team', format: 'team' },
   { key: 'opponent', label: 'OPP', format: 'opponent' },
-  { key: 'wins', label: 'W' },
-  { key: 'losses', label: 'L' },
-  { key: 'era', label: 'ERA' },
-  { key: 'gamesPlayed', label: 'G' },
-  { key: 'gamesStarted', label: 'GS' },
-  { key: 'completeGames', label: 'CG' },
-  { key: 'shutouts', label: 'SHO' },
-  { key: 'saves', label: 'SV' },
-  { key: 'saveOpportunities', label: 'SVO' },
   { key: 'inningsPitched', label: 'IP' },
   { key: 'hits', label: 'H' },
   { key: 'runs', label: 'R' },
   { key: 'earnedRuns', label: 'ER' },
   { key: 'homeRuns', label: 'HR' },
-  { key: 'hitBatsmen', label: 'HB' },
   { key: 'baseOnBalls', label: 'BB' },
-  { key: 'intentionalWalks', label: 'IBB' },
-  { key: 'strikeOuts', label: 'SO' },
-  { key: 'pitchesStrikes', label: 'NP-S', format: 'pitchesStrikes' },
-  { key: 'avg', label: 'AVG' },
-  { key: 'whip', label: 'WHIP' },
-  { key: 'groundOutsToAirouts', label: 'GO/AO' },
+  { key: 'strikeOuts', label: 'K' },
+  { key: 'groundOuts', label: 'GB' },
+  { key: 'flyOuts', label: 'FB' },
+  { key: 'numberOfPitches', label: 'P' },
+  { key: 'battersFaced', label: 'TBF' },
+  { key: 'gameScore', label: 'GSC', format: 'gameScore' },
+  { key: 'decision', label: 'DEC', format: 'decision' },
+  { key: 'relief', label: 'REL', format: 'relief' },
+  { key: 'era', label: 'ERA' },
+];
+
+const GAME_LOG_HIT_GLOSSARY = [
+  { key: 'AB', text: 'At bats' },
+  { key: 'R', text: 'Runs scored' },
+  { key: 'H', text: 'Hits' },
+  { key: 'TB', text: 'Total bases' },
+  { key: '2B', text: 'Doubles' },
+  { key: '3B', text: 'Triples' },
+  { key: 'HR', text: 'Home runs' },
+  { key: 'RBI', text: 'Runs batted in' },
+  { key: 'BB', text: 'Walks' },
+  { key: 'IBB', text: 'Intentional walks' },
+  { key: 'SO', text: 'Strikeouts' },
+  { key: 'SB', text: 'Stolen bases' },
+  { key: 'CS', text: 'Caught stealing' },
+  { key: 'AVG', text: 'Batting average' },
+  { key: 'OBP', text: 'On-base percentage' },
+  { key: 'SLG', text: 'Slugging percentage' },
+  { key: 'HBP', text: 'Hit by pitch' },
+  { key: 'SAC', text: 'Sacrifice bunts' },
+  { key: 'SF', text: 'Sacrifice flies' },
+];
+
+const GAME_LOG_PITCH_GLOSSARY = [
+  { key: 'IP', text: 'Innings pitched' },
+  { key: 'H', text: 'Hits allowed' },
+  { key: 'R', text: 'Runs allowed' },
+  { key: 'ER', text: 'Earned runs' },
+  { key: 'HR', text: 'Home runs allowed' },
+  { key: 'BB', text: 'Walks' },
+  { key: 'K', text: 'Strikeouts' },
+  { key: 'GB', text: 'Ground-ball outs' },
+  { key: 'FB', text: 'Fly-ball outs' },
+  { key: 'P', text: 'Pitches thrown' },
+  { key: 'TBF', text: 'Batters faced' },
+  { key: 'GSC', text: 'Game score (Bill James)' },
+  { key: 'DEC', text: 'Decision (W/L/S)' },
+  { key: 'REL', text: 'Relief appearance' },
+  { key: 'ERA', text: 'Earned run average' },
 ];
 
 function formatBornWithAge(playerInfo) {
@@ -348,7 +376,148 @@ function mergeMinorLeagueStats(responses) {
   return { stats: [...mergedByKey.values()] };
 }
 
+function ipToOuts(ip) {
+  if (ip == null || ip === '') return 0;
+  const [whole, frac = '0'] = String(ip).split('.');
+  return parseInt(whole, 10) * 3 + parseInt(frac, 10);
+}
+
+function outsToIp(outs) {
+  const whole = Math.floor(outs / 3);
+  const frac = outs % 3;
+  return frac === 0 ? String(whole) : `${whole}.${frac}`;
+}
+
+function getGameLogStat(row) {
+  return row.stat ?? row;
+}
+
+function sumGameLogField(rows, key) {
+  return rows.reduce((acc, row) => acc + (Number(getGameLogStat(row)[key]) || 0), 0);
+}
+
+function computePitcherGameScore(stat) {
+  if (!stat) return null;
+  const outs = ipToOuts(stat.inningsPitched);
+  const innings = Math.floor(outs / 3);
+  const uer = (Number(stat.runs) || 0) - (Number(stat.earnedRuns) || 0);
+  return Math.round(
+    40 + outs + 2 * Math.max(0, innings - 4)
+    + (Number(stat.strikeOuts) || 0)
+    - 2 * (Number(stat.hits) || 0)
+    - 4 * (Number(stat.earnedRuns) || 0)
+    - 2 * uer
+    - (Number(stat.baseOnBalls) || 0)
+    - (Number(stat.hitBatsmen) || 0),
+  );
+}
+
+function formatPitcherDecision(stat) {
+  if (!stat) return '—';
+  if (stat.wins === 1) return 'W';
+  if (stat.losses === 1) return 'L';
+  if (stat.saves === 1) return 'S';
+  return '—';
+}
+
+function formatPitcherRelief(stat) {
+  if (!stat) return '—';
+  if (stat.gamesStarted === 1) return '—';
+  if ((stat.gamesPlayed ?? 0) > 0) return '✓';
+  return '—';
+}
+
+function computeGameLogMonthTotals(rows, group) {
+  if (!rows.length) return null;
+
+  if (group === 'pitching') {
+    const totals = {
+      hits: sumGameLogField(rows, 'hits'),
+      runs: sumGameLogField(rows, 'runs'),
+      earnedRuns: sumGameLogField(rows, 'earnedRuns'),
+      homeRuns: sumGameLogField(rows, 'homeRuns'),
+      baseOnBalls: sumGameLogField(rows, 'baseOnBalls'),
+      strikeOuts: sumGameLogField(rows, 'strikeOuts'),
+      groundOuts: sumGameLogField(rows, 'groundOuts'),
+      flyOuts: sumGameLogField(rows, 'flyOuts'),
+      numberOfPitches: sumGameLogField(rows, 'numberOfPitches'),
+      battersFaced: sumGameLogField(rows, 'battersFaced'),
+    };
+    const totalOuts = rows.reduce((acc, row) => acc + ipToOuts(getGameLogStat(row).inningsPitched), 0);
+    const ip = outsToIp(totalOuts);
+    const ipFloat = totalOuts / 3;
+    totals.inningsPitched = ip;
+    totals.era = ipFloat > 0 ? ((totals.earnedRuns * 9) / ipFloat).toFixed(2) : '0.00';
+    return totals;
+  }
+
+  const totals = {
+    atBats: sumGameLogField(rows, 'atBats'),
+    runs: sumGameLogField(rows, 'runs'),
+    hits: sumGameLogField(rows, 'hits'),
+    totalBases: sumGameLogField(rows, 'totalBases'),
+    doubles: sumGameLogField(rows, 'doubles'),
+    triples: sumGameLogField(rows, 'triples'),
+    homeRuns: sumGameLogField(rows, 'homeRuns'),
+    rbi: sumGameLogField(rows, 'rbi'),
+    baseOnBalls: sumGameLogField(rows, 'baseOnBalls'),
+    intentionalWalks: sumGameLogField(rows, 'intentionalWalks'),
+    strikeOuts: sumGameLogField(rows, 'strikeOuts'),
+    stolenBases: sumGameLogField(rows, 'stolenBases'),
+    caughtStealing: sumGameLogField(rows, 'caughtStealing'),
+    hitByPitch: sumGameLogField(rows, 'hitByPitch'),
+    sacBunts: sumGameLogField(rows, 'sacBunts'),
+    sacFlies: sumGameLogField(rows, 'sacFlies'),
+  };
+
+  const ab = totals.atBats;
+  const h = totals.hits;
+  const bb = totals.baseOnBalls;
+  const hbp = totals.hitByPitch;
+  const sf = totals.sacFlies;
+  const singles = h - totals.doubles - totals.triples - totals.homeRuns;
+  const obpDenom = ab + bb + hbp + sf;
+
+  totals.avg = ab > 0 ? (h / ab).toFixed(3).replace(/^0/, '') : '.000';
+  totals.obp = obpDenom > 0 ? ((h + bb + hbp) / obpDenom).toFixed(3).replace(/^0/, '') : '.000';
+  totals.slg = ab > 0
+    ? ((singles + 2 * totals.doubles + 3 * totals.triples + 4 * totals.homeRuns) / ab)
+        .toFixed(3)
+        .replace(/^0/, '')
+    : '.000';
+
+  return totals;
+}
+
+function buildGameLogMonthSections(rows, group) {
+  const monthMap = new Map();
+  for (const row of rows) {
+    const d = new Date(`${row.date}T12:00:00`);
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+    if (!monthMap.has(key)) {
+      monthMap.set(key, {
+        key,
+        label: d.toLocaleDateString('en-US', { month: 'long' }).toUpperCase(),
+        rows: [],
+      });
+    }
+    monthMap.get(key).rows.push(row);
+  }
+
+  return [...monthMap.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([, section]) => ({
+      ...section,
+      totals: computeGameLogMonthTotals(section.rows, group),
+    }));
+}
+
 function formatCell(value, format, row) {
+  if (row.isMonthTotals) {
+    if (format === 'date' || format === 'opponent') return '';
+    if (format === 'gameScore' || format === 'decision' || format === 'relief') return '—';
+  }
+
   if (format === 'date' && row.date) {
     return new Date(row.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
@@ -361,7 +530,29 @@ function formatCell(value, format, row) {
   if (format === 'opponent') {
     const abbr = getTeamAbbr(row.opponent);
     if (abbr === '—') return '—';
-    return row.isHome ? `vs ${abbr}` : `@ ${abbr}`;
+    const teamId = row.opponent?.id;
+    const prefix = row.isHome ? 'vs' : '@';
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        <span className="text-slate-400">{prefix}</span>
+        <TeamLogoImg teamId={teamId} className="w-5 h-5 object-contain flex-shrink-0" alt={abbr} />
+        <span className="font-medium">{abbr}</span>
+      </span>
+    );
+  }
+  if (format === 'gameScore') {
+    const score = value ?? computePitcherGameScore(getGameLogStat(row));
+    return score == null ? '—' : score;
+  }
+  if (format === 'decision') {
+    const dec = formatPitcherDecision(getGameLogStat(row));
+    if (dec === 'W') return <span className="text-emerald-400 font-semibold">W</span>;
+    if (dec === 'L') return <span className="text-red-400 font-semibold">L</span>;
+    if (dec === 'S') return <span className="text-emerald-400 font-semibold">S</span>;
+    return dec;
+  }
+  if (format === 'relief') {
+    return formatPitcherRelief(getGameLogStat(row));
   }
   if (format === 'pitchesStrikes') {
     const pitches = row.numberOfPitches ?? row.stat?.numberOfPitches;
@@ -402,6 +593,7 @@ function FilterBar({
   onPeriodChange,
   season,
   onSeasonChange,
+  seasonOptions = SEASON_OPTIONS,
   group,
   onGroupChange,
   hidePeriod = false,
@@ -435,7 +627,7 @@ function FilterBar({
       {!hidePeriod && period !== undefined && onPeriodChange && (
         <Select value={period} onChange={onPeriodChange} options={PERIOD_OPTIONS} className="w-52" />
       )}
-      <Select value={season} onChange={onSeasonChange} options={SEASON_OPTIONS} className="w-28" />
+      <Select value={season} onChange={onSeasonChange} options={seasonOptions} className="w-28" />
     </div>
   );
 }
@@ -668,64 +860,140 @@ function PlayerTransactionsTab({ playerId }) {
   );
 }
 
-function GameLogTable({ cols, rows, emptyMessage = 'No game logs available' }) {
-  const { sortCol, sortDir, handleSort, sortMark, sortActive } = useTableSort('date', 'desc');
-  const sortedRows = useMemo(() => {
-    const col = cols.find((c) => c.key === sortCol);
-    return [...rows].sort((a, b) => comparePlayerRows(a, b, sortCol, sortDir, col));
-  }, [rows, cols, sortCol, sortDir]);
+function GameLogGlossary({ items }) {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-4 pt-4 border-t border-slate-800/60 px-1">
+      {items.map(({ key, text }) => (
+        <span key={key}>
+          <span className="text-slate-400 font-semibold">{key}</span>: {text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs available' }) {
+  const oppMeasureRef = useRef(null);
+  const [oppColWidth, setOppColWidth] = useState(null);
+  const monthSections = useMemo(() => buildGameLogMonthSections(rows, logGroup), [rows, logGroup]);
+  const glossary = logGroup === 'pitching' ? GAME_LOG_PITCH_GLOSSARY : GAME_LOG_HIT_GLOSSARY;
+
+  useLayoutEffect(() => {
+    const oppCell = oppMeasureRef.current;
+    if (!oppCell) return;
+
+    const syncOppWidth = () => {
+      const w = Math.ceil(oppCell.getBoundingClientRect().width);
+      if (w > 0) setOppColWidth(w);
+    };
+
+    syncOppWidth();
+    const ro = new ResizeObserver(syncOppWidth);
+    ro.observe(oppCell);
+    return () => ro.disconnect();
+  }, [rows, cols, logGroup]);
 
   if (!rows?.length) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
 
+  const oppStickyHead = scrollStickyHead('bg-[#121827]', {
+    stickTop: true,
+    widthClass: `${TABLE_YEAR_COL_CLASS} w-full box-border`,
+  });
+  const oppStickyCell = scrollStickyCell('bg-[#121827]', {
+    widthClass: `${TABLE_YEAR_COL_CLASS} w-full box-border`,
+  });
+  const monthStickyCell = scrollStickyCell('bg-[#182030]', {
+    widthClass: `${TABLE_YEAR_COL_CLASS} w-full box-border`,
+    footer: true,
+  });
+
   return (
-    <div className={TABLE_SCROLL_BODY}>
-      <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS}`}>
-        <thead>
-          <tr className="text-slate-500 border-b border-slate-700/60">
-            {cols.map((c, i) => (
-              <th
-                key={c.key}
-                className={[
-                  'font-normal whitespace-nowrap bg-[#121827]',
-                  i === 0
-                    ? scrollStickyDateHead('bg-[#121827]', { stickTop: true })
-                    : i === 1
-                      ? scrollStickyTeamAfterDateHead('bg-[#121827]', { align: 'text-center', stickTop: true })
-                      : scrollStatHead(`text-center cursor-pointer select-none hover:text-slate-300 ${sortActive(c.key)}`, { align: 'text-center', stickTop: true }),
-                ].join(' ')}
-                onClick={() => handleSort(c.key)}
-              >
-                {c.label}{sortMark(c.key)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRows.map((row, i) => (
-            <tr key={row.id ?? i} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
-              {cols.map((c, j) => {
-                const value = row[c.key] ?? row.stat?.[c.key];
-                return (
-                  <td
-                    key={c.key}
-                    className={[
-                      j === 0
-                        ? `${scrollStickyDateCell('bg-[#121827]')} font-semibold text-slate-200`
-                        : j === 1
-                          ? scrollStickyTeamAfterDateCell('bg-[#121827]')
-                          : scrollStatCell('', { align: 'text-center' }),
-                    ].join(' ')}
-                  >
-                    {formatCell(value, c.format, row)}
-                  </td>
-                );
-              })}
+    <div>
+      <div className={TABLE_SCROLL_BODY}>
+        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS}`}>
+          <colgroup>
+            <col />
+            <col style={oppColWidth ? { width: oppColWidth } : undefined} />
+          </colgroup>
+          <thead>
+            <tr className="text-slate-500 border-b border-slate-700/60">
+              {cols.map((c, i) => (
+                <th
+                  key={c.key}
+                  className={[
+                    'font-normal whitespace-nowrap bg-[#121827]',
+                    i === 0
+                      ? `${TABLE_YEAR_COL_CLASS} px-3 py-2 text-left`
+                      : i === 1
+                        ? oppStickyHead
+                        : scrollStatHead('text-center', { align: 'text-center', stickTop: true }),
+                  ].join(' ')}
+                >
+                  {c.label}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {monthSections.map((section, sectionIdx) => (
+              <Fragment key={section.key}>
+                {section.rows.map((row, i) => (
+                  <tr key={row.id ?? `${section.key}-${i}`} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
+                    {cols.map((c, j) => {
+                      const value = row[c.key] ?? row.stat?.[c.key];
+                      const measureOpp = sectionIdx === 0 && i === 0 && j === 1;
+                      return (
+                        <td
+                          key={c.key}
+                          ref={measureOpp ? oppMeasureRef : undefined}
+                          className={[
+                            j === 0
+                              ? `${TABLE_YEAR_COL_CLASS} px-3 py-2 font-semibold text-slate-200`
+                              : j === 1
+                                ? oppStickyCell
+                                : scrollStatCell('', { align: 'text-center' }),
+                          ].join(' ')}
+                        >
+                          {formatCell(value, c.format, row)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {section.totals && (
+                  <tr className="group border-b border-slate-700/50 bg-slate-800/40 text-slate-400">
+                    {cols.map((c, j) => {
+                      const totalsRow = { isMonthTotals: true, stat: section.totals, ...section.totals };
+                      const value = section.totals[c.key];
+                      return (
+                        <td
+                          key={c.key}
+                          className={[
+                            j === 0
+                              ? `${TABLE_YEAR_COL_CLASS} px-3 py-2 bg-[#182030]`
+                              : j === 1
+                                ? `${monthStickyCell} text-[10px] font-bold text-slate-300 uppercase tracking-widest`
+                                : scrollStatCell('text-slate-400 font-semibold', { align: 'text-center' }),
+                          ].join(' ')}
+                        >
+                          {j === 0
+                            ? null
+                            : j === 1
+                              ? section.label
+                              : formatCell(value, c.format, totalsRow)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <GameLogGlossary items={glossary} />
     </div>
   );
 }
@@ -746,6 +1014,7 @@ export default function PlayerPage() {
   const [logGroup, setLogGroup] = useState('hitting');
 
   const [logSeason, setLogSeason] = useState(CURRENT_YEAR);
+  const [logSeasonOptions, setLogSeasonOptions] = useState(SEASON_OPTIONS);
   const [gameLogRows, setGameLogRows] = useState([]);
   const [gameLogLoading, setGameLogLoading] = useState(false);
 
@@ -849,6 +1118,47 @@ export default function PlayerPage() {
       setSplitLoading(false);
     }
   }, [playerId, splitLevel, splitSeason, isPitcher]);
+
+  useEffect(() => {
+    setLogSeason(CURRENT_YEAR);
+  }, [playerId]);
+
+  useEffect(() => {
+    const years = logSeasonOptions.map((o) => o.value);
+    if (!years.length || years.includes(logSeason)) return;
+    setLogSeason(years.includes(CURRENT_YEAR) ? CURRENT_YEAR : years[0]);
+  }, [logSeasonOptions, logSeason]);
+
+  useEffect(() => {
+    if (!playerId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = `stats=yearByYear&group=${logGroup}&hydrate=team,sport&gameType=R`;
+        const data = await fetchPlayerStats(playerId, params, logLevel);
+        if (cancelled) return;
+        const splits = data.stats?.find((s) => s.type?.displayName === 'yearByYear')?.splits ?? [];
+        const seasons = [...new Set(
+          splits
+            .filter((sp) => {
+              if (!sp.season || !sp.stat) return false;
+              const games = Number(sp.stat.gamesPlayed ?? sp.stat.gamesStarted ?? 0);
+              return games > 0;
+            })
+            .map((sp) => Number(sp.season)),
+        )].sort((a, b) => b - a);
+        const options = seasons.length
+          ? seasons.map((y) => ({ value: y, label: String(y) }))
+          : [{ value: CURRENT_YEAR, label: String(CURRENT_YEAR) }];
+        setLogSeasonOptions(options);
+      } catch {
+        if (!cancelled) {
+          setLogSeasonOptions([{ value: CURRENT_YEAR, label: String(CURRENT_YEAR) }]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [playerId, logLevel, logGroup]);
 
   useEffect(() => {
     loadGameLogs();
@@ -1032,6 +1342,7 @@ export default function PlayerPage() {
                         onLevelChange={setLogLevel}
                         season={logSeason}
                         onSeasonChange={setLogSeason}
+                        seasonOptions={logSeasonOptions}
                         group={logGroup}
                         onGroupChange={setLogGroup}
                         hidePeriod
@@ -1042,6 +1353,7 @@ export default function PlayerPage() {
                         <GameLogTable
                           cols={gameLogCols}
                           rows={gameLogRows}
+                          logGroup={logGroup}
                           emptyMessage={`No game logs for ${logSeason} regular season.`}
                         />
                       )}
