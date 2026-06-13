@@ -60,6 +60,66 @@ const MINOR_SPORT_ID_SET = new Set(MINOR_SPORT_IDS);
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
 
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
+const WATCHLIST_KEY = 'mlbWatchlist';
+
+function loadWatchlist() {
+  try {
+    return JSON.parse(localStorage.getItem(WATCHLIST_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+function mapPlayerToWatchEntry(player) {
+  return {
+    id: player.id,
+    fullName: player.fullName,
+    team: player.currentTeam?.name ?? '—',
+    teamId: player.currentTeam?.id,
+    position: player.primaryPosition?.abbreviation ?? '',
+    headshot: playerHeadshotUrl(player.id),
+    active: player.active,
+  };
+}
+
+function PlayerHeroActions({ player, playerId, watchlist, onToggleWatch, watchAnimating }) {
+  const isWatched = watchlist.some((p) => p.id === Number(playerId));
+  const parentOrgId = player?.currentTeam?.parentOrgId;
+
+  return (
+    <div className="absolute bottom-4 right-5 sm:bottom-6 sm:right-8 z-30 flex items-center gap-2">
+      {parentOrgId && (
+        <Link
+          to={`/team/${parentOrgId}`}
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40 border border-white/20 backdrop-blur-sm hover:border-white/40 transition-all"
+          title="MLB affiliate"
+        >
+          <img
+            src={teamLogoUrl(parentOrgId)}
+            alt=""
+            className="w-5 h-5 object-contain"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        </Link>
+      )}
+      <button
+        type="button"
+        onClick={onToggleWatch}
+        aria-label={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
+        title={isWatched ? 'Unwatch player' : 'Watch player'}
+        className={[
+          'w-9 h-9 flex items-center justify-center rounded-full border backdrop-blur-sm transition-all active:scale-95',
+          watchAnimating ? 'watch-pop' : '',
+          isWatched
+            ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-300 hover:bg-emerald-500/35'
+            : 'bg-black/40 border-white/20 text-white/80 hover:text-white hover:border-white/40',
+        ].join(' ')}
+      >
+        <i className={`fa-solid ${isWatched ? 'fa-eye' : 'fa-eye-slash'} text-sm`} aria-hidden />
+      </button>
+    </div>
+  );
+}
 
 function fmtDate(dateStr) {
   if (!dateStr) return '—';
@@ -1023,6 +1083,8 @@ export default function PlayerPage() {
   const [splitSections, setSplitSections] = useState([]);
   const [splitLoading, setSplitLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('career');
+  const [watchlist, setWatchlist] = useState(loadWatchlist);
+  const [watchAnimating, setWatchAnimating] = useState(false);
 
   const isPitcher =
     playerInfo?.primaryPosition?.abbreviation === 'P' ||
@@ -1039,7 +1101,7 @@ export default function PlayerPage() {
     setIsLoading(true);
     setError(null);
 
-    fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam,awards,rosterEntries`)
+    fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam(team),awards,rosterEntries`)
       .then((r) => r.json())
       .then((bioData) => {
         setPlayerInfo(bioData.people?.[0] || null);
@@ -1168,6 +1230,29 @@ export default function PlayerPage() {
     loadSplits();
   }, [loadSplits]);
 
+  useEffect(() => {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist));
+  }, [watchlist]);
+
+  useEffect(() => {
+    const refreshWatchlist = () => setWatchlist(loadWatchlist());
+    window.addEventListener('focus', refreshWatchlist);
+    return () => window.removeEventListener('focus', refreshWatchlist);
+  }, []);
+
+  const toggleWatchlist = useCallback(() => {
+    if (!playerInfo) return;
+    const id = Number(playerId);
+    const exists = watchlist.some((p) => p.id === id);
+    if (exists) {
+      setWatchlist(watchlist.filter((p) => p.id !== id));
+      return;
+    }
+    setWatchlist([mapPlayerToWatchEntry(playerInfo), ...watchlist]);
+    setWatchAnimating(true);
+    window.setTimeout(() => setWatchAnimating(false), 250);
+  }, [playerInfo, playerId, watchlist]);
+
   const getYearByYearSplits = (group) =>
     yearByYear?.find((s) => s.type?.displayName === 'yearByYear' && s.group?.displayName === group)?.splits ?? [];
 
@@ -1225,6 +1310,13 @@ export default function PlayerPage() {
             }}
           >
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/90 pointer-events-none" />
+            <PlayerHeroActions
+              player={playerInfo}
+              playerId={playerId}
+              watchlist={watchlist}
+              onToggleWatch={toggleWatchlist}
+              watchAnimating={watchAnimating}
+            />
             <div className="relative flex items-end gap-4 sm:gap-6">
         <div className="  -mb-6 -ml-6">
   {/* BACKGROUND LOGO */}
