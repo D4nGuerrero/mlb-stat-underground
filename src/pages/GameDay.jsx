@@ -179,6 +179,201 @@ const getPlayBadge = (et) =>
     cls: 'bg-slate-700/40 text-slate-400 border-slate-700/40',
   };
 
+const getPlayHitData = (play) => {
+  if (play?.hitData) return play.hitData;
+  const events = play?.playEvents ?? [];
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (event.isPitch && event.hitData) return event.hitData;
+  }
+  return null;
+};
+
+const hasPlayHitData = (hitData) =>
+  hitData != null &&
+  (hitData.launchSpeed != null ||
+    hitData.totalDistance != null ||
+    hitData.launchAngle != null);
+
+const HIT_TRAJECTORY_LABELS = {
+  ground_ball: 'Ground Ball',
+  line_drive: 'Line Drive',
+  fly_ball: 'Fly Ball',
+  popup: 'Popup',
+  bunt_grounder: 'Bunt',
+  bunt_line_drive: 'Bunt LD',
+  bunt_popup: 'Bunt Popup',
+};
+
+const exitVeloTone = (mph) => {
+  if (mph == null || Number.isNaN(mph)) return 'text-slate-400';
+  if (mph >= 100) return 'text-yellow-300';
+  if (mph >= 95) return `text-${THEME_COLOR}-300`;
+  return 'text-white';
+};
+
+const exitVeloBarColor = (mph) => {
+  if (mph == null || Number.isNaN(mph)) return 'bg-slate-600';
+  if (mph >= 100) return 'bg-yellow-400';
+  if (mph >= 95) return `bg-${THEME_COLOR}-400`;
+  return 'bg-slate-400';
+};
+
+const distanceTone = (ft) => {
+  if (ft == null || Number.isNaN(ft)) return 'text-slate-400';
+  if (ft >= 400) return 'text-yellow-300';
+  if (ft >= 350) return `text-${THEME_COLOR}-300`;
+  return 'text-white';
+};
+
+function HitDataPanel({ hitData }) {
+  if (!hasPlayHitData(hitData)) return null;
+
+  const exitVelo =
+    hitData.launchSpeed != null ? parseFloat(hitData.launchSpeed) : null;
+  const distance =
+    hitData.totalDistance != null ? Number(hitData.totalDistance) : null;
+  const launchAngle =
+    hitData.launchAngle != null ? Number(hitData.launchAngle) : null;
+
+  const trajectoryLabel =
+    HIT_TRAJECTORY_LABELS[hitData.trajectory] ||
+    hitData.trajectory?.replace(/_/g, ' ');
+  const hardness = hitData.hardness;
+  const location = hitData.location;
+
+  const evBarWidth =
+    exitVelo != null
+      ? Math.min(100, Math.max(6, ((exitVelo - 55) / 65) * 100))
+      : 0;
+  const distBarWidth =
+    distance != null
+      ? Math.min(100, Math.max(6, (distance / 500) * 100))
+      : 0;
+  const laBarWidth =
+    launchAngle != null
+      ? Math.min(100, Math.max(4, ((launchAngle + 20) / 70) * 100))
+      : 0;
+
+  const stats = [
+    {
+      key: 'exit',
+      label: 'Exit Velocity',
+      short: 'EV',
+      value: exitVelo != null ? exitVelo.toFixed(1) : '—',
+      unit: 'mph',
+      tone: exitVeloTone(exitVelo),
+      bar: evBarWidth,
+      barColor: exitVeloBarColor(exitVelo),
+    },
+    {
+      key: 'distance',
+      label: 'Distance',
+      short: 'Dist',
+      value: distance != null ? Math.round(distance) : '—',
+      unit: 'ft',
+      tone: distanceTone(distance),
+      bar: distBarWidth,
+      barColor:
+        distance != null && distance >= 400
+          ? 'bg-yellow-400'
+          : distance != null && distance >= 350
+            ? `bg-${THEME_COLOR}-400`
+            : 'bg-slate-400',
+    },
+    {
+      key: 'angle',
+      label: 'Launch Angle',
+      short: 'LA',
+      value: launchAngle != null ? launchAngle : '—',
+      unit: '°',
+      tone: 'text-white',
+      bar: laBarWidth,
+      barColor:
+        launchAngle != null && launchAngle >= 25 && launchAngle <= 35
+          ? 'bg-yellow-400/80'
+          : 'bg-slate-400',
+    },
+  ];
+
+  return (
+    <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-slate-700/30">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest">
+          Statcast
+        </div>
+        <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wide">
+          Batted Ball
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 divide-x divide-slate-700/30">
+        {stats.map(({ key, label, short, value, unit, tone, bar, barColor }) => (
+          <div key={key} className="px-3 py-4 text-center">
+            <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1.5">
+              <span className="hidden sm:inline">{label}</span>
+              <span className="sm:hidden">{short}</span>
+            </div>
+            <div className={`font-display text-2xl sm:text-3xl tabular-nums leading-none ${tone}`}>
+              {value}
+              {value !== '—' && (
+                <span className="text-sm sm:text-base font-mono text-slate-500 ml-0.5">
+                  {unit}
+                </span>
+              )}
+            </div>
+            {value !== '—' && (
+              <div className="mt-3 h-1 rounded-full bg-slate-700/80 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${barColor}`}
+                  style={{ width: `${bar}%` }}
+                />
+              </div>
+            )}
+            {key === 'angle' && launchAngle != null && (
+              <div className="mx-auto mt-2.5 w-14 h-7 relative">
+                <div className="absolute bottom-0 left-1 right-1 h-px bg-slate-600" />
+                <div
+                  className="absolute bottom-0 left-1/2 w-6 h-px bg-slate-400 origin-left"
+                  style={{ transform: `rotate(${-launchAngle}deg)` }}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {(trajectoryLabel || hardness || location) && (
+        <div className="flex flex-wrap gap-2 px-4 py-3 border-t border-slate-700/30 bg-slate-900/20">
+          {trajectoryLabel && (
+            <span className="text-[11px] px-2.5 py-1 bg-slate-800 border border-slate-700/40 rounded-full text-slate-400 capitalize">
+              {trajectoryLabel}
+            </span>
+          )}
+          {hardness && (
+            <span
+              className={`text-[11px] px-2.5 py-1 border rounded-full capitalize ${
+                hardness === 'hard'
+                  ? `bg-${THEME_COLOR}-500/10 border-${THEME_COLOR}-500/30 text-${THEME_COLOR}-400`
+                  : hardness === 'soft'
+                    ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                    : 'bg-slate-800 border-slate-700/40 text-slate-400'
+              }`}
+            >
+              {hardness} contact
+            </span>
+          )}
+          {location && (
+            <span className="text-[11px] px-2.5 py-1 bg-slate-800 border border-slate-700/40 rounded-full text-slate-400">
+              Zone {location}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const getAllBatters = (teamBox) =>
   Object.values(teamBox?.players || {})
     .filter((p) => p.battingOrder)
@@ -1420,17 +1615,12 @@ export default function GamePage() {
 
     const play = selectedPlay;
     const pitches = (play.playEvents || []).filter((e) => e.isPitch);
-    const hitData = play.hitData;
+    const hitData = getPlayHitData(play);
     const badge = getPlayBadge(play.result?.eventType);
     const szT = pitches[pitches.length - 1]?.pitchData?.strikeZoneTop || 3.5;
     const szB = pitches[pitches.length - 1]?.pitchData?.strikeZoneBottom || 1.5;
     const inningStr = `${play.about?.halfInning === 'top' ? 'TOP' : 'BOT'} ${play.about?.inning}`;
     const scoreStr = `${away.abbreviation} ${play.result?.awayScore ?? 0} – ${home.abbreviation} ${play.result?.homeScore ?? 0}`;
-    const hasHitData =
-      hitData &&
-      (hitData.launchSpeed != null ||
-        hitData.totalDistance != null ||
-        hitData.launchAngle != null);
 
     const pitcherName = play.matchup?.pitcher?.fullName || '—';
     const batterName = play.matchup?.batter?.fullName || '—';
@@ -1441,11 +1631,6 @@ export default function GamePage() {
     const finalBalls = play.count?.balls ?? lastCount?.balls ?? 0;
     const finalStrikes = play.count?.strikes ?? lastCount?.strikes ?? 0;
     const outs = play.count?.outs ?? 0;
-
-    // extra hitData fields
-    const trajectory = hitData?.trajectory?.replace(/_/g, ' ');
-    const hardness = hitData?.hardness;
-    const location = hitData?.location;
 
     return (
       <Modal
@@ -1491,95 +1676,12 @@ export default function GamePage() {
               </p>
             </div>
 
-            {/* Hit data cards */}
-            {hasHitData && (
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2.5">
-                  Hit Data
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    {
-                      label: 'Exit Velo',
-                      value:
-                        hitData.launchSpeed != null
-                          ? parseFloat(hitData.launchSpeed).toFixed(1)
-                          : null,
-                      unit: 'mph',
-                      icon: '💨',
-                    },
-                    {
-                      label: 'Distance',
-                      value:
-                        hitData.totalDistance != null
-                          ? hitData.totalDistance
-                          : null,
-                      unit: 'ft',
-                      icon: '📏',
-                    },
-                    {
-                      label: 'Angle',
-                      value:
-                        hitData.launchAngle != null
-                          ? hitData.launchAngle
-                          : null,
-                      unit: '°',
-                      icon: '📐',
-                    },
-                  ].map(({ label, value, unit, icon }) => (
-                    <div
-                      key={label}
-                      className="bg-slate-800/60 border border-slate-700/40 rounded-xl p-3 text-center"
-                    >
-                      <div className="text-base mb-1">{icon}</div>
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">
-                        {label}
-                      </div>
-                      <div className="font-bold text-white text-xl leading-none">
-                        {value ?? '—'}
-                      </div>
-                      {value != null && (
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          {unit}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Extra hit metadata */}
-                {(trajectory || hardness || location) && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {trajectory && (
-                      <span className="text-[11px] px-2.5 py-1 bg-slate-800 border border-slate-700/40 rounded-full text-slate-400 capitalize">
-                        {trajectory}
-                      </span>
-                    )}
-                    {hardness && (
-                      <span
-                        className={`text-[11px] px-2.5 py-1 border rounded-full ${
-                          hardness === 'hard'
-                            ? `bg-${THEME_COLOR}-500/10 border-${THEME_COLOR}-500/30 text-${THEME_COLOR}-400`
-                            : hardness === 'soft'
-                              ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                              : 'bg-slate-800 border-slate-700/40 text-slate-400'
-                        } capitalize`}
-                      >
-                        {hardness} contact
-                      </span>
-                    )}
-                    {location && (
-                      <span className="text-[11px] px-2.5 py-1 bg-slate-800 border border-slate-700/40 rounded-full text-slate-400">
-                        Zone {location}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            <HitDataPanel hitData={hitData} />
 
             {/* Matchup */}
             <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden">
+
+           
               <div className="text-[10px] text-slate-500 uppercase tracking-widest px-4 pt-3 pb-1">
                 At Bat Matchup
               </div>
