@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 
 mcps
+agent-tools
+dev-dist
