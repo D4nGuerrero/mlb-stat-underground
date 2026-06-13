@@ -116,6 +116,7 @@ export default function Scores() {
   });
   const [gamesMap, setGamesMap] = useState({});
   const gamesCacheRef = useRef({});
+  const fetchInflightRef = useRef(new Map());
   const [loadingDates, setLoadingDates] = useState(() => new Set());
   const [liveCount, setLiveCount] = useState(0);
   const maxDate = useMemo(() => getMaxDate(), []);
@@ -125,11 +126,16 @@ export default function Scores() {
     [],
   );
   const [dates, setDates] = useState(() => computeDateWindow(initialCenter, getMaxDate()));
-  const [selectedIndex, setSelectedIndex] = useState(() => {
+  const initialIndex = useMemo(() => {
     const windowDates = computeDateWindow(initialCenter, getMaxDate());
     const idx = windowDates.findIndex((d) => isSameDay(d, initialCenter));
     return idx >= 0 ? idx : 0;
-  });
+  }, [initialCenter]);
+  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+  const [renderIndex, setRenderIndex] = useState(initialIndex);
+  const selectedIndexRef = useRef(initialIndex);
+  const lastIndexRef = useRef(initialIndex);
+  const scrollPrefetchIndexRef = useRef(initialIndex);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialReady, setIsInitialReady] = useState(false);
   const [viewMode, setViewMode] = useState(loadViewMode);
@@ -138,6 +144,10 @@ export default function Scores() {
   const returnDateAppliedRef = useRef(false);
 
   const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
 
   const getDateStr = (date) => {
     const d = new Date(date);
@@ -162,50 +172,109 @@ export default function Scores() {
     if (!date) return;
     const dateStr = getDateStr(date);
 
-    if (!force && gamesCacheRef.current[dateStr]) return gamesCacheRef.current[dateStr];
+    if (!force && Object.prototype.hasOwnProperty.call(gamesCacheRef.current, dateStr)) {
+      return gamesCacheRef.current[dateStr];
+    }
+
+    const inflight = fetchInflightRef.current.get(dateStr);
+    if (!force && inflight) return inflight;
 
     setLoadingDates((prev) => new Set(prev).add(dateStr));
-    try {
-      const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
-      );
-      const data = await res.json();
-      const dayGames = data.dates?.[0]?.games || [];
-      gamesCacheRef.current[dateStr] = dayGames;
-      setGamesMap((prev) => ({ ...prev, [dateStr]: dayGames }));
-      if (isSameDay(date, selectedDate)) {
-        setLiveCount(dayGames.filter((g) => g.status.abstractGameState === 'Live').length);
+    const request = (async () => {
+      try {
+        const res = await fetch(
+          `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
+        );
+        const data = await res.json();
+        const dayGames = data.dates?.[0]?.games || [];
+        gamesCacheRef.current[dateStr] = dayGames;
+        setGamesMap((prev) => ({ ...prev, [dateStr]: dayGames }));
+        const currentDate = dates[selectedIndexRef.current];
+        if (currentDate && isSameDay(date, currentDate)) {
+          setLiveCount(dayGames.filter((g) => g.status.abstractGameState === 'Live').length);
+        }
+        return dayGames;
+      } catch (err) {
+        console.error(err);
+        gamesCacheRef.current[dateStr] = [];
+        setGamesMap((prev) => ({ ...prev, [dateStr]: [] }));
+        return [];
+      } finally {
+        fetchInflightRef.current.delete(dateStr);
+        setLoadingDates((prev) => {
+          const next = new Set(prev);
+          next.delete(dateStr);
+          return next;
+        });
       }
-      return dayGames;
-    } catch (err) {
-      console.error(err);
-      return [];
-    } finally {
-      setLoadingDates((prev) => {
-        const next = new Set(prev);
-        next.delete(dateStr);
-        return next;
-      });
-    }
-  }, [selectedDate]);
+    })();
 
-  const prefetchAroundIndex = useCallback((index) => {
-    [index, index - 1, index + 1].forEach((i) => {
+    fetchInflightRef.current.set(dateStr, request);
+    return request;
+  }, [dates]);
+
+  const prefetchAroundIndex = useCallback((index, { ahead = 0, behind = 0 } = {}) => {
+    const span = 4;
+    for (let offset = -span; offset <= span; offset += 1) {
+      const i = index + offset;
       if (i >= 0 && i < dates.length) fetchGamesForDate(dates[i]);
-    });
+    }
+    for (let extra = 1; extra <= ahead; extra += 1) {
+      const i = index + span + extra;
+      if (i < dates.length) fetchGamesForDate(dates[i]);
+    }
+    for (let extra = 1; extra <= behind; extra += 1) {
+      const i = index - span - extra;
+      if (i >= 0) fetchGamesForDate(dates[i]);
+    }
   }, [dates, fetchGamesForDate]);
 
-  const handleCarouselSelect = useCallback((index) => {
+  const shouldRenderSlide = useCallback((i) => (
+    Math.abs(i - selectedIndex) <= 2 || Math.abs(i - renderIndex) <= 2
+  ), [selectedIndex, renderIndex]);
+
+  const applyIndexChange = useCallback((index) => {
+    const prev = lastIndexRef.current;
+    const direction = index > prev ? 1 : index < prev ? -1 : 0;
+    lastIndexRef.current = index;
+
     setSelectedIndex(index);
+    setRenderIndex(index);
+
     const date = dates[index];
     if (date) {
-      const cached = gamesCacheRef.current[getDateStr(date)];
+      const dateStr = getDateStr(date);
+      const cached = gamesCacheRef.current[dateStr];
       if (cached) {
         setLiveCount(cached.filter((g) => g.status.abstractGameState === 'Live').length);
+      } else {
+        fetchGamesForDate(date);
       }
     }
-    prefetchAroundIndex(index);
-  }, [dates, prefetchAroundIndex]);
+
+    prefetchAroundIndex(index, {
+      ahead: direction >= 0 ? 3 : 0,
+      behind: direction <= 0 ? 3 : 0,
+    });
+  }, [dates, prefetchAroundIndex, fetchGamesForDate]);
+
+  const handleCarouselSelect = useCallback((index) => {
+    applyIndexChange(index);
+  }, [applyIndexChange]);
+
+  const handleCarouselSettle = useCallback((index) => {
+    setRenderIndex(index);
+    lastIndexRef.current = index;
+    const date = dates[index];
+    if (date) fetchGamesForDate(date);
+    prefetchAroundIndex(index, { ahead: 3, behind: 3 });
+  }, [dates, fetchGamesForDate, prefetchAroundIndex]);
+
+  const handleCarouselScroll = useCallback((index) => {
+    if (scrollPrefetchIndexRef.current === index) return;
+    scrollPrefetchIndexRef.current = index;
+    prefetchAroundIndex(index, { ahead: 2, behind: 2 });
+  }, [prefetchAroundIndex]);
 
   const goToPrevDay = () => {
     if (selectedIndex > 0) {
@@ -220,6 +289,7 @@ export default function Scores() {
     const shift = newDates.length - dates.length;
     setDates(newDates);
     setSelectedIndex(shift);
+    setRenderIndex(shift);
     requestAnimationFrame(() => carouselRef.current?.scrollTo(shift, true));
     prefetchAroundIndex(shift);
   };
@@ -235,6 +305,7 @@ export default function Scores() {
     if (isSameDay(clampedEnd, dates[dates.length - 1])) return;
     const newDates = buildDateRange(dates[0], clampedEnd);
     setDates(newDates);
+    setRenderIndex(selectedIndex);
     requestAnimationFrame(() => carouselRef.current?.scrollTo(selectedIndex, false));
     prefetchAroundIndex(selectedIndex);
   };
@@ -252,6 +323,7 @@ export default function Scores() {
     const idx = nextDates.findIndex((d) => isSameDay(d, picked));
     if (idx < 0) return;
     setSelectedIndex(idx);
+    setRenderIndex(idx);
     requestAnimationFrame(() => carouselRef.current?.scrollTo(idx, true));
     prefetchAroundIndex(idx);
   };
@@ -294,6 +366,34 @@ export default function Scores() {
     }
   }, [selectedDate]);
 
+  const activeDateStr = getDateStr(selectedDate);
+  const activeGamesSignature = Object.prototype.hasOwnProperty.call(gamesMap, activeDateStr)
+    ? String(gamesMap[activeDateStr]?.length ?? 0)
+    : 'loading';
+
+  useEffect(() => {
+    if (!isInitialReady || activeGamesSignature === 'loading') return undefined;
+    const timer = setTimeout(() => {
+      const api = carouselRef.current?.emblaApi;
+      if (!api) return;
+      try {
+        if (!api.internalEngine().scrollBody.settled()) return;
+      } catch {
+        /* ignore */
+      }
+      api.reInit();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [activeGamesSignature, viewMode, isInitialReady]);
+
+  useEffect(() => {
+    if (!isInitialReady) return undefined;
+    const timer = setTimeout(() => {
+      prefetchAroundIndex(selectedIndex, { ahead: 4, behind: 4 });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [selectedIndex, isInitialReady, prefetchAroundIndex]);
+
   useEffect(() => {
     if (returnDateAppliedRef.current) return;
     const rd = location.state?.returnDate;
@@ -309,6 +409,7 @@ export default function Scores() {
       if (idx >= 0) {
         queueMicrotask(() => {
           setSelectedIndex(idx);
+          setRenderIndex(idx);
           carouselStartIndex.current = idx;
           requestAnimationFrame(() => carouselRef.current?.scrollTo(idx, true));
           prefetchAroundIndex(idx);
@@ -835,20 +936,25 @@ export default function Scores() {
             startIndex={carouselStartIndex.current}
             selectedIndex={selectedIndex}
             onSelectedIndexChange={handleCarouselSelect}
+            onSettledIndexChange={handleCarouselSettle}
+            onScrollIndexChange={handleCarouselScroll}
             hideUntilReady
             autoHeight
-            reinitDeps={`${selectedIndex}-${viewMode}-${getDateStr(selectedDate)}-${gamesMap[getDateStr(selectedDate)]?.length ?? 'x'}`}
+            reinitDeps={viewMode}
+            scrollDuration={32}
             slideGap={20}
             showArrows={false}
             showDots={false}
           >
             {dates.map((date, i) => {
-              const offset = Math.abs(i - selectedIndex);
-              const isActive = offset === 0;
-              const isAdjacent = offset === 1;
+              const offsetFromSelected = Math.abs(i - selectedIndex);
+              const offsetFromRender = Math.abs(i - renderIndex);
+              const nearest = Math.min(offsetFromSelected, offsetFromRender);
+              const isActive = nearest === 0;
+              const isAdjacent = nearest === 1 || nearest === 2;
               return (
                 <div key={getDateStr(date)} className="w-full">
-                  {offset <= 1
+                  {shouldRenderSlide(i)
                     ? renderGamesForDate(date, { isActive, isAdjacent })
                     : <div className="min-h-[1px]" aria-hidden />}
                 </div>

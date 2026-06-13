@@ -308,7 +308,7 @@ function TeamLeadersCarousel({ leaderStats, rows, battingRateQualify, pitchingRa
       selectedIndex={slideIndex}
       onSelectedIndexChange={setSlideIndex}
       slideClassName="flex-[0_0_88%] sm:flex-[0_0_72%] md:flex-[0_0_58%] lg:flex-[0_0_50%]"
-      className="-mx-1 mb-5"
+      className="mx-2 mb-5"
       reinitDeps={`${carouselKey}-${cards.length}`}
     >
       {cards}
@@ -498,7 +498,7 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
   return (
     <div>
       <div className="flex flex-wrap gap-2 my-4">
-        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 mx-2">
           <SegmentedControl
             value={sub}
             onChange={setSub}
@@ -768,7 +768,7 @@ function ScheduleTab({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 my-4">
-        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 ">
           <SegmentedControl
             value={view}
             onChange={setView}

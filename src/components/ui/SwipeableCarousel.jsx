@@ -1,7 +1,6 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { THEME_COLOR } from '../../theme/theme.js';
 import useEmblaCarousel from 'embla-carousel-react';
-import AutoHeight from 'embla-carousel-auto-height';
 import { RadioGroup, Radio } from '@headlessui/react';
 
 const SwipeableCarousel = forwardRef(function SwipeableCarousel(
@@ -10,12 +9,15 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     startIndex = 0,
     selectedIndex = 0,
     onSelectedIndexChange,
+    onSettledIndexChange,
+    onScrollIndexChange,
     showArrows = false,
     showDots = false,
     hideUntilReady = false,
     autoHeight = false,
     reinitDeps,
     slideGap = 16,
+    scrollDuration = 32,
     className = '',
     slideClassName = '',
     arrowsClassName = '',
@@ -23,22 +25,23 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
   },
   ref,
 ) {
-  const plugins = useMemo(
-    () => (autoHeight ? [AutoHeight()] : []),
-    [autoHeight],
-  );
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: false,
+    dragFree: false,
+    align: 'start',
+    containScroll: 'trimSnaps',
+    skipSnaps: false,
+    startIndex,
+    duration: scrollDuration,
+  });
 
-  const [emblaRef, emblaApi] = useEmblaCarousel(
-    {
-      loop: false,
-      dragFree: false,
-      align: 'start',
-      containScroll: 'trimSnaps',
-      skipSnaps: false,
-      startIndex,
-    },
-    plugins,
-  );
+  const syncAutoHeight = useCallback(() => {
+    if (!autoHeight || !emblaApi) return;
+    const container = emblaApi.containerNode();
+    const slide = emblaApi.slideNodes()[emblaApi.selectedScrollSnap()];
+    if (!container || !slide) return;
+    container.style.height = `${slide.offsetHeight}px`;
+  }, [autoHeight, emblaApi]);
 
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
@@ -52,6 +55,14 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
   const scrollTo = useCallback((index, jump = false) => emblaApi?.scrollTo(index, jump), [emblaApi]);
+
+  const isSettled = useCallback(() => {
+    try {
+      return emblaApi?.internalEngine?.().scrollBody.settled() ?? true;
+    } catch {
+      return true;
+    }
+  }, [emblaApi]);
 
   useImperativeHandle(
     ref,
@@ -73,6 +84,7 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
       setReady(true);
       skipNextSelect.current = true;
       updateButtons();
+      syncAutoHeight();
     };
 
     if (emblaApi.scrollSnapList().length > 0) {
@@ -82,7 +94,7 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
       return () => emblaApi.off('init', onInit);
     }
     return undefined;
-  }, [emblaApi, startIndex, updateButtons]);
+  }, [emblaApi, startIndex, updateButtons, syncAutoHeight]);
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -97,30 +109,56 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
       updateButtons();
     };
 
+    const onSettle = () => {
+      syncAutoHeight();
+      onSettledIndexChange?.(emblaApi.selectedScrollSnap());
+    };
+
+    const onReInitHeight = () => {
+      syncAutoHeight();
+    };
+
+    const onScroll = () => {
+      updateButtons();
+      onScrollIndexChange?.(emblaApi.selectedScrollSnap());
+    };
+
     emblaApi.on('select', onSelect);
     emblaApi.on('reInit', onSelect);
-    emblaApi.on('scroll', updateButtons);
+    emblaApi.on('reInit', onReInitHeight);
+    emblaApi.on('scroll', onScroll);
+    emblaApi.on('settle', onSettle);
     updateButtons();
+    syncAutoHeight();
 
     return () => {
       emblaApi.off('select', onSelect);
       emblaApi.off('reInit', onSelect);
-      emblaApi.off('scroll', updateButtons);
+      emblaApi.off('reInit', onReInitHeight);
+      emblaApi.off('scroll', onScroll);
+      emblaApi.off('settle', onSettle);
     };
-  }, [emblaApi, onSelectedIndexChange, updateButtons]);
+  }, [emblaApi, onSelectedIndexChange, onSettledIndexChange, onScrollIndexChange, updateButtons, syncAutoHeight]);
 
   useEffect(() => {
     if (!emblaApi || !ready) return;
+    if (!isSettled()) return;
     if (emblaApi.selectedScrollSnap() === selectedIndex) return;
     const jump = Math.abs(selectedIndex - prevIndexRef.current) > 1;
     emblaApi.scrollTo(selectedIndex, jump);
     prevIndexRef.current = selectedIndex;
-  }, [emblaApi, selectedIndex, ready]);
+  }, [emblaApi, selectedIndex, ready, isSettled]);
 
   useEffect(() => {
-    if (!emblaApi || !ready) return;
+    if (!emblaApi || !ready || !isSettled()) return;
+    const index = emblaApi.selectedScrollSnap();
     emblaApi.reInit();
-  }, [emblaApi, ready, reinitDeps, slideCount]);
+    requestAnimationFrame(() => {
+      if (emblaApi.selectedScrollSnap() !== index) {
+        emblaApi.scrollTo(index, true);
+      }
+    });
+  }, [emblaApi, ready, reinitDeps, slideCount, isSettled]);
 
   return (
     <div className={className}>
@@ -132,9 +170,7 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
         ref={emblaRef}
       >
         <div
-          className={`flex ml-[calc(var(--slide-spacing)*-1)] ${
-            autoHeight ? 'items-start transition-[height] duration-200 ease-out' : ''
-          }`}
+          className={`flex ml-[calc(var(--slide-spacing)*-1)] ${autoHeight ? 'items-start' : ''}`}
         >
           {slides.map((slide, i) => (
             <div
