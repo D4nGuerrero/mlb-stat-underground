@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) navigator.serviceWorker.register('/mlb-stat-underground/dev-sw.js?dev-sw', { scope: '/mlb-stat-underground/', type: 'classic' })
