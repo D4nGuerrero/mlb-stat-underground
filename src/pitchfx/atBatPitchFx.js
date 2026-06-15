@@ -249,6 +249,15 @@ function points3D(pitch, scalers, step, numberOfPoints) {
 
 function points2D(pitch, scalers) {
   const coords = pitch.coords;
+  if (pitch.is3DPitch) {
+    const time = timeAtYPosition(coords, pitch.szDepth);
+    const plateX = positionAtTime(coords, 'x', time);
+    const plateZ = positionAtTime(coords, 'z', time);
+    if (Number.isFinite(plateX) && Number.isFinite(plateZ)) {
+      return pointOnGrid(scalers, plateX, plateZ, -pitch.szDepth);
+    }
+  }
+
   // pX/pZ share the same physical coordinate space as the strike zone.
   if (Number.isFinite(coords.pX) && Number.isFinite(coords.pZ)) {
     return pointOnGrid(scalers, coords.pX, coords.pZ, -pitch.szDepth);
