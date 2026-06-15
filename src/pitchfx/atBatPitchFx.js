@@ -249,15 +249,18 @@ function points3D(pitch, scalers, step, numberOfPoints) {
 
 function points2D(pitch, scalers) {
   const coords = pitch.coords;
+  // pX/pZ share the same physical coordinate space as the strike zone.
   if (Number.isFinite(coords.pX) && Number.isFinite(coords.pZ)) {
     return pointOnGrid(scalers, coords.pX, coords.pZ, -pitch.szDepth);
   }
-  if (!Number.isFinite(coords.x) || !Number.isFinite(coords.y)) return null;
 
-  // Older feeds expose MLB's pre-rasterized x/y coordinate pair instead.
-  const screenX = (-coords.x / scalers.pixelFoot + scalers.adjust2d.x) * scalers.adjust2d.x;
-  const screenY = ((-coords.y + scalers.perspectiveShiftY + scalers.interpolatedPlateFront) / scalers.pixelFoot) * scalers.adjust2d.y;
-  return pointOnGrid(scalers, screenX, screenY, 0);
+  // Fall back to MLB's legacy pre-rasterized coordinate pair when needed.
+  if (Number.isFinite(coords.x) && Number.isFinite(coords.y)) {
+    const screenX = (-coords.x / scalers.pixelFoot + scalers.adjust2d.x) * scalers.adjust2d.x;
+    const screenY = ((-coords.y + scalers.perspectiveShiftY + scalers.interpolatedPlateFront) / scalers.pixelFoot) * scalers.adjust2d.y;
+    return pointOnGrid(scalers, screenX, screenY, 0);
+  }
+  return null;
 }
 
 const IN_PLAY_CODES = new Set(['X', 'Y', 'D', 'E', 'J']);
@@ -410,10 +413,12 @@ export function getPitchShader(pitch, scalers) {
 export function drawAtBatStrikeZone(ctx, pitch, scalers) {
   const { topLeft, bottomRight } = strikeZoneCorners(pitch, scalers);
   const szBorder = scalers.szBorder;
-  const x = topLeft[0] - szBorder;
-  const y = topLeft[1] - szBorder;
-  const boundX = bottomRight[0] - topLeft[0] + szBorder * 2;
-  const boundY = bottomRight[1] - topLeft[1] + szBorder * 2;
+  // MLB's hot/cold outlier frame extends two border units beyond the zone.
+  const outerBorder = szBorder * 2;
+  const x = topLeft[0] - outerBorder;
+  const y = topLeft[1] - outerBorder;
+  const boundX = bottomRight[0] - topLeft[0] + outerBorder * 2;
+  const boundY = bottomRight[1] - topLeft[1] + outerBorder * 2;
   const strokeWidth = scalers.hotColdZoneGridStroke;
 
   ctx.save();
