@@ -1,5 +1,6 @@
 import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import PitchCanvas from './PitchCanvas';
+import { AT_BAT_BALL_COLORS } from '../pitchfx/atBatPitchFx';
 import LivePitchToast from './LivePitchToast';
 import {
   stadiumExteriorUrl,
@@ -53,8 +54,16 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   const exteriorTimeOfDay = stadiumTimeOfDay(gameDateTime);
   const batterSide = batterIsAway ? 'away' : 'home';
 
+  const pitchLegend = [
+    { color: AT_BAT_BALL_COLORS.ballColorStrike, label: 'Strike' },
+    { color: AT_BAT_BALL_COLORS.ballColorBall, label: 'Ball' },
+    { color: AT_BAT_BALL_COLORS.ballColorInPlay, label: 'In Play' },
+    { color: '#BC0021', label: 'FF trail' },
+    { color: '#980065', label: 'FC trail' },
+  ];
+
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[320px] flex flex-col">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[380px] flex flex-col">
       <div className="absolute inset-0 flex flex-col pointer-events-none">
         <div
           className="h-[48%] min-h-[130px] bg-cover bg-center bg-top"
@@ -96,18 +105,29 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
         </div>
       </div>
 
-      <div className="relative z-10 flex flex-col items-center pt-12 pb-24 px-3">
+      <div className="relative z-10 flex flex-col items-stretch pt-12 pb-24 px-3 w-full">
         <LivePitchToast pitch={toastPitch} onComplete={clearToast} />
         <PitchCanvas
           playEvents={stablePlayEvents}
           szTop={szTop}
           szBot={szBot}
-          width={280}
-          height={300}
           gamePk={gamePk}
-          variant="gamedayDark"
-          className="mx-auto"
+          viewMode="strikeZone"
+          width={220}
+          height={270}
+          className="mx-auto shrink-0"
         />
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-300/90 justify-center w-[220px] mx-auto">
+          {pitchLegend.map(({ color, label }) => (
+            <span key={label} className="flex items-center gap-1">
+              <span
+                className="w-2 h-2 rounded-full border border-white/30 shrink-0"
+                style={{ backgroundColor: color }}
+              />
+              {label}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div

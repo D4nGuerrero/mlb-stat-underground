@@ -1816,22 +1816,25 @@ export default function GamePage() {
                   playEvents={play.playEvents || []}
                   szTop={szT}
                   szBot={szB}
-                  width={260}
-                  height={280}
                   gamePk={gamePk}
-                  variant="gamedayDark"
-                  className="mx-auto"
+                  viewMode="strikeZone"
+                  width={220}
+                  height={270}
+                  className="mx-auto shrink-0"
                 />
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center">
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center w-[220px] mx-auto">
                   {[
-                    { color: 'bg-red-400', label: 'Called K' },
-                    { color: 'bg-orange-400', label: 'Swing K' },
-                    { color: 'bg-green-400', label: 'Ball' },
-                    { color: 'bg-blue-500', label: 'In Play' },
-                    { color: 'bg-slate-400', label: 'Foul' },
+                    { color: '#c61b2b', label: 'Strike' },
+                    { color: '#098314', label: 'Ball' },
+                    { color: '#0062e3', label: 'In Play' },
+                    { color: '#7756b3', label: 'Out' },
+                    { color: '#ffffff', label: 'Trail' },
                   ].map(({ color, label }) => (
                     <span key={label} className="flex items-center gap-1">
-                      <span className={`w-1.5 h-1.5 rounded-full ${color}`} />
+                      <span
+                        className="w-1.5 h-1.5 rounded-full border border-slate-500 shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
                       {label}
                     </span>
                   ))}
