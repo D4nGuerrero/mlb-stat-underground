@@ -5,6 +5,12 @@ import {
   formatPitchingChangeDescription,
   SUMMARY_ACTION_TYPES,
 } from './gamePlaySummary';
+import {
+  formatRunnersSituationLabel,
+  getBasesAfterPlay,
+  getBasesAtPlayIndex,
+  toIndicatorBases,
+} from './playSituation';
 
 const LIVE_EXTRA_EVENT_TYPES = new Set([
   'mound_visit',
@@ -58,57 +64,6 @@ function isNotableStatus(label) {
   return /delay|rain|injur|suspend|postpon|cancel|eject|review|warning|curfew|lightning|weather|emergency/i.test(n);
 }
 
-function getBasesFromRunners(play) {
-  const occupied = new Map();
-  const runnerBase = new Map();
-
-  for (const r of play.runners ?? []) {
-    const m = r.movement;
-    const runner = r.details?.runner;
-    if (!m || !runner?.id) continue;
-
-    const prev = runnerBase.get(runner.id);
-    if (prev) occupied.delete(prev);
-
-    if (m.isOut) {
-      runnerBase.delete(runner.id);
-      continue;
-    }
-
-    if (m.end === 'score' || m.end === '4B') {
-      runnerBase.delete(runner.id);
-      continue;
-    }
-
-    if (m.end === '1B' || m.end === '2B' || m.end === '3B') {
-      occupied.set(m.end, runner);
-      runnerBase.set(runner.id, m.end);
-    }
-  }
-
-  return {
-    first: occupied.get('1B') ?? null,
-    second: occupied.get('2B') ?? null,
-    third: occupied.get('3B') ?? null,
-  };
-}
-
-function getBasesAfterPlay(play) {
-  if (play.count?.outs === 3) {
-    return { first: null, second: null, third: null };
-  }
-
-  if (play.about?.isComplete) {
-    return {
-      first: play.matchup?.postOnFirst ?? null,
-      second: play.matchup?.postOnSecond ?? null,
-      third: play.matchup?.postOnThird ?? null,
-    };
-  }
-
-  return getBasesFromRunners(play);
-}
-
 function playMovedRunners(play) {
   return (play.runners ?? []).some((r) => {
     const m = r.movement;
@@ -117,32 +72,23 @@ function playMovedRunners(play) {
   });
 }
 
-function pushRunnersRow(rows, play, keySuffix, meta, sortTime) {
-  if (!playMovedRunners(play)) return;
+function pushRunnersRow(rows, play, keySuffix, meta, sortTime, allPlays, maxPlayIndex = null) {
+  if (maxPlayIndex == null && !playMovedRunners(play)) return;
   if (play.count?.outs === 3) return;
-  const bases = getBasesAfterPlay(play);
-  const label = formatRunnersLabel(bases);
+
+  const bases = maxPlayIndex != null
+    ? getBasesAtPlayIndex(play, allPlays, maxPlayIndex)
+    : getBasesAfterPlay(play, allPlays);
+  const label = formatRunnersSituationLabel(bases);
   if (!label) return;
   rows.push({
     kind: 'runners',
     key: `runners-${keySuffix}`,
-    bases: {
-      onFirst: Boolean(bases.first),
-      onSecond: Boolean(bases.second),
-      onThird: Boolean(bases.third),
-    },
+    bases: toIndicatorBases(bases),
     label,
     ...meta,
     sortTime,
   });
-}
-
-function formatRunnersLabel(bases) {
-  const parts = [];
-  if (bases.first) parts.push(`${lastName(bases.first)} on 1st`);
-  if (bases.second) parts.push(`${lastName(bases.second)} at 2nd`);
-  if (bases.third) parts.push(`${lastName(bases.third)} at 3rd`);
-  return parts.join(', ');
 }
 
 function scoringTeamSide(play) {
@@ -269,7 +215,7 @@ function isPickoffAttempt(ev) {
   return /^pickoff attempt/i.test(desc);
 }
 
-function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals) {
+function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays) {
   const eventType = ev.details?.eventType;
   const meta = inningMeta(play.about, ordinals);
   const sortTime = ev.startTime || ev.endTime || play.about?.startTime || null;
@@ -300,7 +246,15 @@ function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals) {
     ...meta,
     sortTime,
   });
-  pushRunnersRow(rows, play, `${play.about?.atBatIndex}-${eventIdx}`, meta, sortTime);
+  pushRunnersRow(
+    rows,
+    play,
+    `${play.about?.atBatIndex}-${eventIdx}`,
+    meta,
+    sortTime,
+    allPlays,
+    ev.index ?? eventIdx,
+  );
   return true;
 }
 
@@ -363,7 +317,7 @@ function pushPlayEventRows(rows, play, ev, eventIdx, ordinals) {
   }
 }
 
-function pushActionRow(rows, play, ev, eventIdx, ordinals) {
+function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
   const eventType = ev.details?.eventType;
   if (!eventType || !SUMMARY_ACTION_TYPES.has(eventType)) return;
   if (isPickoffEventType(eventType)) return;
@@ -387,7 +341,15 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals) {
     ...meta,
     sortTime,
   });
-  pushRunnersRow(rows, play, `${play.about?.atBatIndex}-${eventIdx}`, meta, sortTime);
+  pushRunnersRow(
+    rows,
+    play,
+    `${play.about?.atBatIndex}-${eventIdx}`,
+    meta,
+    sortTime,
+    allPlays,
+    ev.index ?? eventIdx,
+  );
 }
 
 /**
@@ -416,8 +378,8 @@ export function buildLiveRecentPlaysRows({
 
     (play.playEvents ?? []).forEach((ev, eventIdx) => {
       pushPlayEventRows(rows, play, ev, eventIdx, ordinals);
-      if (!pushPickoffEventRow(rows, play, ev, eventIdx, ordinals)) {
-        pushActionRow(rows, play, ev, eventIdx, ordinals);
+      if (!pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays)) {
+        pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays);
       }
     });
 
@@ -458,7 +420,7 @@ export function buildLiveRecentPlaysRows({
         });
       }
 
-      pushRunnersRow(rows, play, play.about?.atBatIndex, meta, sortTime);
+      pushRunnersRow(rows, play, play.about?.atBatIndex, meta, sortTime, allPlays);
 
       const nextPlay = allPlays[playIdx + 1];
       if (halfInningEnded(play, nextPlay)) {

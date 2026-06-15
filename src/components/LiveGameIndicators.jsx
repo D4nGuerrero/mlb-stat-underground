@@ -1,33 +1,11 @@
-/** Catcher's-view mini diamond: left = 3rd, top = 2nd, right = 1st. */
-const DIAMOND_SIZES = {
-  xs: {
-    box: 'w-7 h-7',
-    diamond: 'w-1.5 h-1.5',
-    third: 'left-0.5 top-1/2 -translate-y-1/2',
-    second: 'left-1/2 top-0.5 -translate-x-1/2',
-    first: 'right-0.5 top-1/2 -translate-y-1/2',
-  },
-  sm: {
-    box: 'w-10 h-10',
-    diamond: 'w-2 h-2',
-    third: 'left-1 top-1/2 -translate-y-1/2',
-    second: 'left-1/2 top-1 -translate-x-1/2',
-    first: 'right-1 top-1/2 -translate-y-1/2',
-  },
-  md: {
-    box: 'w-12 h-12',
-    diamond: 'w-2.5 h-2.5',
-    third: 'left-1.5 top-1/2 -translate-y-1/2',
-    second: 'left-1/2 top-1.5 -translate-x-1/2',
-    first: 'right-1.5 top-1/2 -translate-y-1/2',
-  },
-  lg: {
-    box: 'w-11 h-11',
-    diamond: 'w-2.5 h-2.5',
-    third: 'left-1.5 top-1/2 -translate-y-1/2',
-    second: 'left-1/2 top-1.5 -translate-x-1/2',
-    first: 'right-1.5 top-1/2 -translate-y-1/2',
-  },
+import { getSituationBeforePlayResult } from '../utils/playSituation';
+
+/** Catcher's view: left = 3rd, top = 2nd, right = 1st (MLB At Bat bases SVG). */
+const BASES_SVG_WIDTH = {
+  xs: 22,
+  sm: 28,
+  md: 33,
+  lg: 37,
 };
 
 const OUTS_SIZES = {
@@ -44,6 +22,63 @@ export function formatLiveInningLabel(linescore) {
 
 const EMPTY_BASES = { onFirst: false, onSecond: false, onThird: false };
 
+function runnerOccupied(slot) {
+  if (!slot) return false;
+  if (typeof slot === 'object') return Boolean(slot.id ?? slot.fullName);
+  return Boolean(slot);
+}
+
+function basesFromPlayRunners(play) {
+  const occupied = new Map();
+  const runnerBase = new Map();
+
+  for (const r of play.runners ?? []) {
+    const m = r.movement;
+    const runner = r.details?.runner;
+    if (!m || !runner?.id) continue;
+
+    const prev = runnerBase.get(runner.id);
+    if (prev) occupied.delete(prev);
+
+    if (m.isOut) {
+      runnerBase.delete(runner.id);
+      continue;
+    }
+
+    if (m.end === 'score' || m.end === '4B') {
+      runnerBase.delete(runner.id);
+      continue;
+    }
+
+    if (m.end === '1B' || m.end === '2B' || m.end === '3B') {
+      occupied.set(m.end, runner);
+      runnerBase.set(runner.id, m.end);
+    }
+  }
+
+  return {
+    first: occupied.get('1B') ?? null,
+    second: occupied.get('2B') ?? null,
+    third: occupied.get('3B') ?? null,
+  };
+}
+
+function basesFromOffense(offense = {}) {
+  return {
+    first: offense.first ?? offense.onFirst ?? null,
+    second: offense.second ?? offense.onSecond ?? null,
+    third: offense.third ?? offense.onThird ?? null,
+  };
+}
+
+function toIndicatorBases({ first, second, third }) {
+  return {
+    onFirst: runnerOccupied(first),
+    onSecond: runnerOccupied(second),
+    onThird: runnerOccupied(third),
+  };
+}
+
 /** Resolve occupied bases from linescore (and optional current play). */
 export function getRunnersOnBase(linescore, currentPlay = null) {
   if (!linescore) return EMPTY_BASES;
@@ -51,45 +86,90 @@ export function getRunnersOnBase(linescore, currentPlay = null) {
   const outs = Number(linescore.outs ?? 0);
   const inningState = linescore.inningState ?? '';
 
-  if (outs === 0 || outs >= 3 || inningState === 'Middle' || inningState === 'End') {
+  if (outs >= 3 || inningState === 'Middle' || inningState === 'End') {
     return EMPTY_BASES;
   }
 
-  const offense = linescore.offense ?? {};
-  let first = offense.first ?? offense.onFirst ?? null;
-  let second = offense.second ?? offense.onSecond ?? null;
-  let third = offense.third ?? offense.onThird ?? null;
-
   if (currentPlay?.matchup) {
     const playOuts = Number(currentPlay.count?.outs ?? outs);
-    if (currentPlay.about?.isComplete && playOuts >= 3) {
-      return EMPTY_BASES;
+    if (playOuts >= 3) return EMPTY_BASES;
+
+    if (currentPlay.about?.isComplete) {
+      const m = currentPlay.matchup;
+      return toIndicatorBases({
+        first: m.postOnFirst,
+        second: m.postOnSecond,
+        third: m.postOnThird,
+      });
     }
-    const m = currentPlay.matchup;
-    first = m.postOnFirst ?? first;
-    second = m.postOnSecond ?? second;
-    third = m.postOnThird ?? third;
+
+    const fromRunners = basesFromPlayRunners(currentPlay);
+    const fromOffense = basesFromOffense(linescore.offense);
+    return toIndicatorBases({
+      first: fromRunners.first ?? fromOffense.first,
+      second: fromRunners.second ?? fromOffense.second,
+      third: fromRunners.third ?? fromOffense.third,
+    });
   }
 
-  return {
-    onFirst: Boolean(first),
-    onSecond: Boolean(second),
-    onThird: Boolean(third),
-  };
+  return toIndicatorBases(basesFromOffense(linescore.offense));
 }
 
-export function BaseDiamondIndicator({ onFirst, onSecond, onThird, size = 'md', className = '' }) {
-  const s = DIAMOND_SIZES[size] ?? DIAMOND_SIZES.md;
-  const diamond = `absolute ${s.diamond} rotate-45 border border-white/90`;
-  const filled = 'bg-white';
-  const empty = 'bg-transparent';
+/** Occupied bases before the at-bat result (play detail sheet). */
+export function getRunnersOnBaseFromPlay(play, allPlays = null) {
+  return getSituationBeforePlayResult(play, allPlays ?? []).bases;
+}
+
+/** Full situation before the at-bat result: bases, count, outs. */
+export function getPlayDetailSituation(play, allPlays = null) {
+  return getSituationBeforePlayResult(play, allPlays ?? []);
+}
+
+export function BaseDiamondIndicator({
+  onFirst,
+  onSecond,
+  onThird,
+  bases,
+  size = 'md',
+  className = '',
+}) {
+  const width = BASES_SVG_WIDTH[size] ?? BASES_SVG_WIDTH.md;
+  const occupied = bases ?? { third: onThird, second: onSecond, first: onFirst };
 
   return (
-    <div className={`${s.box} relative flex-shrink-0 ${className}`} aria-hidden>
-      <div className={`${diamond} ${s.third} ${onThird ? filled : empty}`} />
-      <div className={`${diamond} ${s.second} ${onSecond ? filled : empty}`} />
-      <div className={`${diamond} ${s.first} ${onFirst ? filled : empty}`} />
-    </div>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      viewBox="0 0 24 17.25"
+      className={`flex-shrink-0 ${className}`}
+      aria-hidden
+    >
+      <title>Bases</title>
+      <rect
+        width="6"
+        height="6"
+        transform="translate(5.25, 7.25) rotate(-315)"
+        fill={occupied.third ? '#ffffff' : 'transparent'}
+        stroke="#ffffff"
+        strokeWidth={1}
+      />
+      <rect
+        width="6"
+        height="6"
+        transform="translate(12, 0.75) rotate(-315)"
+        fill={occupied.second ? '#ffffff' : 'transparent'}
+        stroke="#ffffff"
+        strokeWidth={1}
+      />
+      <rect
+        width="6"
+        height="6"
+        transform="translate(18.75, 7.25) rotate(-315)"
+        fill={occupied.first ? '#ffffff' : 'transparent'}
+        stroke="#ffffff"
+        strokeWidth={1}
+      />
+    </svg>
   );
 }
 

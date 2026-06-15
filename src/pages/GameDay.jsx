@@ -46,7 +46,12 @@ import {
 } from '../utils/liveRecentPlays';
 import LiveRecentPlaysTimeline from '../components/LiveRecentPlaysTimeline';
 import LiveAtBatVisual from '../components/LiveAtBatVisual';
-import { BaseDiamondIndicator, OutsIndicator, getRunnersOnBase } from '../components/LiveGameIndicators';
+import {
+  BaseDiamondIndicator,
+  OutsIndicator,
+  getRunnersOnBase,
+  getPlayDetailSituation,
+} from '../components/LiveGameIndicators';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -532,6 +537,23 @@ function SummaryPitchingChangeRow({ item }) {
   );
 }
 
+function SummaryRunnersRow({ item }) {
+  return (
+    <div className="flex items-start gap-2.5 p-2">
+      <BaseDiamondIndicator
+        onFirst={item.bases.onFirst}
+        onSecond={item.bases.onSecond}
+        onThird={item.bases.onThird}
+        size="lg"
+        className="mt-0.5"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-md text-slate-300 leading-snug">{item.description}</p>
+      </div>
+    </div>
+  );
+}
+
 function SummaryPlayItemRow({
   item,
   awayAbbr,
@@ -548,6 +570,9 @@ function SummaryPlayItemRow({
   }
   if (item.kind === 'pitching_change') {
     return <SummaryPitchingChangeRow item={item} />;
+  }
+  if (item.kind === 'runners') {
+    return <SummaryRunnersRow item={item} />;
   }
 
   const b = getPlayBadge(item.eventType);
@@ -1672,10 +1697,7 @@ export default function GamePage() {
     const pitcherId = play.matchup?.pitcher?.id;
     const batterId = play.matchup?.batter?.id;
 
-    const lastCount = pitches[pitches.length - 1]?.count;
-    const finalBalls = play.count?.balls ?? lastCount?.balls ?? 0;
-    const finalStrikes = play.count?.strikes ?? lastCount?.strikes ?? 0;
-    const outs = play.count?.outs ?? 0;
+    const situation = getPlayDetailSituation(play, allPlays);
 
     return (
       <Modal
@@ -1755,29 +1777,15 @@ export default function GamePage() {
                   </div>
                 </button>
 
-                <div className="flex flex-col items-center justify-center px-4 gap-3">
-                  <div>
-                    <div className="text-[9px] text-slate-600 text-center mb-1">
-                      OUTS
-                    </div>
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className={`w-2.5 h-2.5 rounded-full border ${i < outs ? 'bg-red-400 border-red-400' : 'border-slate-600'}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-[9px] text-slate-600 mb-0.5">
-                      COUNT
-                    </div>
-                    <div className="text-lg font-bold font-mono text-slate-200 leading-none">
-                      {finalBalls}-{finalStrikes}
-                    </div>
-                  </div>
-                  <div className="text-slate-600 text-lg">⚔</div>
+                <div className="flex flex-col items-center justify-center px-4 gap-2.5">
+                  <BaseDiamondIndicator
+                    {...situation.bases}
+                    size="md"
+                  />
+                  <span className="text-lg font-bold font-mono text-slate-200 tabular-nums leading-none">
+                    {situation.balls}-{situation.strikes}
+                  </span>
+                  <OutsIndicator outs={situation.outs} size="md" />
                 </div>
 
                 <button

@@ -1,4 +1,11 @@
 import { formatGameStartDisplay, formatVenueLine } from './gamePreview';
+import {
+  formatRunnersSituationLabel,
+  getBasesAtPlayIndex,
+  getOutsBeforeEvent,
+  getPlayStartOuts,
+  toIndicatorBases,
+} from './playSituation';
 
 /** Non-pitch action events shown as their own summary rows. */
 export const SUMMARY_ACTION_TYPES = new Set([
@@ -179,17 +186,6 @@ function normalizeDescription(description) {
   return desc.endsWith('.') ? desc : `${desc}.`;
 }
 
-function getPlayStartOuts(playEvents) {
-  return playEvents.find((e) => e.count?.outs != null)?.count?.outs ?? null;
-}
-
-function getOutsBeforeEvent(playEvents, eventIdx) {
-  for (let i = eventIdx - 1; i >= 0; i -= 1) {
-    if (playEvents[i].count?.outs != null) return playEvents[i].count.outs;
-  }
-  return getPlayStartOuts(playEvents);
-}
-
 export function playRecordedOut(play) {
   const startOuts = getPlayStartOuts(play.playEvents || []);
   const endOuts = play.count?.outs;
@@ -253,6 +249,7 @@ export function buildSummaryItems(allPlays, gameData) {
         ev.count?.outs ?? play.count?.outs,
         outOccurred,
       );
+      const sortTime = ev.startTime || play.about?.startTime || null;
       items.push({
         kind: 'action',
         key: `action-${play.about?.atBatIndex}-${eventIdx}`,
@@ -265,8 +262,21 @@ export function buildSummaryItems(allPlays, gameData) {
         awayScore: ev.details?.awayScore,
         homeScore: ev.details?.homeScore,
         isScoring: isScoringDescription(description),
-        sortTime: ev.startTime || play.about?.startTime || null,
+        sortTime,
       });
+
+      const bases = getBasesAtPlayIndex(play, allPlays, ev.index ?? eventIdx);
+      const runnersLabel = formatRunnersSituationLabel(bases);
+      if (runnersLabel) {
+        items.push({
+          kind: 'runners',
+          key: `runners-${play.about?.atBatIndex}-${eventIdx}`,
+          bases: toIndicatorBases(bases),
+          description: runnersLabel,
+          about: play.about,
+          sortTime,
+        });
+      }
     });
 
     if (play.about?.isComplete && play.result?.event) {
@@ -287,8 +297,21 @@ export function buildSummaryItems(allPlays, gameData) {
         awayScore: play.result?.awayScore,
         homeScore: play.result?.homeScore,
         isScoring: Boolean(play.about?.isScoringPlay),
-        sortTime: play.about?.startTime || play.about?.endTime || null,
+        sortTime: play.about?.endTime || play.about?.startTime || null,
       });
+
+      const bases = getBasesAtPlayIndex(play, allPlays, Infinity);
+      const runnersLabel = formatRunnersSituationLabel(bases);
+      if (runnersLabel && play.count?.outs !== 3) {
+        items.push({
+          kind: 'runners',
+          key: `runners-${play.about?.atBatIndex}`,
+          bases: toIndicatorBases(bases),
+          description: runnersLabel,
+          about: play.about,
+          sortTime: play.about?.endTime || play.about?.startTime || null,
+        });
+      }
     }
   }
 

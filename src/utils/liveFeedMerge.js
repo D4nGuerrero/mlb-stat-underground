@@ -30,7 +30,11 @@ function mergeLinescore(prev, next) {
   if (!next || typeof next !== 'object') return merged;
 
   const outs = next.outs ?? merged.outs;
-  if (outs === 0 || outs >= 3) {
+  const inningChanged =
+    (next.currentInning != null && prev?.currentInning != null && next.currentInning !== prev.currentInning)
+    || (next.inningHalf != null && prev?.inningHalf != null && next.inningHalf !== prev.inningHalf);
+
+  if (outs >= 3 || (outs === 0 && inningChanged)) {
     merged.offense = clearStaleRunners(merged.offense, next.offense);
   }
 
