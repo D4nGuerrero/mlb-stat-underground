@@ -187,22 +187,19 @@ const gameLogHitCols = [
   { key: 'atBats', label: 'AB' },
   { key: 'runs', label: 'R' },
   { key: 'hits', label: 'H' },
-  { key: 'totalBases', label: 'TB' },
   { key: 'doubles', label: '2B' },
   { key: 'triples', label: '3B' },
   { key: 'homeRuns', label: 'HR' },
   { key: 'rbi', label: 'RBI' },
   { key: 'baseOnBalls', label: 'BB' },
-  { key: 'intentionalWalks', label: 'IBB' },
+  { key: 'hitByPitch', label: 'HBP' },
   { key: 'strikeOuts', label: 'SO' },
   { key: 'stolenBases', label: 'SB' },
   { key: 'caughtStealing', label: 'CS' },
   { key: 'avg', label: 'AVG' },
   { key: 'obp', label: 'OBP' },
   { key: 'slg', label: 'SLG' },
-  { key: 'hitByPitch', label: 'HBP' },
-  { key: 'sacBunts', label: 'SAC' },
-  { key: 'sacFlies', label: 'SF' },
+  { key: 'ops', label: 'OPS' },
 ];
 
 const gameLogPitchCols = [
@@ -229,22 +226,19 @@ const GAME_LOG_HIT_GLOSSARY = [
   { key: 'AB', text: 'At bats' },
   { key: 'R', text: 'Runs scored' },
   { key: 'H', text: 'Hits' },
-  { key: 'TB', text: 'Total bases' },
   { key: '2B', text: 'Doubles' },
   { key: '3B', text: 'Triples' },
   { key: 'HR', text: 'Home runs' },
   { key: 'RBI', text: 'Runs batted in' },
   { key: 'BB', text: 'Walks' },
-  { key: 'IBB', text: 'Intentional walks' },
+  { key: 'HBP', text: 'Hit by pitch' },
   { key: 'SO', text: 'Strikeouts' },
   { key: 'SB', text: 'Stolen bases' },
   { key: 'CS', text: 'Caught stealing' },
   { key: 'AVG', text: 'Batting average' },
   { key: 'OBP', text: 'On-base percentage' },
   { key: 'SLG', text: 'Slugging percentage' },
-  { key: 'HBP', text: 'Hit by pitch' },
-  { key: 'SAC', text: 'Sacrifice bunts' },
-  { key: 'SF', text: 'Sacrifice flies' },
+  { key: 'OPS', text: 'On-base plus slugging' },
 ];
 
 const GAME_LOG_PITCH_GLOSSARY = [
@@ -526,36 +520,33 @@ function computeGameLogMonthTotals(rows, group) {
     atBats: sumGameLogField(rows, 'atBats'),
     runs: sumGameLogField(rows, 'runs'),
     hits: sumGameLogField(rows, 'hits'),
-    totalBases: sumGameLogField(rows, 'totalBases'),
     doubles: sumGameLogField(rows, 'doubles'),
     triples: sumGameLogField(rows, 'triples'),
     homeRuns: sumGameLogField(rows, 'homeRuns'),
     rbi: sumGameLogField(rows, 'rbi'),
     baseOnBalls: sumGameLogField(rows, 'baseOnBalls'),
-    intentionalWalks: sumGameLogField(rows, 'intentionalWalks'),
     strikeOuts: sumGameLogField(rows, 'strikeOuts'),
     stolenBases: sumGameLogField(rows, 'stolenBases'),
     caughtStealing: sumGameLogField(rows, 'caughtStealing'),
     hitByPitch: sumGameLogField(rows, 'hitByPitch'),
-    sacBunts: sumGameLogField(rows, 'sacBunts'),
-    sacFlies: sumGameLogField(rows, 'sacFlies'),
   };
 
   const ab = totals.atBats;
   const h = totals.hits;
   const bb = totals.baseOnBalls;
   const hbp = totals.hitByPitch;
-  const sf = totals.sacFlies;
+  const sf = sumGameLogField(rows, 'sacFlies');
   const singles = h - totals.doubles - totals.triples - totals.homeRuns;
   const obpDenom = ab + bb + hbp + sf;
+  const obpNum = obpDenom > 0 ? (h + bb + hbp) / obpDenom : 0;
+  const slgNum = ab > 0
+    ? (singles + 2 * totals.doubles + 3 * totals.triples + 4 * totals.homeRuns) / ab
+    : 0;
 
   totals.avg = ab > 0 ? (h / ab).toFixed(3).replace(/^0/, '') : '.000';
-  totals.obp = obpDenom > 0 ? ((h + bb + hbp) / obpDenom).toFixed(3).replace(/^0/, '') : '.000';
-  totals.slg = ab > 0
-    ? ((singles + 2 * totals.doubles + 3 * totals.triples + 4 * totals.homeRuns) / ab)
-        .toFixed(3)
-        .replace(/^0/, '')
-    : '.000';
+  totals.obp = obpDenom > 0 ? obpNum.toFixed(3).replace(/^0/, '') : '.000';
+  totals.slg = ab > 0 ? slgNum.toFixed(3).replace(/^0/, '') : '.000';
+  totals.ops = (obpNum + slgNum).toFixed(3).replace(/^0/, '');
 
   return totals;
 }
@@ -1085,7 +1076,6 @@ export default function PlayerPage() {
   const [logGroup, setLogGroup] = useState('hitting');
 
   const [logSeason, setLogSeason] = useState(CURRENT_YEAR);
-  const [logSeasonOptions, setLogSeasonOptions] = useState(SEASON_OPTIONS);
   const [gameLogRows, setGameLogRows] = useState([]);
   const [gameLogLoading, setGameLogLoading] = useState(false);
 
@@ -1203,41 +1193,8 @@ export default function PlayerPage() {
   }, [playerId]);
 
   useEffect(() => {
-    const years = logSeasonOptions.map((o) => o.value);
-    if (!years.length || years.includes(logSeason)) return;
-    setLogSeason(years.includes(CURRENT_YEAR) ? CURRENT_YEAR : years[0]);
-  }, [logSeasonOptions, logSeason]);
-
-  useEffect(() => {
-    if (!playerId || !playerInfo) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const params = `stats=yearByYear&group=${logGroup}&hydrate=team,sport&gameType=R`;
-        const data = await fetchPlayerStats(playerId, params, logLevel);
-        if (cancelled) return;
-        const splits = data.stats?.find((s) => s.type?.displayName === 'yearByYear')?.splits ?? [];
-        const seasons = [...new Set(
-          splits
-            .filter((sp) => {
-              if (!sp.season || !sp.stat) return false;
-              const games = Number(sp.stat.gamesPlayed ?? sp.stat.gamesStarted ?? 0);
-              return games > 0;
-            })
-            .map((sp) => Number(sp.season)),
-        )].sort((a, b) => b - a);
-        const options = seasons.length
-          ? seasons.map((y) => ({ value: y, label: String(y) }))
-          : [{ value: CURRENT_YEAR, label: String(CURRENT_YEAR) }];
-        setLogSeasonOptions(options);
-      } catch {
-        if (!cancelled) {
-          setLogSeasonOptions([{ value: CURRENT_YEAR, label: String(CURRENT_YEAR) }]);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [playerId, playerInfo, logLevel, logGroup]);
+    setLogSeason(CURRENT_YEAR);
+  }, [logGroup, logLevel]);
 
   useEffect(() => {
     loadGameLogs();
@@ -1451,7 +1408,7 @@ export default function PlayerPage() {
                         onLevelChange={setLogLevel}
                         season={logSeason}
                         onSeasonChange={setLogSeason}
-                        seasonOptions={logSeasonOptions}
+                        seasonOptions={SEASON_OPTIONS}
                         group={logGroup}
                         onGroupChange={setLogGroup}
                         hidePeriod
