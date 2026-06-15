@@ -894,9 +894,9 @@ export default function Scores() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6 px-4 sm:px-0 sm:mb-8 gap-2">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl tracking-tighter">Scores</h1>
+          <h1 className="font-display text-3xl sm:text-4xl tracking-tighter">Scoreboard</h1>
           <p className="text-slate-400 text-sm sm:text-base ">
-            Stay up to date with live scores, recaps, and stats for every MLB game.
+            {/* Stay up to date with live scores, recaps, and stats for every MLB game. */}
             </p>
 
           

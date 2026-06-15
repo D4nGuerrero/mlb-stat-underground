@@ -539,10 +539,10 @@ export default function StatLeaders() {
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
           League Leaders
         </div>
-        <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stat Leaders</h1>
+        {/* <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stat Leaders</h1>
         <p className="text-slate-400 mt-1 text-sm">
           Top performers in every statistical category
-        </p>
+        </p> */}
       </div>
 
       <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5 mb-6 space-y-4">
@@ -585,9 +585,9 @@ export default function StatLeaders() {
 
           <Select value={season} onChange={handleSeasonChange} options={SEASON_OPTIONS} />
 
-          {!isTeam && (
+          {/* {!isTeam && (
             <Select value={limit} onChange={handleLimitChange} options={LIMIT_OPTIONS} />
-          )}
+          )} */}
         </div>
 
         {!isTeam && (

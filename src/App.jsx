@@ -10,7 +10,24 @@ import StatLeaders from './pages/StatLeaders';
 import Standings from './pages/Standings';
 import BaseballSimulator from './pages/BaseballSimulator';
 import TeamPage from './pages/TeamPage';
-import { Home, BarChart3, BookOpen, Trophy, TrendingUp, Cpu } from 'lucide-react';
+import { Home, BarChart3, BookOpen, TrendingUp, Cpu } from 'lucide-react';
+
+function StandingsFlagIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 32 32"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        fill="currentColor"
+        d="M31.78 8.538a.833.833 0 0 0-.945-.247c-4.968 1.944-8.769.528-12.795-.969-3.682-1.371-7.479-2.775-12.182-1.542.157-.357.238-.743.238-1.133 0-1.573-1.28-2.853-2.853-2.853S.39 3.074.39 4.647 1.671 7.5 3.243 7.5c.116 0 .227-.02.339-.034l1.489 4.05 3.059 8.403a.93.93 0 0 0 .095.179l3.515 9.564a.83.83 0 0 0 1.064.495l.003-.001a.83.83 0 0 0 .493-1.065v-.001l-3.442-9.365c2.909-4.264 6.45-4.406 10.196-4.543 3.919-.143 8.361-.305 11.784-5.668a.831.831 0 0 0-.058-.976zM2.053 4.647a1.191 1.191 0 1 1 2.38-.097 1.191 1.191 0 0 1-2.38.097z"
+      />
+      <circle fill="currentColor" cx="3.243" cy="4.647" r="1.191" />
+    </svg>
+  );
+}
 
 function App() {
   return (
@@ -38,7 +55,7 @@ function App() {
               { to: '/', icon: <Home size={15} />, label: 'Scores' },
               { to: '/stats', icon: <BarChart3 size={15} />, label: 'Stats' },
               { to: '/leaders', icon: <TrendingUp size={15} />, label: 'Leaders' },
-              { to: '/standings', icon: <Trophy size={15} />, label: 'Standings' },
+              { to: '/standings', icon: <StandingsFlagIcon />, label: 'Standings' },
               { to: '/simulator', icon: <Cpu size={15} />, label: 'Simulator' },
               { to: '/docs', icon: <BookOpen size={15} />, label: 'API Docs' },
             ].map(({ to, icon, label }) => (
@@ -54,6 +71,7 @@ function App() {
                 }
               >
                 {icon}
+                
                 <span className="hidden sm:inline">{label}</span>
               </NavLink>
             ))}

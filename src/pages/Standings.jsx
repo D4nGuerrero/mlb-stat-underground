@@ -570,12 +570,11 @@ export default function Standings() {
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
           MLB Standings 
 
-          <img src={assetUrl('/standings_flag.svg')} alt="Standings" className="inline-block w-4 h-4 -mt-0.5 ml-1" />
         </div>
-        <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Standings</h1>
+        {/* <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Standings</h1>
         <p className="text-slate-400 mt-1 text-sm">
           Division-by-division records for the {season} season
-        </p>
+        </p> */}
       </div>
 
       <TabBar

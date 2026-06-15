@@ -7,7 +7,7 @@ import {
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
 } from '../utils/mlbHelpers';
-import { TabBar, Select, BaseballSpinner, LoadingSpinner, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TabBar, Select, SegmentedControl, BaseballSpinner, LoadingSpinner, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import {
@@ -533,6 +533,7 @@ export default function StatsApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('search');
+  const [rosterImpactView, setRosterImpactView] = useState('exodus');
 
   const [watchlist, setWatchlist] = useState(() => {
     try {
@@ -850,7 +851,7 @@ export default function StatsApp() {
       <div className="mb-6">
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>Player Stats</div>
         <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
-        <p className="text-slate-400 mt-1 text-sm">Search any player · Watch favorites · Track Team Exodus</p>
+        <p className="text-slate-400 mt-1 text-sm">Search any player · Watch favorites · Roster impact</p>
       </div>
 
       <TabBar
@@ -858,9 +859,7 @@ export default function StatsApp() {
         tabs={[
           { key: 'search', label: 'Player Search' },
           { key: 'hotcold', label: '🔥 Hot & Cold ❄️' },
-          { key: 'exodus', label: 'Team Exodus' },
-          { key: 'acquisitions', label: 'Team Acquisitions' },
-          { key: 'rankings', label: 'Exodus Rankings' },
+          { key: 'roster-impact', label: 'Roster Impact' },
         ]}
         activeKey={activeTab}
         onChange={handleTabChange}
@@ -1000,8 +999,25 @@ export default function StatsApp() {
         </div>
       )}
 
-      {/* TEAM EXODUS TAB */}
-      {activeTab === 'exodus' && (
+      {/* ROSTER IMPACT TAB */}
+      {activeTab === 'roster-impact' && (
+        <div>
+          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 w-full sm:w-fit mb-6">
+            <SegmentedControl
+              value={rosterImpactView}
+              onChange={setRosterImpactView}
+              variant="pill"
+              size="sm"
+              className="w-full sm:w-auto"
+              options={[
+                { value: 'exodus', label: 'Team Exodus' },
+                { value: 'acquisitions', label: 'Team Acquisitions' },
+                { value: 'rankings', label: 'Exodus Rankings' },
+              ]}
+            />
+          </div>
+
+      {rosterImpactView === 'exodus' && (
         <div>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">Team Exodus Analyzer</h3>
@@ -1046,8 +1062,7 @@ export default function StatsApp() {
         </div>
       )}
 
-      {/* TEAM ACQUISITIONS TAB */}
-      {activeTab === 'acquisitions' && (
+      {rosterImpactView === 'acquisitions' && (
         <div>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">Team Acquisitions Analyzer</h3>
@@ -1092,8 +1107,7 @@ export default function StatsApp() {
         </div>
       )}
 
-      {/* NEW: EXODUS RANKINGS TAB */}
-      {activeTab === 'rankings' && (
+      {rosterImpactView === 'rankings' && (
         <div>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">League Exodus Rankings</h3>
@@ -1143,6 +1157,8 @@ export default function StatsApp() {
               </div>
             </div>
           )}
+        </div>
+      )}
         </div>
       )}
     </div>

@@ -1,3 +1,5 @@
+import { resolveAssetUrl } from "../../utils/baseUrl";
+
 const SIZE_CLASS = {
   xs: 'w-4 h-4',
   sm: 'w-5 h-5',
@@ -45,7 +47,9 @@ export function BaseballSpinner({
 }) {
   const sizeClass = SIZE_CLASS[size] ?? SIZE_CLASS.lg;
   const ball = (
-    <BaseballSvg className={`${sizeClass} shrink-0 animate-spin ${className}`} />
+    // <BaseballSvg className={`${sizeClass} shrink-0 animate-spin ${className}`} />
+    // use favico.ico instead
+    <img src={resolveAssetUrl('favicon.ico')} alt="Loading" className={`${sizeClass} shrink-0 animate-spin ${className}`} />
   );
 
   if (label) {
