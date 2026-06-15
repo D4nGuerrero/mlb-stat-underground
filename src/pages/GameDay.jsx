@@ -46,7 +46,7 @@ import {
 } from '../utils/liveRecentPlays';
 import LiveRecentPlaysTimeline from '../components/LiveRecentPlaysTimeline';
 import LiveAtBatVisual from '../components/LiveAtBatVisual';
-import { BaseDiamondIndicator, OutsIndicator } from '../components/LiveGameIndicators';
+import { BaseDiamondIndicator, OutsIndicator, getRunnersOnBase } from '../components/LiveGameIndicators';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -2309,9 +2309,7 @@ export default function GamePage() {
                 {/* Center: bases, count, outs */}
                 <div className="flex flex-col items-center justify-center gap-2.5 p-3">
                   <BaseDiamondIndicator
-                    onFirst={Boolean(ls.offense?.first)}
-                    onSecond={Boolean(ls.offense?.second)}
-                    onThird={Boolean(ls.offense?.third)}
+                    {...getRunnersOnBase(ls, currentPlay)}
                     size="md"
                   />
                   <span className="text-sm font-bold font-mono text-slate-200 tabular-nums">

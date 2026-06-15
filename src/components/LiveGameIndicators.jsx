@@ -42,6 +42,42 @@ export function formatLiveInningLabel(linescore) {
   return `${half} ${linescore.currentInning ?? '—'}`;
 }
 
+const EMPTY_BASES = { onFirst: false, onSecond: false, onThird: false };
+
+/** Resolve occupied bases from linescore (and optional current play). */
+export function getRunnersOnBase(linescore, currentPlay = null) {
+  if (!linescore) return EMPTY_BASES;
+
+  const outs = Number(linescore.outs ?? 0);
+  const inningState = linescore.inningState ?? '';
+
+  if (outs === 0 || outs >= 3 || inningState === 'Middle' || inningState === 'End') {
+    return EMPTY_BASES;
+  }
+
+  const offense = linescore.offense ?? {};
+  let first = offense.first ?? offense.onFirst ?? null;
+  let second = offense.second ?? offense.onSecond ?? null;
+  let third = offense.third ?? offense.onThird ?? null;
+
+  if (currentPlay?.matchup) {
+    const playOuts = Number(currentPlay.count?.outs ?? outs);
+    if (currentPlay.about?.isComplete && playOuts >= 3) {
+      return EMPTY_BASES;
+    }
+    const m = currentPlay.matchup;
+    first = m.postOnFirst ?? first;
+    second = m.postOnSecond ?? second;
+    third = m.postOnThird ?? third;
+  }
+
+  return {
+    onFirst: Boolean(first),
+    onSecond: Boolean(second),
+    onThird: Boolean(third),
+  };
+}
+
 export function BaseDiamondIndicator({ onFirst, onSecond, onThird, size = 'md', className = '' }) {
   const s = DIAMOND_SIZES[size] ?? DIAMOND_SIZES.md;
   const diamond = `absolute ${s.diamond} rotate-45 border border-white/90`;
@@ -88,9 +124,7 @@ export function LiveSituationStack({ linescore, size = 'sm', showInning = true, 
         </span>
       )}
       <BaseDiamondIndicator
-        onFirst={Boolean(linescore.offense?.first)}
-        onSecond={Boolean(linescore.offense?.second)}
-        onThird={Boolean(linescore.offense?.third)}
+        {...getRunnersOnBase(linescore)}
         size={size}
       />
       <span className="text-[10px] text-slate-400 font-mono">

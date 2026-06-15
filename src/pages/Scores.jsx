@@ -6,6 +6,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
 import {
   BaseDiamondIndicator,
+  getRunnersOnBase,
   formatLiveInningLabel,
   LiveSituationStack,
   OutsIndicator,
@@ -593,9 +594,7 @@ export default function Scores() {
                 </span>
                 <div className="flex flex-col items-center gap-0.5">
                   <BaseDiamondIndicator
-                    onFirst={Boolean(game.linescore.offense?.first)}
-                    onSecond={Boolean(game.linescore.offense?.second)}
-                    onThird={Boolean(game.linescore.offense?.third)}
+                    {...getRunnersOnBase(game.linescore)}
                     size="xs"
                   />
                   <OutsIndicator outs={game.linescore.outs ?? 0} size="xs" />

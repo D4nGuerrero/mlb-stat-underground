@@ -14,6 +14,29 @@ export function compareTimecodes(a, b) {
   return String(a).localeCompare(String(b));
 }
 
+const RUNNER_SLOTS = ['first', 'second', 'third', 'onFirst', 'onSecond', 'onThird'];
+
+function clearStaleRunners(offense, patchOffense) {
+  if (!offense) return offense;
+  const cleared = { ...offense };
+  for (const slot of RUNNER_SLOTS) {
+    cleared[slot] = patchOffense?.[slot] ?? null;
+  }
+  return cleared;
+}
+
+function mergeLinescore(prev, next) {
+  const merged = deepMerge(prev, next);
+  if (!next || typeof next !== 'object') return merged;
+
+  const outs = next.outs ?? merged.outs;
+  if (outs === 0 || outs >= 3) {
+    merged.offense = clearStaleRunners(merged.offense, next.offense);
+  }
+
+  return merged;
+}
+
 function deepMerge(prev, next) {
   if (next == null) return prev;
   if (prev == null) return next;
@@ -25,6 +48,10 @@ function deepMerge(prev, next) {
     const nv = next[key];
     if (nv === undefined) continue;
     const pv = prev[key];
+    if (key === 'linescore' && nv !== null && typeof nv === 'object') {
+      result[key] = mergeLinescore(pv ?? {}, nv);
+      continue;
+    }
     if (Array.isArray(nv)) {
       result[key] = nv;
     } else if (
