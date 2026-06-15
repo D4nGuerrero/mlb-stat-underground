@@ -12,7 +12,7 @@ export default function Select({
   placeholder = 'Select…',
 }) {
   const selected = options.find((o) => o.value === value);
-  const padding = size === 'sm' ? 'px-2 py-1' : size === 'lg' ? 'px-4 py-3' : 'px-4 py-2.5';
+  const padding = size === 'sm' ? 'px-2 py-1' : size === 'lg' ? 'px-4 py-3' : 'px-4 py-2';
   const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
 
   return (

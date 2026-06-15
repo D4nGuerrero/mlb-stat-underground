@@ -661,7 +661,7 @@ function FilterBar({
   hidePeriod = false,
 }) {
   return (
-    <div className="flex flex-wrap gap-3 items-center mb-5 mt-3">
+    <div className="flex flex-wrap gap-2 items-center mx-2 my-3">
       <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
         <SegmentedControl
           value={level}
@@ -689,7 +689,7 @@ function FilterBar({
       {!hidePeriod && period !== undefined && onPeriodChange && (
         <Select value={period} onChange={onPeriodChange} options={PERIOD_OPTIONS} className="w-52" />
       )}
-      <Select value={season} onChange={onSeasonChange} options={seasonOptions} className="w-28" />
+      <Select value={season} onChange={onSeasonChange} options={seasonOptions} className="w-24" />
     </div>
   );
 }
@@ -902,7 +902,7 @@ function PlayerTransactionsTab({ playerId }) {
       {txns.map((t, i) => (
         <div
           key={t.id ?? `${t.date}-${i}`}
-          className="flex items-start gap-3 px-1 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors rounded-xl"
+          className="flex items-start gap-2 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors rounded-xl"
         >
           <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
           <div className="flex-1 min-w-0">
@@ -1340,7 +1340,7 @@ export default function PlayerPage() {
             </div>
           </div>
 
-          <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-700/50 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-700/50 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
             {[
               { label: 'Bats / Throws', value: `${playerInfo.batSide?.code || '—'} / ${playerInfo.pitchHand?.code || '—'}` },
               { label: 'Height / Weight', value: `${playerInfo.height || '—'} / ${playerInfo.weight ? `${playerInfo.weight} lb` : '—'}` },
@@ -1362,7 +1362,7 @@ export default function PlayerPage() {
                 if (key === 'career') {
                   return (
                     <>
-                      <div className="flex flex-wrap gap-3 items-center mb-5 pt-3 mx-3 sm:mx-0">
+                      <div className="flex flex-wrap gap-2 items-center my-3 mx-2 sm:mx-0">
                         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
                           <SegmentedControl
                             value={careerLevel}

@@ -20,6 +20,12 @@ const TEAM_OPTIONS = mlbTeams.map((t) => ({
   label: `${t.name} (${t.abbr})`,
 }));
 
+const HOT_COLD_DAY_OPTIONS = [
+  { value: 10, label: 'Last 10 Days' },
+  { value: 15, label: 'Last 15 Days' },
+  { value: 30, label: 'Last 30 Days' },
+];
+
 // sportId    Level     Common Leagues1
 // 1        Triple-A    AAA
 // 12       Double-A    AA
@@ -553,6 +559,7 @@ export default function StatsApp() {
 
   const [hotPlayers, setHotPlayers] = useState([]);
   const [coldPlayers, setColdPlayers] = useState([]);
+  const [hotColdDays, setHotColdDays] = useState(10);
   const [isHotColdLoading, setIsHotColdLoading] = useState(false);
 
   // New state for league-wide rankings
@@ -731,16 +738,16 @@ export default function StatsApp() {
     }
   };
 
-  const fetchHotCold = async () => {
+  const fetchHotCold = async (days = hotColdDays) => {
     setIsHotColdLoading(true);
     setHotPlayers([]);
     setColdPlayers([]);
     try {
       const today = new Date();
-      const tenDaysAgo = new Date(today);
-      tenDaysAgo.setDate(today.getDate() - 10);
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - days);
       const fmt = (d) => d.toISOString().split('T')[0];
-      const dateRange = `startDate=${fmt(tenDaysAgo)}&endDate=${fmt(today)}`;
+      const dateRange = `startDate=${fmt(startDate)}&endDate=${fmt(today)}`;
 
       // Use byDateRange stats for a true "cold" list (not just bottom of a top-50 leaders list).
       const res = await fetch(
@@ -839,10 +846,15 @@ export default function StatsApp() {
     setIsRankingLoading(false);
   };
 
+  const handleHotColdDaysChange = (days) => {
+    setHotColdDays(days);
+    fetchHotCold(days);
+  };
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     if (tab === 'hotcold' && hotPlayers.length === 0 && !isHotColdLoading) {
-      fetchHotCold();
+      fetchHotCold(hotColdDays);
     }
   };
 
@@ -939,18 +951,21 @@ export default function StatsApp() {
       {/* HOT & COLD TAB */}
       {activeTab === 'hotcold' && (
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="font-semibold text-lg">Who's Hot & Who's Cold</h3>
-              <p className="text-sm text-slate-400 mt-0.5">Based on OPS over the last 10 days</p>
+              <p className="text-sm text-slate-400 mt-0.5">
+                Based on OPS over the last {hotColdDays} days
+              </p>
             </div>
-            <button
-              onClick={fetchHotCold}
-              disabled={isHotColdLoading}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-2xl text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {isHotColdLoading ? 'Loading…' : '↻ Refresh'}
-            </button>
+            <Select
+              value={hotColdDays}
+              onChange={handleHotColdDaysChange}
+              options={HOT_COLD_DAY_OPTIONS}
+              size="sm"
+              className="w-32 flex-shrink-0 "
+              buttonClassName="border-slate-600 py-2"
+            />
           </div>
 
           {isHotColdLoading && <LoadingSpinner size="lg" py="py-16" />}
@@ -962,7 +977,7 @@ export default function StatsApp() {
                   <div className="font-semibold text-lg flex items-center gap-2 ">
                     🔥 <span className="text-orange-400">Who's Hot</span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">Highest OPS · Last 10 days</div>
+                  <div className="text-xs text-slate-500 mt-0.5">Highest OPS · Last {hotColdDays} days</div>
                 </div>
                 {hotPlayers.map((p, i) => (
                   <HotColdPlayerRow
@@ -981,7 +996,7 @@ export default function StatsApp() {
                   <div className="font-semibold text-lg flex items-center gap-2">
                     ❄️ <span className="text-blue-400">Who's Cold</span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">Lowest OPS · Last 10 days</div>
+                  <div className="text-xs text-slate-500 mt-0.5">Lowest OPS · Last {hotColdDays} days</div>
                 </div>
                 {coldPlayers.map((p, i) => (
                   <HotColdPlayerRow

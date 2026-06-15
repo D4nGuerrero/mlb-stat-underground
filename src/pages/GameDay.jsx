@@ -1951,6 +1951,15 @@ export default function GamePage() {
 
   const currentTab = !isLive && activeTab === 'live' ? 'boxscore' : activeTab;
 
+  const gameTabBar = (
+    <TabBar
+      variant="page"
+      tabs={tabList}
+      activeKey={currentTab}
+      onChange={setActiveTab}
+    />
+  );
+
   return (
     <div className="max-w-5xl mx-auto px-0 sm:px-6 py-0 sm:py-8">
       {/* Mobile compact sticky header — shows instead of nav */}
@@ -2132,6 +2141,12 @@ export default function GamePage() {
             </div>
           )}
 
+          {isLive && !isPreview && (
+            <div className="border-t border-slate-700/50">
+              {gameTabBar}
+            </div>
+          )}
+
           {!isPreview && !(isLive && currentTab === 'live') && (
             <LinescoreBoard
               key={gamePk}
@@ -2216,13 +2231,7 @@ export default function GamePage() {
           </>
         ) : (
           <>
-        {/* Tab nav */}
-        <TabBar
-          variant="page"
-          tabs={tabList}
-          activeKey={currentTab}
-          onChange={setActiveTab}
-        />
+        {!isLive && gameTabBar}
 
         {/* Tab content */}
         {currentTab === 'live' && isLive && ls && (
