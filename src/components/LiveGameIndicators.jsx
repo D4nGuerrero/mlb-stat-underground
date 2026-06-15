@@ -1,5 +1,12 @@
 /** Catcher's-view mini diamond: left = 3rd, top = 2nd, right = 1st. */
 const DIAMOND_SIZES = {
+  xs: {
+    box: 'w-7 h-7',
+    diamond: 'w-1.5 h-1.5',
+    third: 'left-0.5 top-1/2 -translate-y-1/2',
+    second: 'left-1/2 top-0.5 -translate-x-1/2',
+    first: 'right-0.5 top-1/2 -translate-y-1/2',
+  },
   sm: {
     box: 'w-10 h-10',
     diamond: 'w-2 h-2',
@@ -24,6 +31,7 @@ const DIAMOND_SIZES = {
 };
 
 const OUTS_SIZES = {
+  xs: 'w-1.5 h-1.5',
   sm: 'w-2 h-2',
   md: 'w-2.5 h-2.5',
 };

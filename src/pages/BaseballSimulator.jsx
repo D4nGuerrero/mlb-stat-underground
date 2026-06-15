@@ -3,17 +3,56 @@ import { THEME_COLOR } from '../theme/theme.js';
 import { mlbTeams } from '../utils/mlbHelpers';
 import { TeamPicker, SegmentedControl, BaseballSpinner } from '../components/ui';
 import { simulateGame } from '../simulator/game';
-import { CURRENT_SEASON } from '../simulator/constants';
+import {
+  CURRENT_SEASON,
+  SERIES_LENGTH_OPTIONS,
+  SIM_SEASON_OPTIONS,
+} from '../simulator/constants';
+import { fetchScheduleSummary } from '../simulator/schedule';
+import { simulateHistoricalMatchup } from '../simulator/history';
+import { simulatePlayoffs } from '../simulator/playoffs';
 import { defaultPlayer, loadTeamForGame } from '../simulator/roster';
+import { simulateTeamSeason } from '../simulator/season';
+import { clearTeamCache } from '../simulator/teamCache';
 import {
   AtBatCard,
   BoxScore,
-  ComingSoonPanel,
+  HistoricalResultsPanel,
   InningBox,
   LineupBuilder,
   ParkInfo,
+  PlayoffResultsPanel,
+  ScoringPlaysPanel,
+  SeasonResultsPanel,
+  SimProgressBar,
   teamLogoUrl,
 } from '../simulator/components/GameUI';
+
+/** Full game list is newest-first; live mode reveals from first at-bat forward, display newest revealed on top. */
+function getRevealedPlays(result, speed, liveIdx) {
+  if (!result?.plays?.length) return [];
+  if (speed !== 'live') return result.plays;
+  if (liveIdx <= 0) return [];
+  const total = result.plays.length;
+  const revealed = [];
+  for (let chrono = liveIdx - 1; chrono >= 0; chrono -= 1) {
+    const play = result.plays[total - 1 - chrono];
+    if (play) revealed.push(play);
+  }
+  return revealed;
+}
+
+function getLiveScore(result, revealedPlays) {
+  if (!result) return { away: 0, home: 0 };
+  return revealedPlays.reduce(
+    (score, play) => {
+      if (play.battingSide === 'away') score.away += play.runs || 0;
+      else score.home += play.runs || 0;
+      return score;
+    },
+    { away: 0, home: 0 },
+  );
+}
 
 const MLB_TEAMS = [...mlbTeams].sort((a, b) => a.name.localeCompare(b.name));
 const SIM_SESSION_KEY = 'mlb-simulator-session';
@@ -51,7 +90,7 @@ export default function BaseballSimulator() {
   const [liveIdx, setLiveIdx] = useState(0);
   const [resultTab, setResultTab] = useState(() => initialSession?.resultTab ?? 'plays');
   const [boxTab, setBoxTab] = useState(() => initialSession?.boxTab ?? 'away');
-  const liveTimer = useRef(null);
+  const playsListRef = useRef(null);
 
   const [awayLineup, setAwayLineup] = useState([]);
   const [homeLineup, setHomeLineup] = useState([]);
@@ -65,6 +104,18 @@ export default function BaseballSimulator() {
   const [homeLoading, setHomeLoading] = useState(false);
   const [showLineup, setShowLineup] = useState(() => initialSession?.showLineup ?? false);
   const [lineupMode, setLineupMode] = useState(() => initialSession?.lineupMode ?? 'realistic');
+  const [seasonYear, setSeasonYear] = useState(String(CURRENT_SEASON));
+  const [seasonPreview, setSeasonPreview] = useState(null);
+  const [seasonPreviewLoading, setSeasonPreviewLoading] = useState(false);
+  const [playoffYear, setPlayoffYear] = useState(String(CURRENT_SEASON - 1));
+  const [histSeasonA, setHistSeasonA] = useState('2003');
+  const [histSeasonB, setHistSeasonB] = useState(String(CURRENT_SEASON));
+  const [histBestOf, setHistBestOf] = useState(7);
+  const [seasonResult, setSeasonResult] = useState(null);
+  const [playoffResult, setPlayoffResult] = useState(null);
+  const [historicalResult, setHistoricalResult] = useState(null);
+  const [bulkProgress, setBulkProgress] = useState(null);
+  const [simError, setSimError] = useState(null);
 
   useEffect(() => {
     const persist = () => {
@@ -147,6 +198,28 @@ export default function BaseballSimulator() {
       .finally(() => setHomeLoading(false));
   }, [homeTeam, lineupMode, awayStarter?.throwsHand]);
 
+  useEffect(() => {
+    if (tab !== 'season' || !homeTeam) {
+      setSeasonPreview(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setSeasonPreviewLoading(true);
+    fetchScheduleSummary(homeTeam.id, parseInt(seasonYear, 10))
+      .then((summary) => {
+        if (!cancelled) setSeasonPreview(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setSeasonPreview(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSeasonPreviewLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [tab, homeTeam, seasonYear]);
+
   const movePlayer = (lineup, setLineup, idx, dir) => {
     const newIdx = idx + dir;
     if (newIdx < 0 || newIdx >= lineup.length) return;
@@ -155,8 +228,17 @@ export default function BaseballSimulator() {
     setLineup(next);
   };
 
+  const resetBulkState = useCallback(() => {
+    setSeasonResult(null);
+    setPlayoffResult(null);
+    setHistoricalResult(null);
+    setBulkProgress(null);
+    setSimError(null);
+  }, []);
+
   const runSimulation = useCallback(() => {
     if (!awayTeam || !homeTeam) return;
+    resetBulkState();
 
     const awayLineupFinal = awayLineup.length >= 9
       ? awayLineup
@@ -170,7 +252,6 @@ export default function BaseballSimulator() {
     setSimming(true);
     setResult(null);
     setLiveIdx(0);
-    clearInterval(liveTimer.current);
 
     setTimeout(() => {
       const gameResult = simulateGame({
@@ -188,23 +269,103 @@ export default function BaseballSimulator() {
       setResult(gameResult);
       setResultTab('plays');
       setSimming(false);
-
-      if (speed === 'live') {
-        let index = 0;
-        const allPlays = [...gameResult.plays].reverse();
-        liveTimer.current = setInterval(() => {
-          index++;
-          setLiveIdx(index);
-          if (index >= allPlays.length) clearInterval(liveTimer.current);
-        }, 250);
-      }
     }, 80);
-  }, [awayTeam, homeTeam, awayLineup, homeLineup, awayBench, homeBench, awayStarter, homeStarter, awayPitchers, homePitchers, speed]);
+  }, [awayTeam, homeTeam, awayLineup, homeLineup, awayBench, homeBench, awayStarter, homeStarter, awayPitchers, homePitchers, speed, resetBulkState]);
 
-  const isLiveMode = speed === 'live' && result && liveIdx < (result?.plays?.length ?? 0);
-  const visiblePlays = result
-    ? (speed === 'live' ? result.plays.slice(result.plays.length - liveIdx) : result.plays)
-    : [];
+  const runSeasonSimulation = useCallback(async () => {
+    if (!homeTeam) return;
+    setSimming(true);
+    setSimError(null);
+    resetBulkState();
+    setResult(null);
+    clearTeamCache();
+    try {
+      const data = await simulateTeamSeason({
+        team: homeTeam,
+        season: parseInt(seasonYear, 10),
+        lineupMode,
+        onProgress: (progress) => setBulkProgress({ type: 'season', ...progress }),
+      });
+      setSeasonResult(data);
+    } catch (err) {
+      setSimError(err.message || 'Season simulation failed.');
+    } finally {
+      setSimming(false);
+      setBulkProgress(null);
+    }
+  }, [homeTeam, seasonYear, lineupMode, resetBulkState]);
+
+  const runPlayoffSimulation = useCallback(async () => {
+    setSimming(true);
+    setSimError(null);
+    resetBulkState();
+    setResult(null);
+    clearTeamCache();
+    try {
+      const data = await simulatePlayoffs({
+        season: parseInt(playoffYear, 10),
+        lineupMode,
+        onProgress: (progress) => setBulkProgress({ type: 'playoffs', ...progress }),
+      });
+      setPlayoffResult(data);
+    } catch (err) {
+      setSimError(err.message || 'Playoff simulation failed.');
+    } finally {
+      setSimming(false);
+      setBulkProgress(null);
+    }
+  }, [playoffYear, lineupMode, resetBulkState]);
+
+  const runHistoricalSimulation = useCallback(async () => {
+    if (!awayTeam || !homeTeam) return;
+    setSimming(true);
+    setSimError(null);
+    resetBulkState();
+    setResult(null);
+    clearTeamCache();
+    try {
+      const data = await simulateHistoricalMatchup({
+        teamA: awayTeam,
+        teamB: homeTeam,
+        seasonA: parseInt(histSeasonA, 10),
+        seasonB: parseInt(histSeasonB, 10),
+        homeTeam,
+        lineupMode,
+        bestOf: histBestOf,
+        onProgress: (progress) => setBulkProgress({ type: 'historical', ...progress }),
+      });
+      setHistoricalResult(data);
+    } catch (err) {
+      setSimError(err.message || 'Historical simulation failed.');
+    } finally {
+      setSimming(false);
+      setBulkProgress(null);
+    }
+  }, [awayTeam, homeTeam, histSeasonA, histSeasonB, histBestOf, lineupMode, resetBulkState]);
+
+  const totalPlays = result?.plays?.length ?? 0;
+  const isLiveMode = speed === 'live' && result && liveIdx < totalPlays;
+  const isLiveComplete = speed === 'live' && result && liveIdx >= totalPlays && totalPlays > 0;
+  const displayedPlays = getRevealedPlays(result, speed, liveIdx);
+  const playListIndex = (index) => (
+    speed === 'live' ? liveIdx - index - 1 : totalPlays - index - 1
+  );
+  const liveScore = getLiveScore(result, displayedPlays);
+  const useLiveScore = speed === 'live' && result && liveIdx < totalPlays;
+  const displayAwayScore = useLiveScore ? liveScore.away : result?.awayScore ?? 0;
+  const displayHomeScore = useLiveScore ? liveScore.home : result?.homeScore ?? 0;
+
+  const advanceLivePlay = useCallback(() => {
+    if (!result || speed !== 'live' || liveIdx >= totalPlays) return;
+    setLiveIdx((prev) => Math.min(prev + 1, totalPlays));
+  }, [result, speed, liveIdx, totalPlays]);
+
+  useEffect(() => {
+    if (speed !== 'live' || liveIdx <= 0) return;
+    const el = playsListRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+  }, [liveIdx, speed]);
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
@@ -239,25 +400,255 @@ export default function BaseballSimulator() {
         />
       </div>
 
+      {simError && (
+        <div className="mb-4 px-4 py-3 bg-red-950/40 border border-red-800/50 rounded-xl text-sm text-red-300">
+          {simError}
+        </div>
+      )}
+
       {tab === 'season' && (
-        <ComingSoonPanel
-          title="Season Mode — Coming Soon"
-          description="Full 162-game seasons will return after the single-game engine is validated and calibrated."
-        />
+        <>
+          <div className="mb-4 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Uses the real MLB schedule and keeps actual results for games already played.
+              Remaining games are simulated with {seasonYear} rosters and season stats for both teams.
+            </p>
+          </div>
+
+          <div className="flex justify-center mb-4">
+            <TeamPicker
+              label="Team"
+              teams={MLB_TEAMS}
+              selected={homeTeam}
+              onSelect={(team) => { setHomeTeam(team); resetBulkState(); }}
+            />
+          </div>
+
+          <label className="block mb-4">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Season</span>
+            <select
+              value={seasonYear}
+              onChange={(e) => { setSeasonYear(e.target.value); resetBulkState(); }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
+            >
+              {SIM_SEASON_OPTIONS.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </label>
+
+          {homeTeam && (
+            <div className="mb-4 px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-center">
+              {seasonPreviewLoading ? (
+                <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+                  <BaseballSpinner size="xs" inline />
+                  Loading schedule…
+                </div>
+              ) : seasonPreview ? (
+                <div className="text-xs font-mono text-slate-400">
+                  <span className="text-slate-300">{seasonPreview.completed.length}</span> played
+                  <span className="text-slate-600 mx-2">·</span>
+                  <span className={seasonPreview.remaining.length > 0 ? `text-${THEME_COLOR}-400` : 'text-slate-300'}>
+                    {seasonPreview.remaining.length}
+                  </span> remaining
+                  <span className="text-slate-600 mx-2">·</span>
+                  {seasonPreview.total} total
+                </div>
+              ) : (
+                <div className="text-xs text-slate-600">Could not load schedule</div>
+              )}
+            </div>
+          )}
+
+          {bulkProgress?.type === 'season' && (
+            <SimProgressBar
+              current={bulkProgress.current}
+              total={bulkProgress.total}
+              label={`Sim game ${bulkProgress.current}/${bulkProgress.total} vs ${bulkProgress.opponent} · ${bulkProgress.wins}–${bulkProgress.losses}`}
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={runSeasonSimulation}
+            disabled={!homeTeam || simming || seasonPreview?.remaining?.length === 0}
+            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+          >
+            {simming ? (
+              <>
+                <BaseballSpinner size="xs" inline />
+                Simulating remaining games…
+              </>
+            ) : '▶ Simulate Remaining Games'}
+          </button>
+
+          {seasonResult && <SeasonResultsPanel result={seasonResult} />}
+
+          {!seasonResult && !simming && (
+            <div className="text-center py-10 text-slate-600 text-sm">
+              {homeTeam
+                ? (seasonPreview?.remaining?.length === 0
+                  ? 'Season complete — no remaining games to simulate'
+                  : 'Simulate the rest of the schedule from today\'s real record')
+                : 'Pick a team to get started'}
+            </div>
+          )}
+        </>
       )}
 
       {tab === 'playoffs' && (
-        <ComingSoonPanel
-          title="Playoffs — Coming Soon"
-          description="Bracket simulation will be rebuilt on top of the new game engine."
-        />
+        <>
+          <div className="mb-4 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Seeds top four teams per league from real standings, then simulates ALDS through the World Series
+              with pitch-by-pitch Log5 batter/pitcher matchups using that year&apos;s rosters and stats.
+            </p>
+          </div>
+
+          <label className="block mb-4">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Standings Year</span>
+            <select
+              value={playoffYear}
+              onChange={(e) => { setPlayoffYear(e.target.value); resetBulkState(); }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
+            >
+              {SIM_SEASON_OPTIONS.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </label>
+
+          {bulkProgress?.type === 'playoffs' && (
+            <div className="mb-4 text-center text-xs text-slate-400 font-mono">
+              {bulkProgress.label}: {bulkProgress.higherSeed?.abbr} {bulkProgress.higherWins} – {bulkProgress.lowerSeed?.abbr} {bulkProgress.lowerWins}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={runPlayoffSimulation}
+            disabled={simming}
+            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+          >
+            {simming ? (
+              <>
+                <BaseballSpinner size="xs" inline />
+                Simulating playoffs…
+              </>
+            ) : '▶ Simulate Playoffs'}
+          </button>
+
+          {playoffResult && <PlayoffResultsPanel result={playoffResult} />}
+
+          {!playoffResult && !simming && (
+            <div className="text-center py-10 text-slate-600 text-sm">
+              Select a year and run the full postseason bracket
+            </div>
+          )}
+        </>
       )}
 
       {tab === 'history' && (
-        <ComingSoonPanel
-          title="Historical Replays — Coming Soon"
-          description="Cross-era matchups will return once single-game simulation is solid."
-        />
+        <>
+          <div className="mb-4 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Cross-era matchups from 2003–2026 with the same pitch-by-pitch engine as season mode — each team
+              uses its chosen year&apos;s stats in every at-bat. Tap any game for box score, linescore, and plays.
+            </p>
+          </div>
+
+          <div className="flex items-stretch gap-3 mb-4">
+            <TeamPicker
+              label="Away"
+              teams={MLB_TEAMS}
+              selected={awayTeam}
+              onSelect={(team) => { setAwayTeam(team); resetBulkState(); }}
+              exclude={homeTeam}
+            />
+            <div className="flex flex-col items-center justify-center shrink-0 gap-1 pt-6">
+              <span className="text-slate-700 font-mono text-lg">@</span>
+            </div>
+            <TeamPicker
+              label="Home"
+              teams={MLB_TEAMS}
+              selected={homeTeam}
+              onSelect={(team) => { setHomeTeam(team); resetBulkState(); }}
+              exclude={awayTeam}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <label className="block">
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">
+                {awayTeam ? `${awayTeam.abbr} Season` : 'Away Season'}
+              </span>
+              <select
+                value={histSeasonA}
+                onChange={(e) => { setHistSeasonA(e.target.value); resetBulkState(); }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
+              >
+                {SIM_SEASON_OPTIONS.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">
+                {homeTeam ? `${homeTeam.abbr} Season` : 'Home Season'}
+              </span>
+              <select
+                value={histSeasonB}
+                onChange={(e) => { setHistSeasonB(e.target.value); resetBulkState(); }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
+              >
+                {SIM_SEASON_OPTIONS.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="block mb-4">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Series Length</span>
+            <select
+              value={histBestOf}
+              onChange={(e) => { setHistBestOf(Number(e.target.value)); resetBulkState(); }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
+            >
+              {SERIES_LENGTH_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+
+          {bulkProgress?.type === 'historical' && (
+            <div className="mb-4 text-center text-xs text-slate-400 font-mono">
+              {bulkProgress.label}: {bulkProgress.higherSeed?.abbr} {bulkProgress.higherWins} – {bulkProgress.lowerSeed?.abbr} {bulkProgress.lowerWins}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={runHistoricalSimulation}
+            disabled={!awayTeam || !homeTeam || simming}
+            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+          >
+            {simming ? (
+              <>
+                <BaseballSpinner size="xs" inline />
+                Simulating series…
+              </>
+            ) : '▶ Simulate Matchup'}
+          </button>
+
+          {historicalResult && <HistoricalResultsPanel result={historicalResult} />}
+
+          {!historicalResult && !simming && (
+            <div className="text-center py-10 text-slate-600 text-sm">
+              {awayTeam && homeTeam ? 'Set seasons and simulate the cross-era series' : 'Pick two teams to get started'}
+            </div>
+          )}
+        </>
       )}
 
       {tab === 'game' && (
@@ -365,19 +756,19 @@ export default function BaseballSimulator() {
                     <img src={teamLogoUrl(result.awayTeam.id)} className="w-14 h-14 object-contain" alt={result.awayTeam.abbr} />
                     <span className="text-[11px] text-slate-500 font-mono">{result.awayTeam.abbr}</span>
                   </div>
-                  <span className={`font-display text-6xl tabular-nums ${result.awayScore > result.homeScore ? 'text-white' : 'text-slate-600'}`}>
-                    {result.awayScore}
+                  <span className={`font-display text-6xl tabular-nums ${displayAwayScore > displayHomeScore ? 'text-white' : 'text-slate-600'}`}>
+                    {displayAwayScore}
                   </span>
                   <span className="text-slate-700 font-mono text-xl">—</span>
-                  <span className={`font-display text-6xl tabular-nums ${result.homeScore > result.awayScore ? 'text-white' : 'text-slate-600'}`}>
-                    {result.homeScore}
+                  <span className={`font-display text-6xl tabular-nums ${displayHomeScore > displayAwayScore ? 'text-white' : 'text-slate-600'}`}>
+                    {displayHomeScore}
                   </span>
                   <div className="flex flex-col items-center gap-2">
                     <img src={teamLogoUrl(result.homeTeam.id)} className="w-14 h-14 object-contain" alt={result.homeTeam.abbr} />
                     <span className="text-[11px] text-slate-500 font-mono">{result.homeTeam.abbr}</span>
                   </div>
                 </div>
-                {!isLiveMode && (
+                {result && (speed !== 'live' || isLiveComplete) && (
                   <div className="mt-4 text-center">
                     <span className={`inline-flex items-center gap-2 px-4 py-2 bg-${THEME_COLOR}-500/10 border border-${THEME_COLOR}-500/30 rounded-xl text-${THEME_COLOR}-400 text-sm font-semibold`}>
                       {result.winner.abbr} win{result.innings.length > 9 ? ` (F/${result.innings.length})` : '!'}
@@ -421,28 +812,57 @@ export default function BaseballSimulator() {
                 size="sm"
                 rounded="lg"
                 className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-1"
-                optionClassName="flex-1 py-1.5"
+                optionClassName="flex-1 py-1.5 text-[11px] sm:text-xs"
                 options={[
-                  { value: 'plays', label: 'Play-by-Play' },
+                  { value: 'plays', label: 'All Plays' },
+                  { value: 'scoring', label: 'Scoring Plays' },
                   { value: 'box', label: 'Box Score' },
                 ]}
               />
 
+              {speed === 'live' && result && isLiveMode && (
+                <button
+                  type="button"
+                  onClick={advanceLivePlay}
+                  className={`w-full py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 border border-${THEME_COLOR}-500/40 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2`}
+                >
+                  Next At-Bat
+                  <span className="text-[11px] font-mono text-white/70">
+                    {liveIdx + 1} / {totalPlays}
+                  </span>
+                </button>
+              )}
+
+              {resultTab === 'scoring' && (
+                <ScoringPlaysPanel
+                  plays={displayedPlays}
+                  emptyMessage={
+                    speed === 'live' && liveIdx === 0
+                      ? 'Press Next to step through at-bats.'
+                      : 'No runs scored in the plays shown.'
+                  }
+                />
+              )}
+
               {resultTab === 'plays' && (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-slate-800 flex justify-between items-center">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">Play by Play</span>
-                    <span className="text-[10px] text-slate-600 font-mono">{visiblePlays.length} plays</span>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">All Plays</span>
+                    <span className="text-[10px] text-slate-600 font-mono">{displayedPlays.length} plays</span>
                   </div>
-                  <div className="max-h-96 overflow-y-auto">
-                    {visiblePlays.map((play, index) => (
-                      <AtBatCard key={`${play.inning}-${play.batterId}-${index}`} play={play} index={index} />
-                    ))}
-                    {isLiveMode && (
-                      <div className="px-4 py-3 flex items-center gap-2 text-xs text-slate-500">
-                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-ping" />
-                        Simulating…
+                  <div ref={playsListRef} className="max-h-96 overflow-y-auto">
+                    {displayedPlays.length === 0 && speed === 'live' && liveIdx === 0 ? (
+                      <div className="px-4 py-8 text-center text-sm text-slate-600">
+                        Press <span className="text-slate-400 font-semibold">Next At-Bat</span> below to begin.
                       </div>
+                    ) : (
+                      displayedPlays.map((play, index) => (
+                        <AtBatCard
+                          key={`${play.inning}-${play.batterId}-${index}`}
+                          play={play}
+                          index={playListIndex(index)}
+                        />
+                      ))
                     )}
                   </div>
                 </div>
@@ -468,7 +888,7 @@ export default function BaseballSimulator() {
                   <div className="p-2">
                     <BoxScore
                       players={boxTab === 'away' ? result.boxAway : result.boxHome}
-                      teamName={boxTab === 'away' ? result.awayTeam.name : result.homeTeam.name}
+                      teamAbbr={boxTab === 'away' ? result.awayTeam.abbr : result.homeTeam.abbr}
                       pitcherLines={boxTab === 'away' ? result.pitcherLinesAway : result.pitcherLinesHome}
                     />
                   </div>

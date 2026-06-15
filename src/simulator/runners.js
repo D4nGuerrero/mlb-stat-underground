@@ -15,7 +15,7 @@ function score(runnersScored, runnerUpdates, runner, fromBase, runs) {
 }
 
 function scoreProbFrom2nd(bip, speed, outs) {
-  let p = 0.42;
+  let p = 0.48;
   if (bip?.ev >= 98) p += 0.22;
   else if (bip?.ev >= 92) p += 0.12;
   if (bip?.dist >= 280) p += 0.12;
@@ -26,7 +26,7 @@ function scoreProbFrom2nd(bip, speed, outs) {
 }
 
 function scoreProbFrom1stOnDouble(bip, speed) {
-  let p = 0.58;
+  let p = 0.64;
   if (bip?.ev >= 100) p += 0.18;
   if (bip?.dist >= 300) p += 0.1;
   p += speed * 0.08;

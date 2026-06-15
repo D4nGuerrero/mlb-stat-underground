@@ -70,26 +70,38 @@ export function buildPlayerFromRoster(entry) {
   };
 }
 
+function filterRosterWithStats(roster = []) {
+  return roster.filter((entry) => {
+    const stats = entry.person?.stats?.find((stat) =>
+      stat.group?.displayName?.toLowerCase() === 'hitting'
+      || stat.group?.displayName?.toLowerCase() === 'pitching',
+    );
+    return stats?.splits?.[0]?.stat;
+  }).slice(0, 26);
+}
+
 export async function fetchTeamRoster(teamId, season = CURRENT_SEASON) {
   try {
-    const hydrate = `person(stats(type=[season,statcastBatting],season=${season},group=[hitting,pitching]))`;
-    const activeRes = await fetch(
-      `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster/active?season=${season}&hydrate=${encodeURIComponent(hydrate)}`,
-    );
-    const activeData = await activeRes.json();
-    if (activeData.roster?.length) return activeData.roster;
+    const statTypes = season >= 2015 ? '[season,statcastBatting]' : '[season]';
+    const hydrate = `person(stats(type=${statTypes},season=${season},group=[hitting,pitching]))`;
 
-    const fullRes = await fetch(
-      `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster/fullRoster?season=${season}&hydrate=${encodeURIComponent(hydrate)}`,
-    );
-    const fullData = await fullRes.json();
-    return (fullData.roster || []).filter((entry) => {
-      const stats = entry.person?.stats?.find((stat) =>
-        stat.group?.displayName?.toLowerCase() === 'hitting'
-        || stat.group?.displayName?.toLowerCase() === 'pitching',
+    const fetchRoster = async (endpoint) => {
+      const res = await fetch(
+        `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster/${endpoint}?season=${season}&hydrate=${encodeURIComponent(hydrate)}`,
       );
-      return stats?.splits?.[0]?.stat;
-    }).slice(0, 26);
+      const data = await res.json();
+      return filterRosterWithStats(data.roster);
+    };
+
+    if (season < CURRENT_SEASON) {
+      const historical = await fetchRoster('fullRoster');
+      if (historical.length) return historical;
+    }
+
+    const active = await fetchRoster('active');
+    if (active.length) return active;
+
+    return fetchRoster('fullRoster');
   } catch {
     return [];
   }

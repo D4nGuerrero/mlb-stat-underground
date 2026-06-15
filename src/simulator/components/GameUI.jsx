@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
 import { THEME_COLOR } from '../../theme/theme.js';
 import { SegmentedControl, BaseballSpinner, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../../components/ui';
@@ -136,6 +137,34 @@ export function InningBox({ innings, awayTeam, homeTeam, lineHits, lineErrors })
   );
 }
 
+export function ScoringPlaysPanel({ plays, emptyMessage = 'No scoring plays.' }) {
+  const scoringPlays = plays.filter((play) => play.runs > 0);
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-slate-800 flex justify-between items-center">
+        <span className="text-[10px] text-slate-500 uppercase tracking-widest">Scoring Plays</span>
+        <span className="text-[10px] text-slate-600 font-mono">
+          {scoringPlays.length} play{scoringPlays.length !== 1 ? 's' : ''}
+          {scoringPlays.length > 0 && (
+            <span className="text-green-400/80 ml-1.5">
+              · {scoringPlays.reduce((sum, play) => sum + play.runs, 0)} R
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="max-h-96 overflow-y-auto">
+        {scoringPlays.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-slate-600">{emptyMessage}</div>
+        ) : (
+          scoringPlays.map((play, index) => (
+            <AtBatCard key={`${play.inning}-${play.batterId}-score-${index}`} play={play} index={index} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AtBatCard({ play, index }) {
   const outcomeColor = {
     HR: 'text-yellow-400', '3B': 'text-orange-400', '2B': 'text-blue-400',
@@ -249,7 +278,7 @@ function PitcherBox({ lines, title }) {
   );
 }
 
-export function BoxScore({ players, teamName, pitcherLines }) {
+export function BoxScore({ players, teamAbbr, pitcherLines }) {
   const totals = players.reduce((acc, player) => ({
     ab: acc.ab + player.ab,
     h: acc.h + player.h,
@@ -261,47 +290,68 @@ export function BoxScore({ players, teamName, pitcherLines }) {
     rbi: acc.rbi + player.rbi,
   }), { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, k: 0, rbi: 0 });
 
+  const teamAvg = totals.ab > 0 ? (totals.h / totals.ab).toFixed(3).replace('0.', '.') : '.000';
+
   return (
     <div>
       <div className={TABLE_SCROLL}>
         <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
           <thead>
             <tr className="text-slate-600 border-b border-slate-800">
-              <th className={`${stickyHead('bg-slate-900')} font-mono`}>{teamName}</th>
-              {['AB', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'K', 'AVG', 'OBP', 'SLG', 'EV'].map((label) => (
-                <th key={label} className={statHead('text-center font-mono')}>{label}</th>
+              <th className={`${stickyHead('bg-slate-900')} font-mono w-28 min-w-[7rem]`}>{teamAbbr}</th>
+              {['AB', 'H', '2B', '3B', 'HR', 'RBI', 'BB', 'K', 'AVG', 'OBP', 'SLG'].map((label) => (
+                <th
+                  key={label}
+                  className={statHead(`text-center font-mono px-1.5 ${['OBP', 'SLG'].includes(label) ? 'hidden sm:table-cell' : ''}`)}
+                >
+                  {label}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {players.map((player) => (
               <tr key={player.id} className="group border-t border-slate-800/50 hover:bg-slate-800/20">
-                <td className={stickyCell('bg-slate-900')}>
-                  <span className="text-slate-500 font-mono text-[10px] w-4 inline-block text-center mr-1">{player.lineupSlot || ''}</span>
-                  <span className="text-slate-300 font-medium whitespace-nowrap">
-                    <span className="sm:hidden">{player.name.split(' ').pop()}</span>
-                    <span className="hidden sm:inline">{player.name}</span>
-                  </span>
-                  <span className={`text-${THEME_COLOR}-600/80 text-[10px] ml-1 font-mono`}>{player.gamePos || player.pos}</span>
+                <td className={`${stickyCell('bg-slate-900')} max-w-[7rem]`}>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-slate-500 font-mono text-[10px] w-3 shrink-0 text-center">{player.lineupSlot || ''}</span>
+                    <span className="text-slate-300 font-medium truncate min-w-0">
+                      {player.name.split(' ').pop()}
+                    </span>
+                    <span className={`text-${THEME_COLOR}-600/80 text-[10px] font-mono shrink-0`}>{player.gamePos || player.pos}</span>
+                  </div>
                 </td>
-                <td className={statCell('text-slate-400')}>{player.ab}</td>
-                <td className={statCell('text-slate-300 font-semibold')}>{player.h}</td>
-                <td className={statCell('text-slate-400')}>{player.d || '—'}</td>
-                <td className={statCell('text-slate-400')}>{player.t || '—'}</td>
-                <td className={statCell(`font-semibold ${player.hr > 0 ? 'text-yellow-400' : 'text-slate-600'}`)}>{player.hr || '—'}</td>
-                <td className={statCell('text-slate-400')}>{player.rbi}</td>
-                <td className={statCell('text-slate-400')}>{player.bb || '—'}</td>
-                <td className={statCell('text-slate-400')}>{player.k || '—'}</td>
-                <td className={statCell('text-slate-400')}>{player.avg || '.000'}</td>
-                <td className={statCell('text-slate-400')}>{player.obp || '.000'}</td>
-                <td className={statCell('text-slate-400')}>{player.slg || '.000'}</td>
-                <td className={statCell('text-slate-500')}>{player.avgEV ?? '—'}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.ab}</td>
+                <td className={statCell('text-slate-300 font-semibold px-1.5')}>{player.h}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.d || '—'}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.t || '—'}</td>
+                <td className={statCell(`font-semibold px-1.5 ${player.hr > 0 ? 'text-yellow-400' : 'text-slate-600'}`)}>{player.hr || '—'}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.rbi}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.bb || '—'}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.k || '—'}</td>
+                <td className={statCell('text-slate-400 px-1.5')}>{player.avg || '.000'}</td>
+                <td className={statCell('text-slate-400 px-1.5 hidden sm:table-cell')}>{player.obp || '.000'}</td>
+                <td className={statCell('text-slate-400 px-1.5 hidden sm:table-cell')}>{player.slg || '.000'}</td>
               </tr>
             ))}
+            <tr className="border-t border-slate-700 font-semibold text-slate-300">
+              <td className={stickyCell('bg-slate-900')}>Totals</td>
+              <td className={statCell('px-1.5')}>{totals.ab}</td>
+              <td className={statCell('px-1.5')}>{totals.h}</td>
+              <td className={statCell('px-1.5')}>{totals.d || '—'}</td>
+              <td className={statCell('px-1.5')}>{totals.t || '—'}</td>
+              <td className={statCell('px-1.5')}>{totals.hr || '—'}</td>
+              <td className={statCell('px-1.5')}>{totals.rbi}</td>
+              <td className={statCell('px-1.5')}>{totals.bb || '—'}</td>
+              <td className={statCell('px-1.5')}>{totals.k || '—'}</td>
+              <td className={statCell('px-1.5')}>{teamAvg}</td>
+              <td className={statCell('px-1.5 hidden sm:table-cell')}>—</td>
+              <td className={statCell('px-1.5 hidden sm:table-cell')}>—</td>
+            </tr>
           </tbody>
         </table>
       </div>
-      <PitcherBox lines={pitcherLines} title={teamName} />
+      <PitcherBox lines={pitcherLines} title={teamAbbr} />
     </div>
   );
 }
@@ -326,3 +376,351 @@ export function ComingSoonPanel({ title, description }) {
     </div>
   );
 }
+
+function SimProgressBar({ current, total, label }) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  return (
+    <div className="mb-4">
+      <div className="flex justify-between text-[10px] text-slate-500 font-mono mb-1.5">
+        <span>{label}</span>
+        <span>{current} / {total} ({pct}%)</span>
+      </div>
+      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full bg-${THEME_COLOR}-500 transition-all duration-300`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function SimulatedGameDetail({ gameResult, onClose, title }) {
+  const [detailTab, setDetailTab] = useState('plays');
+  const [boxTab, setBoxTab] = useState('away');
+
+  if (!gameResult) return null;
+
+  const totalPlays = gameResult.plays?.length ?? 0;
+  const playListIndex = (index) => totalPlays - index - 1;
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">Game Detail</div>
+          {title && <div className="text-sm text-slate-300 font-mono mt-0.5">{title}</div>}
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-500 hover:text-slate-300 text-xs font-semibold px-2 py-1"
+          >
+            Close
+          </button>
+        )}
+      </div>
+
+      <div className="p-4 border-b border-slate-800">
+        <div className="flex items-center justify-center gap-4">
+          <div className="text-center">
+            <TeamAbbrCell team={gameResult.awayTeam} abbrOnly size="md" />
+            <div className={`text-3xl font-bold font-mono mt-1 ${gameResult.awayScore > gameResult.homeScore ? 'text-white' : 'text-slate-600'}`}>
+              {gameResult.awayScore}
+            </div>
+          </div>
+          <span className="text-slate-700 font-mono">—</span>
+          <div className="text-center">
+            <TeamAbbrCell team={gameResult.homeTeam} abbrOnly size="md" />
+            <div className={`text-3xl font-bold font-mono mt-1 ${gameResult.homeScore > gameResult.awayScore ? 'text-white' : 'text-slate-600'}`}>
+              {gameResult.homeScore}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 border-b border-slate-800">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Linescore</div>
+        <InningBox
+          innings={gameResult.innings}
+          awayTeam={gameResult.awayTeam}
+          homeTeam={gameResult.homeTeam}
+          lineHits={gameResult.lineHits}
+          lineErrors={gameResult.lineErrors}
+        />
+      </div>
+
+      <div className="p-2 border-b border-slate-800">
+        <SegmentedControl
+          value={detailTab}
+          onChange={setDetailTab}
+          variant="simulator"
+          size="sm"
+          rounded="lg"
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl p-1"
+          optionClassName="flex-1 py-1.5 text-[11px] sm:text-xs"
+          options={[
+            { value: 'plays', label: 'All Plays' },
+            { value: 'scoring', label: 'Scoring' },
+            { value: 'box', label: 'Box Score' },
+          ]}
+        />
+      </div>
+
+      <div className="p-2">
+        {detailTab === 'scoring' && (
+          <ScoringPlaysPanel plays={gameResult.plays} emptyMessage="No scoring plays." />
+        )}
+        {detailTab === 'plays' && (
+          <div className="max-h-96 overflow-y-auto">
+            {gameResult.plays.map((play, index) => (
+              <AtBatCard
+                key={`${play.inning}-${play.batterId}-${index}`}
+                play={play}
+                index={playListIndex(index)}
+              />
+            ))}
+          </div>
+        )}
+        {detailTab === 'box' && (
+          <div>
+            <div className="flex gap-1 p-2 border-b border-slate-800 mb-2">
+              <SegmentedControl
+                value={boxTab}
+                onChange={setBoxTab}
+                variant="simulator"
+                size="sm"
+                rounded="lg"
+                className="flex-1"
+                optionClassName="flex-1 py-1.5"
+                options={[
+                  { value: 'away', label: gameResult.awayTeam.abbr },
+                  { value: 'home', label: gameResult.homeTeam.abbr },
+                ]}
+              />
+            </div>
+            <BoxScore
+              players={boxTab === 'away' ? gameResult.boxAway : gameResult.boxHome}
+              teamAbbr={boxTab === 'away' ? gameResult.awayTeam.abbr : gameResult.homeTeam.abbr}
+              pitcherLines={boxTab === 'away' ? gameResult.pitcherLinesAway : gameResult.pitcherLinesHome}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function SeasonResultsPanel({ result }) {
+  const [selectedGame, setSelectedGame] = useState(null);
+
+  if (!result) return null;
+
+  const selectedEntry = selectedGame != null
+    ? result.gameLog.find((game) => game.gameNum === selectedGame)
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center">
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <TeamAbbrCell team={result.team} size="md" />
+          <span className="text-slate-500 text-sm">{result.season} Season</span>
+        </div>
+        <div className="text-4xl font-bold text-white font-mono mb-1">
+          {result.wins}–{result.losses}
+        </div>
+        <div className="text-slate-400 text-sm font-mono">
+          {result.pct} · {result.gamesPlayed} GP / {result.scheduleTotal} scheduled
+        </div>
+        <div className="text-slate-500 text-xs font-mono mt-2">
+          {result.actualWins}–{result.actualLosses} actual · {result.simWins}–{result.simLosses} simulated
+        </div>
+        <div className="text-slate-500 text-xs font-mono mt-1">
+          {result.runsScored} RS · {result.runsAllowed} RA · {result.runDiff >= 0 ? '+' : ''}{result.runDiff} diff
+        </div>
+      </div>
+
+      {selectedEntry?.gameResult && (
+        <SimulatedGameDetail
+          gameResult={selectedEntry.gameResult}
+          onClose={() => setSelectedGame(null)}
+          title={`G${selectedEntry.gameNum} vs ${selectedEntry.opponent.abbr} · ${selectedEntry.teamScore}–${selectedEntry.oppScore}`}
+        />
+      )}
+
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-800 flex justify-between items-center">
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest">Game Log</span>
+          <span className="text-[10px] text-slate-600 font-mono">Tap simulated games for detail</span>
+        </div>
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="text-slate-600 border-b border-slate-800">
+                <th className="px-3 py-2 text-left">#</th>
+                <th className="px-3 py-2 text-left">Opp</th>
+                <th className="px-3 py-2 text-center">Loc</th>
+                <th className="px-3 py-2 text-right">Score</th>
+                <th className="px-3 py-2 text-center">W/L</th>
+                <th className="px-3 py-2 text-center">Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...result.gameLog].reverse().map((game) => (
+                <tr
+                  key={game.gameNum}
+                  onClick={() => game.gameResult && setSelectedGame(game.gameNum)}
+                  className={`border-t border-slate-800/50 ${game.gameResult ? 'cursor-pointer hover:bg-slate-800/40' : ''} ${selectedGame === game.gameNum ? 'bg-slate-800/50' : ''}`}
+                >
+                  <td className="px-3 py-2 text-slate-600">{game.gameNum}</td>
+                  <td className="px-3 py-2">
+                    <TeamAbbrCell team={game.opponent} abbrOnly size="sm" abbrClassName="text-slate-300" />
+                  </td>
+                  <td className="px-3 py-2 text-center text-slate-500">{game.isHome ? 'H' : 'A'}</td>
+                  <td className="px-3 py-2 text-right text-slate-300">
+                    {game.teamScore}–{game.oppScore}
+                  </td>
+                  <td className={`px-3 py-2 text-center font-bold ${game.won ? 'text-green-400' : 'text-red-400'}`}>
+                    {game.won ? 'W' : 'L'}
+                  </td>
+                  <td className={`px-3 py-2 text-center text-[10px] ${game.simulated ? `text-${THEME_COLOR}-400` : 'text-slate-600'}`}>
+                    {game.simulated ? 'SIM' : 'ACT'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SeriesRow({ series, roundLabel }) {
+  const higherW = series.higherWins;
+  const lowerW = series.lowerWins;
+  return (
+    <div className="border-b border-slate-800/50 last:border-0 px-4 py-3">
+      <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-2">{roundLabel}</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <TeamAbbrCell team={series.higherSeed} abbrOnly size="sm" />
+          <span className={`font-mono font-bold text-sm ${series.winner.id === series.higherSeed.id ? 'text-green-400' : 'text-slate-400'}`}>
+            {higherW}
+          </span>
+        </div>
+        <span className="text-slate-600 text-xs font-mono">vs</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`font-mono font-bold text-sm ${series.winner.id === series.lowerSeed.id ? 'text-green-400' : 'text-slate-400'}`}>
+            {lowerW}
+          </span>
+          <TeamAbbrCell team={series.lowerSeed} abbrOnly size="sm" />
+        </div>
+      </div>
+      <div className="text-[10px] text-slate-600 font-mono mt-1.5">
+        {series.games.map((g) => `${g.awayTeam.abbr} ${g.awayScore}–${g.homeScore} ${g.homeTeam.abbr}`).join(' · ')}
+      </div>
+    </div>
+  );
+}
+
+export function PlayoffResultsPanel({ result }) {
+  if (!result) return null;
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">{result.season} Champions</div>
+        <div className="flex items-center justify-center gap-3">
+          <TeamAbbrCell team={result.champion} size="lg" />
+        </div>
+        <div className="text-white font-semibold mt-2">{result.champion.name}</div>
+      </div>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-800">
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest">Bracket</span>
+        </div>
+        {result.rounds.map((round) => (
+          <SeriesRow key={round.round} series={round} roundLabel={round.round} />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-center text-xs font-mono text-slate-500">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider mb-1">AL Seeds</div>
+          {result.seeds.AL.map((team, i) => (
+            <div key={team.id} className="text-slate-400">{i + 1}. {team.abbr}</div>
+          ))}
+        </div>
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider mb-1">NL Seeds</div>
+          {result.seeds.NL.map((team, i) => (
+            <div key={team.id} className="text-slate-400">{i + 1}. {team.abbr}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function HistoricalResultsPanel({ result }) {
+  const [selectedGame, setSelectedGame] = useState(null);
+
+  if (!result) return null;
+  const { series } = result;
+  const selectedEntry = selectedGame != null
+    ? series.games.find((game) => game.gameNum === selectedGame)
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Series Winner</div>
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <TeamAbbrCell team={result.champion} size="lg" />
+        </div>
+        <div className="text-slate-400 text-sm font-mono">
+          {result.teamA.abbr} ({result.seasonA}) vs {result.teamB.abbr} ({result.seasonB})
+        </div>
+        <div className="text-2xl font-bold text-white font-mono mt-2">
+          {series.higherWins}–{series.lowerWins}
+        </div>
+        <div className="text-[10px] text-slate-600 mt-2">
+          Each team uses {result.teamA.abbr} {result.seasonA} stats and {result.teamB.abbr} {result.seasonB} stats
+        </div>
+      </div>
+
+      {selectedEntry?.gameResult && (
+        <SimulatedGameDetail
+          gameResult={selectedEntry.gameResult}
+          onClose={() => setSelectedGame(null)}
+          title={`Game ${selectedEntry.gameNum} · ${selectedEntry.awayTeam.abbr} ${selectedEntry.awayScore}–${selectedEntry.homeScore} ${selectedEntry.homeTeam.abbr}`}
+        />
+      )}
+
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-800 flex justify-between items-center">
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest">Games</span>
+          <span className="text-[10px] text-slate-600 font-mono">Tap a game for box score & plays</span>
+        </div>
+        {series.games.map((game) => (
+          <button
+            key={game.gameNum}
+            type="button"
+            onClick={() => setSelectedGame(game.gameNum)}
+            className={`w-full px-4 py-3 border-b border-slate-800/50 flex items-center justify-between text-left transition-colors hover:bg-slate-800/40 ${selectedGame === game.gameNum ? 'bg-slate-800/50' : ''}`}
+          >
+            <span className="text-slate-600 text-xs font-mono">G{game.gameNum}</span>
+            <div className="flex items-center gap-2 text-sm font-mono">
+              <TeamAbbrCell team={game.awayTeam} abbrOnly size="sm" />
+              <span className="text-white font-bold">{game.awayScore}–{game.homeScore}</span>
+              <TeamAbbrCell team={game.homeTeam} abbrOnly size="sm" />
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export { SimProgressBar };

@@ -1,6 +1,6 @@
 import { describeBipPlay } from './battedBall';
 import { DEFAULT_PARK, LEAGUE_AVG, PARK_FACTORS } from './constants';
-import { normalizeProbabilities } from './math';
+import { classifyBattedBall, normalizeProbabilities, weightedOutcome } from './math';
 
 export function batterProbabilities(stats) {
   if (!stats) return { ...LEAGUE_AVG };
@@ -20,6 +20,58 @@ export function batterProbabilities(stats) {
     HR: hr, '3B': triple, '2B': doubles, '1B': singles,
     BB: bb, HBP: hbp, K: k, OUT: out,
   });
+}
+
+const OUTCOME_KEYS = ['HR', '3B', '2B', '1B', 'BB', 'HBP', 'K', 'OUT'];
+
+/** Prefer platoon split (vl/vr) when the sample is large enough. */
+export function batterProbabilitiesForMatchup(batter, pitcherHand) {
+  const sit = batter?.sitSplits;
+  if (sit && pitcherHand) {
+    const key = pitcherHand === 'L' ? 'vl' : 'vr';
+    const split = sit[key];
+    const pa = split?.plateAppearances || split?.atBats || 0;
+    if (pa >= 25) return batterProbabilities(split);
+  }
+  return batterProbabilities(batter?.stats);
+}
+
+export function pitcherAllowedProbabilities(pitcherStats) {
+  if (!pitcherStats) return null;
+  const ip = pitcherStats.inningsPitched || 0;
+  if (ip < 5) return null;
+
+  const bf = Math.max(ip * 4.3, 1);
+  const hits = pitcherStats.hits || 0;
+  const hr = pitcherStats.homeRuns || 0;
+  const triple = pitcherStats.triples || 0;
+  const doubles = pitcherStats.doubles || 0;
+  const singles = Math.max(0, hits - hr - triple - doubles);
+  const bb = pitcherStats.baseOnBalls || 0;
+  const hbp = pitcherStats.hitByPitch || 0;
+  const k = pitcherStats.strikeOuts || 0;
+  const out = Math.max(0.05, 1 - (hr + triple + doubles + singles + bb + hbp + k) / bf);
+
+  return normalizeProbabilities({
+    HR: hr / bf,
+    '3B': triple / bf,
+    '2B': doubles / bf,
+    '1B': singles / bf,
+    BB: bb / bf,
+    HBP: hbp / bf,
+    K: k / bf,
+    OUT: out,
+  });
+}
+
+/** Bill James Log5 — both batter skill and pitcher allowance shape the rate. */
+export function log5Blend(batterP, pitcherP, leagueP) {
+  const p = batterP ?? leagueP;
+  const q = pitcherP ?? leagueP;
+  if (leagueP <= 0 || leagueP >= 1) return p;
+  const numerator = (p * q) / leagueP;
+  const denominator = numerator + ((1 - p) * (1 - q)) / (1 - leagueP);
+  return denominator > 0 ? numerator / denominator : leagueP;
 }
 
 export function applyStatcastAdjustments(probs, statcastStats) {
@@ -48,30 +100,16 @@ export function applyStatcastAdjustments(probs, statcastStats) {
   });
 }
 
-/** Log5-style geometric blend of batter rates with pitcher allowed rates. */
+/** Log5 blend of batter rates with pitcher allowed rates for every outcome. */
 export function blendWithPitcher(batterProbs, pitcherStats) {
-  if (!pitcherStats) return batterProbs;
-  const ip = pitcherStats.inningsPitched || 50;
-  if (ip < 5) return batterProbs;
+  const pitcherProbs = pitcherAllowedProbabilities(pitcherStats);
+  if (!pitcherProbs) return batterProbs;
 
-  const bf = ip * 4.3;
-  const pK = Math.min(0.40, (pitcherStats.strikeOuts || 0) / bf);
-  const pBB = Math.min(0.20, (pitcherStats.baseOnBalls || 0) / bf);
-  const pHR = Math.min(0.08, (pitcherStats.homeRuns || 0) / bf);
-  const kRatio = (pK + LEAGUE_AVG.K) > 0 ? pK / LEAGUE_AVG.K : 1;
-  const bbRatio = (pBB + LEAGUE_AVG.BB) > 0 ? pBB / LEAGUE_AVG.BB : 1;
-  const hrRatio = (pHR + LEAGUE_AVG.HR) > 0 ? pHR / LEAGUE_AVG.HR : 1;
-
-  return normalizeProbabilities({
-    HR: batterProbs.HR * Math.sqrt(hrRatio),
-    '3B': batterProbs['3B'],
-    '2B': batterProbs['2B'],
-    '1B': batterProbs['1B'],
-    BB: batterProbs.BB * Math.sqrt(bbRatio),
-    HBP: batterProbs.HBP,
-    K: batterProbs.K * Math.sqrt(kRatio),
-    OUT: batterProbs.OUT,
-  });
+  const blended = {};
+  for (const key of OUTCOME_KEYS) {
+    blended[key] = log5Blend(batterProbs[key], pitcherProbs[key], LEAGUE_AVG[key]);
+  }
+  return normalizeProbabilities(blended);
 }
 
 export function applyParkFactor(probs, homeTeamId) {
@@ -82,6 +120,73 @@ export function applyParkFactor(probs, homeTeamId) {
     '2B': probs['2B'] * ((pf.hits - 1) * 0.5 + 1),
     '1B': probs['1B'] * ((pf.hits - 1) * 0.3 + 1),
   });
+}
+
+/** BIP-only weights from the batter/pitcher Log5 matchup (target ~.295 BABIP). */
+export function bipContactWeights(paProbs) {
+  const hitMass = paProbs.HR + paProbs['3B'] + paProbs['2B'] + paProbs['1B'];
+  const bipMass = hitMass + paProbs.OUT;
+  if (bipMass <= 0) {
+    return normalizeProbabilities({
+      HR: LEAGUE_AVG.HR,
+      '3B': LEAGUE_AVG['3B'],
+      '2B': LEAGUE_AVG['2B'],
+      '1B': LEAGUE_AVG['1B'],
+      OUT: LEAGUE_AVG.OUT,
+    });
+  }
+
+  const babipTarget = 0.295;
+  const babipScale = Math.max(0.88, Math.min(1.22, babipTarget / (hitMass / bipMass)));
+
+  return normalizeProbabilities({
+    HR: paProbs.HR * babipScale,
+    '3B': paProbs['3B'] * babipScale,
+    '2B': paProbs['2B'] * babipScale,
+    '1B': paProbs['1B'] * babipScale * 1.04,
+    OUT: paProbs.OUT / babipScale,
+  });
+}
+
+/**
+ * Resolve a batted-ball outcome from matchup rates, then gate by EV/LA/contact shape.
+ * This keeps pitch-by-pitch physics while anchoring hit rates to season stats.
+ */
+export function resolveBipOutcome(paProbs, { exitVelocity, launchAngle, parkHr = 1 }) {
+  const bbm = classifyBattedBall(launchAngle);
+  const base = bipContactWeights(paProbs);
+
+  if (launchAngle > 50 || bbm === 'PU') {
+    return weightedOutcome(normalizeProbabilities({ OUT: 0.86, '1B': 0.14 }));
+  }
+
+  const ev = exitVelocity;
+  const mult = { HR: 1, '3B': 1, '2B': 1, '1B': 1, OUT: 1 };
+
+  if (bbm === 'GB') {
+    mult.HR = 0.05;
+    mult['3B'] = 0.1;
+    mult['2B'] = ev >= 98 ? 0.9 : ev >= 92 ? 0.6 : 0.3;
+    mult['1B'] = ev >= 88 ? 1.4 : 1.2;
+    mult.OUT = ev >= 96 ? 0.7 : 0.92;
+  } else if (bbm === 'LD') {
+    mult.HR = ev >= 100 ? 1.7 : ev >= 95 ? 1.05 : 0.4;
+    mult['2B'] = 1.5;
+    mult['1B'] = 1.3;
+    mult.OUT = ev >= 98 ? 0.5 : 0.68;
+  } else if (bbm === 'FB') {
+    mult.HR = ev >= 105 ? 3.0 * parkHr : ev >= 100 ? 2.0 * parkHr : ev >= 95 ? 1.05 * parkHr : 0.3;
+    mult['2B'] = ev >= 100 ? 0.95 : 0.5;
+    mult['1B'] = 0.4;
+    mult.OUT = ev >= 100 ? 0.42 : 0.65;
+  }
+
+  const scaled = {};
+  for (const key of ['HR', '3B', '2B', '1B', 'OUT']) {
+    scaled[key] = (base[key] ?? 0) * mult[key];
+  }
+
+  return weightedOutcome(normalizeProbabilities(scaled));
 }
 
 const BASE_LABEL = { 1: 'first', 2: 'second', 3: 'third' };

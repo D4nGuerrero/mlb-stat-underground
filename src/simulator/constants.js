@@ -1,4 +1,17 @@
 export const CURRENT_SEASON = 2026;
+export const HISTORICAL_SEASON_MIN = 2003;
+
+export const SIM_SEASON_OPTIONS = Array.from(
+  { length: CURRENT_SEASON - HISTORICAL_SEASON_MIN + 1 },
+  (_, index) => String(CURRENT_SEASON - index),
+);
+
+export const SERIES_LENGTH_OPTIONS = [
+  { value: 1, label: 'Single Game' },
+  { value: 3, label: 'Best of 3' },
+  { value: 5, label: 'Best of 5' },
+  { value: 7, label: 'Best of 7' },
+];
 
 export const LEAGUE_AVG = {
   HR: 0.033, '3B': 0.005, '2B': 0.048, '1B': 0.145,

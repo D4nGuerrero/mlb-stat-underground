@@ -36,7 +36,9 @@ import {
 import { TabBar, Modal, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import GamePreviewView from '../components/GamePreviewView';
+import GameLineupsView from '../components/GameLineupsView';
 import { formatGameStartDisplay, formatVenueLine } from '../utils/gamePreview';
+import { fetchGameLineups, lineupsAvailable } from '../utils/gameLineups';
 import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../utils/liveFeedMerge';
 import {
   buildLiveRecentPlaysFeed,
@@ -994,6 +996,9 @@ export default function GamePage() {
   const [pinnedVideo, setPinnedVideo] = useState(null);
   const [daySchedule, setDaySchedule] = useState([]);
   const [dayScheduleLoading, setDayScheduleLoading] = useState(false);
+  const [previewLineups, setPreviewLineups] = useState(null);
+  const [previewLineupsLoading, setPreviewLineupsLoading] = useState(false);
+  const [previewTab, setPreviewTab] = useState('preview');
 
   const fetchGame = useCallback(async () => {
     try {
@@ -1048,7 +1053,47 @@ export default function GamePage() {
     setGameContent(null);
     setExpandedVideoKey(null);
     setPinnedVideo(null);
+    setPreviewTab('preview');
+    setPreviewLineups(null);
   }, [gamePk]);
+
+  useEffect(() => {
+    if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Preview') {
+      setPreviewLineups(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadLineups = () => {
+      setPreviewLineupsLoading(true);
+      return fetchGameLineups(gamePk)
+        .then((data) => {
+          if (!cancelled) setPreviewLineups(data);
+          return data;
+        })
+        .catch(() => {
+          if (!cancelled) setPreviewLineups(null);
+          return null;
+        })
+        .finally(() => {
+          if (!cancelled) setPreviewLineupsLoading(false);
+        });
+    };
+
+    loadLineups();
+    const interval = setInterval(() => {
+      if (cancelled) return;
+      loadLineups().then((data) => {
+        if (lineupsAvailable(data)) clearInterval(interval);
+      });
+    }, 90_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [gamePk, feed?.gameData?.status?.abstractGameState]);
 
   const { status: wsStatus, lastUpdate } = useMLBWebSocket(
     gamePk ? parseInt(gamePk) : null,
@@ -2148,13 +2193,36 @@ export default function GamePage() {
         </div>
 
         {isPreview ? (
-          <GamePreviewView
-            gamePk={gamePk}
-            probablePitchers={gd.probablePitchers}
-            away={away}
-            home={home}
-            season={previewSeason}
-          />
+          <>
+            {lineupsAvailable(previewLineups) && (
+              <TabBar
+                variant="page"
+                tabs={[
+                  { key: 'preview', label: 'Preview' },
+                  { key: 'lineups', label: 'Lineups' },
+                ]}
+                activeKey={previewTab}
+                onChange={setPreviewTab}
+              />
+            )}
+            {previewTab === 'lineups' && lineupsAvailable(previewLineups) ? (
+              previewLineupsLoading ? (
+                <div className="flex justify-center py-10">
+                  <BaseballSpinner size="lg" />
+                </div>
+              ) : (
+                <GameLineupsView lineups={previewLineups} away={away} home={home} />
+              )
+            ) : (
+              <GamePreviewView
+                gamePk={gamePk}
+                probablePitchers={gd.probablePitchers}
+                away={away}
+                home={home}
+                season={previewSeason}
+              />
+            )}
+          </>
         ) : (
           <>
         {/* Tab nav */}

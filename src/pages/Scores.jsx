@@ -4,7 +4,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
-import { LiveSituationStack } from '../components/LiveGameIndicators';
+import {
+  BaseDiamondIndicator,
+  formatLiveInningLabel,
+  LiveSituationStack,
+  OutsIndicator,
+} from '../components/LiveGameIndicators';
 import { SegmentedControl, SwipeableCarousel, BaseballSpinner, LoadingSpinner } from '../components/ui';
 
 const MIN_DATE = new Date('2024-03-01');
@@ -434,25 +439,25 @@ export default function Scores() {
   }, []);
 
   const sortGames = (games) => [...(games ?? [])].sort((a, b) => {
+    const isFav = (g) => {
+      const awayId = Number(g.teams?.away?.team?.id);
+      const homeId = Number(g.teams?.home?.team?.id);
+      return favoriteTeams.includes(awayId) || favoriteTeams.includes(homeId);
+    };
+    const fa = isFav(a);
+    const fb = isFav(b);
+    if (fa !== fb) return fa ? -1 : 1;
+
     const priority = (g) => {
       const state = g.status.abstractGameState;
       if (state === 'Live') return 0;
       if (state === 'Final') return 2;
       return 1; // Preview / Scheduled / Delayed
     };
-    const pa = priority(a), pb = priority(b);
+    const pa = priority(a);
+    const pb = priority(b);
     if (pa !== pb) return pa - pb;
 
-    // Favorite teams first (within same bucket)
-    const isFav = (g) => {
-      const awayId = g.teams?.away?.team?.id;
-      const homeId = g.teams?.home?.team?.id;
-      return favoriteTeams.includes(awayId) || favoriteTeams.includes(homeId);
-    };
-    const fa = isFav(a), fb = isFav(b);
-    if (fa !== fb) return fa ? -1 : 1;
-
-    // Within upcoming, sort by time
     if (pa === 1) return new Date(a.gameDate) - new Date(b.gameDate);
     return 0;
   });
@@ -572,6 +577,67 @@ export default function Scores() {
     }
 
     if (viewMode === 'grid') {
+      const formatGridStartTime = (gameDate) => (
+        gameDate
+          ? new Date(gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+          : '—'
+      );
+
+      const renderGridStatusCorner = (game, { isLive, isFinal, isDelayed, isPostponed }) => {
+        if (isLive) {
+          if (game.linescore) {
+            return (
+              <div className="flex items-start gap-1.5">
+                <span className="text-[11px] font-bold text-red-400 font-mono tracking-wide leading-none pt-0.5">
+                  {formatLiveInningLabel(game.linescore)}
+                </span>
+                <div className="flex flex-col items-center gap-0.5">
+                  <BaseDiamondIndicator
+                    onFirst={Boolean(game.linescore.offense?.first)}
+                    onSecond={Boolean(game.linescore.offense?.second)}
+                    onThird={Boolean(game.linescore.offense?.third)}
+                    size="xs"
+                  />
+                  <OutsIndicator outs={game.linescore.outs ?? 0} size="xs" />
+                </div>
+              </div>
+            );
+          }
+          return (
+            <span className="text-[11px] font-bold text-red-400 tracking-wide">LIVE</span>
+          );
+        }
+
+        if (isPostponed) {
+          return <span className="text-[11px] font-bold text-orange-400">PPD</span>;
+        }
+
+        if (isDelayed) {
+          return (
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-[11px] font-bold text-yellow-400">DELAYED</span>
+              {game.gameDate && (
+                <span className="text-[10px] text-slate-500 font-mono">{formatGridStartTime(game.gameDate)}</span>
+              )}
+            </div>
+          );
+        }
+
+        if (isFinal) {
+          return (
+            <span className="text-[11px] font-bold text-slate-500 font-mono tracking-wide">
+              {formatFinalStatus(game.linescore)}
+            </span>
+          );
+        }
+
+        return (
+          <span className="text-[11px] text-slate-400 font-mono font-semibold">
+            {formatGridStartTime(game.gameDate)}
+          </span>
+        );
+      };
+
       return (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {sortedGames.map((game) => {
@@ -580,69 +646,77 @@ export default function Scores() {
             const homeScore = game.teams.home.score ?? 0;
             const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
             const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
+            const awayRec = game.teams.away.leagueRecord;
+            const homeRec = game.teams.home.leagueRecord;
             const noHitAlerts = getNoHitAlert(game);
+
             return (
               <div
                 key={game.gamePk}
                 onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
-                className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-3 cursor-pointer transition-all active:scale-[0.97]"
+                className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-3.5 cursor-pointer transition-all active:scale-[0.97]"
               >
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex gap-1 flex-wrap">
+                <div className="flex justify-between items-start gap-2 mb-3 min-h-[2rem]">
+                  <div className="min-w-0">
+                    {renderGridStatusCorner(game, { isLive, isFinal, isDelayed, isPostponed })}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {isLive && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] text-red-400 font-bold">
+                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
+                      </span>
+                    )}
                     {noHitAlerts?.map((a) => (
                       <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
                         {a.label}
                       </span>
                     ))}
                   </div>
-                  {isPostponed ? (
-                    <span className="text-[10px] font-bold text-orange-400">PPD</span>
-                  ) : isDelayed && !isLive ? (
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] font-bold text-yellow-400">DELAYED</span>
-                      {game.gameDate && <span className="text-[9px] text-slate-600 font-mono">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
-                    </div>
-                  ) : isDelayed ? (
-                    <span className="text-[10px] font-bold text-yellow-400">DELAYED</span>
-                  ) : isLive ? (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400">
-                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
-                    </span>
-                  ) : isFinal ? (
-                    <span className="text-[10px] text-slate-500">{formatFinalStatus(game.linescore)}</span>
-                  ) : (
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {game.gameDate ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
-                    </span>
-                  )}
                 </div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <img src={teamLogoUrl(game.teams.away.team.id)} className="w-6 h-6 object-contain" alt="" onError={(e) => (e.target.style.display = 'none')} />
-                    <span className={`text-xs font-medium truncate max-w-[70px] ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-300'}`}>
-                      {game.teams.away.team.name?.split(' ').pop()}
-                    </span>
+
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={teamLogoUrl(game.teams.away.team.id)}
+                      className="w-9 h-9 object-contain flex-shrink-0"
+                      alt=""
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <div className="min-w-0">
+                      <div className={`text-sm font-bold truncate ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>
+                        {game.teams.away.team.abbreviation}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono tabular-nums">
+                        {awayRec ? `${awayRec.wins}-${awayRec.losses}` : '\u00A0'}
+                      </div>
+                    </div>
                   </div>
-                  <span className={`font-mono text-sm tabular-nums font-bold ${awayWin ? 'text-white' : 'text-slate-400'}`}>
+                  <span className={`font-mono text-base tabular-nums font-bold flex-shrink-0 ${awayWin ? 'text-white' : 'text-slate-400'}`}>
                     {(isLive || isFinal) ? (game.teams.away.score ?? 0) : '—'}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <img src={teamLogoUrl(game.teams.home.team.id)} className="w-6 h-6 object-contain" alt="" onError={(e) => (e.target.style.display = 'none')} />
-                    <span className={`text-xs font-medium truncate max-w-[70px] ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-300'}`}>
-                      {game.teams.home.team.name?.split(' ').pop()}
-                    </span>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={teamLogoUrl(game.teams.home.team.id)}
+                      className="w-9 h-9 object-contain flex-shrink-0"
+                      alt=""
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <div className="min-w-0">
+                      <div className={`text-sm font-bold truncate ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>
+                        {game.teams.home.team.abbreviation}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono tabular-nums">
+                        {homeRec ? `${homeRec.wins}-${homeRec.losses}` : '\u00A0'}
+                      </div>
+                    </div>
                   </div>
-                  <span className={`font-mono text-sm tabular-nums font-bold ${homeWin ? 'text-white' : 'text-slate-400'}`}>
+                  <span className={`font-mono text-base tabular-nums font-bold flex-shrink-0 ${homeWin ? 'text-white' : 'text-slate-400'}`}>
                     {(isLive || isFinal) ? (game.teams.home.score ?? 0) : '—'}
                   </span>
                 </div>
-                {isLive && game.linescore && (
-                  <div className="mt-2 pt-2 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono text-center">
-                    {game.linescore.inningHalf === 'Top' ? '▲' : '▼'}{game.linescore.currentInningOrdinal} · {game.linescore.outs ?? 0}out
-                  </div>
-                )}
               </div>
             );
           })}

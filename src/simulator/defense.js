@@ -54,12 +54,12 @@ export function fieldingHitConversion(bip, batter, defenseRating) {
   if (!bip) return 0;
   let p = 0;
   if (bip.battedBallType === 'GB' && bip.ev < 88) {
-    p = 0.08;
-    if (isPullSpray(batter?.batsHand || 'R', bip.spray)) p += 0.06;
+    p = 0.05;
+    if (isPullSpray(batter?.batsHand || 'R', bip.spray)) p += 0.04;
   }
-  if (bip.battedBallType === 'LD' && bip.ev < 92) p = 0.05;
-  if (bip.battedBallType === 'FB' && bip.dist < 260) p = 0.04;
-  return Math.min(0.22, p * defenseRating);
+  if (bip.battedBallType === 'LD' && bip.ev < 92) p = 0.03;
+  if (bip.battedBallType === 'FB' && bip.dist < 260) p = 0.025;
+  return Math.min(0.12, p * defenseRating * 0.7);
 }
 
 export function sacFlyEligible(bip, bases, outs) {

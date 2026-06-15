@@ -1,29 +1,21 @@
 import { buildBipResult, simulateSprayAngle } from './battedBall';
 import { DEFAULT_PARK, LEAGUE_AVG, PARK_FACTORS, PITCH_DEFS } from './constants';
-import { randn, weightedOutcome } from './math';
+import { randn } from './math';
 import {
   applyParkFactor,
   applyStatcastAdjustments,
-  batterProbabilities,
+  batterProbabilitiesForMatchup,
   blendWithPitcher,
+  resolveBipOutcome,
 } from './probability';
 
-function getPaProbabilities(batter, pitcherStats, homeTeamId) {
-  let probs = batterProbabilities(batter?.stats);
+function getPaProbabilities(batter, pitcher, homeTeamId) {
+  const pitcherHand = pitcher?.throwsHand || 'R';
+  let probs = batterProbabilitiesForMatchup(batter, pitcherHand);
   probs = applyStatcastAdjustments(probs, batter?.statcastStats);
-  probs = blendWithPitcher(probs, pitcherStats);
+  probs = blendWithPitcher(probs, pitcher?.pitchingStats);
   probs = applyParkFactor(probs, homeTeamId);
   return probs;
-}
-
-function scaleWeights(base, paProbs, parkHr = 1) {
-  const scaled = {};
-  for (const [key, weight] of Object.entries(base)) {
-    const rate = paProbs[key] ?? LEAGUE_AVG[key] ?? 0.1;
-    const league = LEAGUE_AVG[key] ?? 0.1;
-    scaled[key] = weight * (rate / league) * (key === 'HR' ? parkHr : 1);
-  }
-  return scaled;
 }
 
 function buildPitcherArsenal(pitcherStats) {
@@ -109,7 +101,18 @@ function simulateBip(velocity, pitchType, inZone, zone, plateX, plateZ, batter, 
     const pa = battingStats.plateAppearances || battingStats.atBats || 400;
     if (pa > 30) baseEV = 85 + ((battingStats.slg || 0.400) - (battingStats.avg || 0.250)) * 28;
   }
-  if (pitcherStats) baseEV -= (4.0 - (parseFloat(pitcherStats.era) || 4.0)) * 0.6;
+
+  const avg = parseFloat(battingStats?.avg) || 0.24;
+  const slug = parseFloat(battingStats?.slg) || avg + 0.16;
+  const iso = slug - avg;
+  const contactQuality =
+    ((paProbs.HR / LEAGUE_AVG.HR) * 0.35
+      + (paProbs['2B'] / LEAGUE_AVG['2B']) * 0.25
+      + (paProbs['1B'] / LEAGUE_AVG['1B']) * 0.20
+      + iso * 1.8
+      + (paProbs.K / LEAGUE_AVG.K) * -0.28
+      + (paProbs.OUT / LEAGUE_AVG.OUT) * -0.08);
+  baseEV *= Math.max(0.84, Math.min(1.22, Math.sqrt(Math.max(0.45, contactQuality))));
 
   const velMean = PITCH_DEFS[pitchType]?.velMean || 90;
   const locationPenalty = !inZone ? -2.5 : zone === 5 ? 1.5 : 0;
@@ -129,33 +132,11 @@ function simulateBip(velocity, pitchType, inZone, zone, plateX, plateZ, batter, 
   const sprayAngle = simulateSprayAngle(batter, plateX, pitchType);
   const park = PARK_FACTORS[homeTeamId] || DEFAULT_PARK;
 
-  let outcome;
-  if (launchAngle > 50) outcome = 'OUT';
-  else if (launchAngle < 0) {
-    outcome = Math.random() < (exitVelocity > 98 ? 0.35 : 0.24)
-      ? '1B'
-      : weightedOutcome(scaleWeights({ OUT: 0.76, '1B': 0.24 }, paProbs));
-  } else if (launchAngle < 10) {
-    outcome = weightedOutcome(scaleWeights(
-      exitVelocity > 95 ? { '1B': 0.32, OUT: 0.68 } : { '1B': 0.26, OUT: 0.74 },
-      paProbs,
-    ));
-  } else if (launchAngle < 25) {
-    outcome = exitVelocity >= 95
-      ? weightedOutcome(scaleWeights({ '1B': 0.35, '2B': 0.28, '3B': 0.05, HR: 0.04, OUT: 0.28 }, paProbs, park.hr))
-      : weightedOutcome(scaleWeights({ '1B': 0.44, '2B': 0.18, OUT: 0.38 }, paProbs));
-  } else if (launchAngle <= 35) {
-    if (exitVelocity >= 103) outcome = weightedOutcome(scaleWeights({ HR: 0.85, '2B': 0.06, OUT: 0.09 }, paProbs, park.hr));
-    else if (exitVelocity >= 98) outcome = weightedOutcome(scaleWeights({ HR: 0.55, '2B': 0.22, OUT: 0.23 }, paProbs, park.hr));
-    else if (exitVelocity >= 90) outcome = weightedOutcome(scaleWeights({ HR: 0.18, '2B': 0.25, '1B': 0.10, OUT: 0.47 }, paProbs, park.hr));
-    else outcome = weightedOutcome(scaleWeights({ '1B': 0.15, '2B': 0.08, OUT: 0.77 }, paProbs));
-  } else if (exitVelocity >= 100) {
-    outcome = weightedOutcome(scaleWeights({ HR: 0.68, '2B': 0.12, OUT: 0.20 }, paProbs, park.hr));
-  } else if (exitVelocity >= 90) {
-    outcome = weightedOutcome(scaleWeights({ HR: 0.22, '2B': 0.18, OUT: 0.60 }, paProbs, park.hr));
-  } else {
-    outcome = weightedOutcome(scaleWeights({ '2B': 0.05, OUT: 0.95 }, paProbs));
-  }
+  const outcome = resolveBipOutcome(paProbs, {
+    exitVelocity,
+    launchAngle,
+    parkHr: park.hr,
+  });
 
   const bip = buildBipResult({
     ev: exitVelocity,
@@ -178,7 +159,7 @@ export function simulateAtBat(batter, pitcher, homeTeamId, options = {}) {
   const pitcherStats = pitcher?.pitchingStats;
   const arsenal = buildPitcherArsenal(pitcherStats);
   const battingStats = batter?.stats;
-  const paProbs = getPaProbabilities(batter, pitcherStats, homeTeamId);
+  const paProbs = getPaProbabilities(batter, pitcher, homeTeamId);
   const pitches = [];
   let balls = 0;
   let strikes = 0;
@@ -200,9 +181,11 @@ export function simulateAtBat(batter, pitcher, homeTeamId, options = {}) {
     const location = generatePitchLocation(pitcherStats, balls);
     const kSkill = (paProbs.K || LEAGUE_AVG.K) / LEAGUE_AVG.K;
     const bbSkill = (paProbs.BB || LEAGUE_AVG.BB) / LEAGUE_AVG.BB;
+    const contactSkill =
+      ((paProbs.HR + paProbs['2B'] + paProbs['1B']) / (LEAGUE_AVG.HR + LEAGUE_AVG['2B'] + LEAGUE_AVG['1B']));
 
-    let zoneSwing = 0.68;
-    let chaseSwing = 0.28;
+    let zoneSwing = 0.68 * Math.max(0.85, Math.min(1.12, 1.08 - (kSkill - 1) * 0.12));
+    let chaseSwing = 0.28 * Math.max(0.75, Math.min(1.35, 1 + (kSkill - 1) * 0.22 - (bbSkill - 1) * 0.08));
     if (balls >= 3) { zoneSwing *= 1.05; chaseSwing *= 0.70; }
     if (strikes >= 2) { zoneSwing *= 1.08; chaseSwing *= 1.35; }
     if (!balls && !strikes) chaseSwing *= 0.85;
@@ -228,9 +211,11 @@ export function simulateAtBat(batter, pitcher, homeTeamId, options = {}) {
       }
     } else {
       const whiffBase = { FF: 0.22, SI: 0.18, FC: 0.24, SL: 0.28, SW: 0.33, CU: 0.26, CH: 0.30, FS: 0.32 };
-      let whiff = (whiffBase[pitchType] || 0.25) * (!location.inZone ? 1.3 : location.zone === 5 ? 0.75 : 1.0);
+      let whiff = (whiffBase[pitchType] || 0.25) * (!location.inZone ? 1.25 : location.zone === 5 ? 0.78 : 1.0);
       const velocityDiff = velocity - (pitchDef.velMean || 90);
-      whiff = Math.max(0.05, Math.min(0.65, (whiff + velocityDiff * 0.003) * kSkill));
+      const kBlend = 0.72 + kSkill * 0.28;
+      const contactBlend = Math.max(0.88, Math.min(1.18, contactSkill));
+      whiff = Math.max(0.05, Math.min(0.52, (whiff + velocityDiff * 0.0025) * kBlend / contactBlend));
 
       if (Math.random() > whiff) {
         const isFoul = Math.random() < (location.inZone ? 0.33 : 0.50);
