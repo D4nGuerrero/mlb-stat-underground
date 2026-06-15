@@ -1,10 +1,7 @@
 import { formatGameStartDisplay, formatVenueLine } from './gamePreview';
 import {
-  formatRunnersSituationLabel,
-  getBasesAtPlayIndex,
   getOutsBeforeEvent,
   getPlayStartOuts,
-  toIndicatorBases,
 } from './playSituation';
 
 /** Non-pitch action events shown as their own summary rows. */
@@ -264,19 +261,6 @@ export function buildSummaryItems(allPlays, gameData) {
         isScoring: isScoringDescription(description),
         sortTime,
       });
-
-      const bases = getBasesAtPlayIndex(play, allPlays, ev.index ?? eventIdx);
-      const runnersLabel = formatRunnersSituationLabel(bases);
-      if (runnersLabel) {
-        items.push({
-          kind: 'runners',
-          key: `runners-${play.about?.atBatIndex}-${eventIdx}`,
-          bases: toIndicatorBases(bases),
-          description: runnersLabel,
-          about: play.about,
-          sortTime,
-        });
-      }
     });
 
     if (play.about?.isComplete && play.result?.event) {
@@ -299,19 +283,6 @@ export function buildSummaryItems(allPlays, gameData) {
         isScoring: Boolean(play.about?.isScoringPlay),
         sortTime: play.about?.endTime || play.about?.startTime || null,
       });
-
-      const bases = getBasesAtPlayIndex(play, allPlays, Infinity);
-      const runnersLabel = formatRunnersSituationLabel(bases);
-      if (runnersLabel && play.count?.outs !== 3) {
-        items.push({
-          kind: 'runners',
-          key: `runners-${play.about?.atBatIndex}`,
-          bases: toIndicatorBases(bases),
-          description: runnersLabel,
-          about: play.about,
-          sortTime: play.about?.endTime || play.about?.startTime || null,
-        });
-      }
     }
   }
 

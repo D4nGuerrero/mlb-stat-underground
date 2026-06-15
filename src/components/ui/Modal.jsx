@@ -26,7 +26,7 @@ export default function Modal({
     <Dialog open={open} onClose={onClose} className="relative z-50">
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" aria-hidden="true" />
 
-      <div className={`fixed inset-0 flex ${alignment} justify-center p-4 ${className}`}>
+      <div className={`fixed inset-0 flex ${alignment} justify-center ${className}`}>
         <DialogPanel
           className={[
             'w-full bg-slate-900 border border-slate-700 shadow-2xl',

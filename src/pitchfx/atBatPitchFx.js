@@ -250,6 +250,13 @@ function points3D(pitch, scalers, step, numberOfPoints) {
 function points2D(pitch, scalers) {
   const coords = pitch.coords;
   if (pitch.is3DPitch) {
+    // MLB's physical axes:
+    // x = horizontal distance from plate center
+    // y = distance from home plate toward the mound
+    // z = vertical height above the ground
+    //
+    // Place the dot where the trajectory intersects the strike-zone depth
+    // plane instead of using pX/pZ, which reference a different plate plane.
     const time = timeAtYPosition(coords, pitch.szDepth);
     const plateX = positionAtTime(coords, 'x', time);
     const plateZ = positionAtTime(coords, 'z', time);

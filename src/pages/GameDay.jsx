@@ -537,23 +537,6 @@ function SummaryPitchingChangeRow({ item }) {
   );
 }
 
-function SummaryRunnersRow({ item }) {
-  return (
-    <div className="flex items-start gap-2.5 p-2">
-      <BaseDiamondIndicator
-        onFirst={item.bases.onFirst}
-        onSecond={item.bases.onSecond}
-        onThird={item.bases.onThird}
-        size="lg"
-        className="mt-0.5"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="text-md text-slate-300 leading-snug">{item.description}</p>
-      </div>
-    </div>
-  );
-}
-
 function SummaryPlayItemRow({
   item,
   awayAbbr,
@@ -570,9 +553,6 @@ function SummaryPlayItemRow({
   }
   if (item.kind === 'pitching_change') {
     return <SummaryPitchingChangeRow item={item} />;
-  }
-  if (item.kind === 'runners') {
-    return <SummaryRunnersRow item={item} />;
   }
 
   const b = getPlayBadge(item.eventType);
