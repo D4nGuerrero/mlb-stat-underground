@@ -295,6 +295,17 @@ function getRosterStatusStyle(code, description) {
   return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
 }
 
+function isActiveOnMinorsTeam(player) {
+  if (!player) return false;
+  const rosterEntry = player.rosterEntries?.find((e) => e.isActive) ?? player.rosterEntries?.[0];
+  if (rosterEntry?.status?.code !== 'A') return false;
+  return Boolean(player.currentTeam?.parentOrgId);
+}
+
+function defaultStatsLevelForPlayer(player) {
+  return isActiveOnMinorsTeam(player) ? 'minors' : 'mlb';
+}
+
 function PlayerRosterStatus({ rosterEntries }) {
   const entry = rosterEntries?.find((e) => e.isActive) ?? rosterEntries?.[0];
   if (!entry?.status) return null;
@@ -1100,12 +1111,18 @@ export default function PlayerPage() {
     if (!playerId) return;
     setIsLoading(true);
     setError(null);
+    setPlayerInfo(null);
 
     fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam(team),awards,rosterEntries`)
       .then((r) => r.json())
       .then((bioData) => {
-        setPlayerInfo(bioData.people?.[0] || null);
-        if (bioData.people?.[0]?.primaryPosition?.abbreviation === 'P') {
+        const player = bioData.people?.[0] || null;
+        const defaultLevel = defaultStatsLevelForPlayer(player);
+        setCareerLevel(defaultLevel);
+        setLogLevel(defaultLevel);
+        setSplitLevel(defaultLevel);
+        setPlayerInfo(player);
+        if (player?.primaryPosition?.abbreviation === 'P') {
           setCareerGroup('pitching');
           setLogGroup('pitching');
         }
@@ -1115,17 +1132,17 @@ export default function PlayerPage() {
   }, [playerId]);
 
   useEffect(() => {
-    if (!playerId) return;
+    if (!playerId || !playerInfo) return;
     const params = `stats=yearByYear&group=hitting,pitching,fielding&hydrate=team&gameType=${careerGameType}`;
     fetchPlayerStats(playerId, params, careerLevel).then((data) => {
       setYearByYear(data.stats || []);
     });
-  }, [playerId, careerLevel, careerGameType]);
+  }, [playerId, playerInfo, careerLevel, careerGameType]);
 
   const getPeriodMeta = (period) => PERIOD_OPTIONS.find((p) => p.value === period) ?? PERIOD_OPTIONS[0];
 
   const loadGameLogs = useCallback(async () => {
-    if (!playerId) return;
+    if (!playerId || !playerInfo) return;
     setGameLogLoading(true);
     const meta = getPeriodMeta('regular');
     try {
@@ -1163,10 +1180,10 @@ export default function PlayerPage() {
     } finally {
       setGameLogLoading(false);
     }
-  }, [playerId, logLevel, logGroup, logSeason]);
+  }, [playerId, playerInfo, logLevel, logGroup, logSeason]);
 
   const loadSplits = useCallback(async () => {
-    if (!playerId || isPitcher) {
+    if (!playerId || !playerInfo || isPitcher) {
       setSplitSections([]);
       return;
     }
@@ -1179,7 +1196,7 @@ export default function PlayerPage() {
     } finally {
       setSplitLoading(false);
     }
-  }, [playerId, splitLevel, splitSeason, isPitcher]);
+  }, [playerId, playerInfo, splitLevel, splitSeason, isPitcher]);
 
   useEffect(() => {
     setLogSeason(CURRENT_YEAR);
@@ -1192,7 +1209,7 @@ export default function PlayerPage() {
   }, [logSeasonOptions, logSeason]);
 
   useEffect(() => {
-    if (!playerId) return;
+    if (!playerId || !playerInfo) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1220,7 +1237,7 @@ export default function PlayerPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [playerId, logLevel, logGroup]);
+  }, [playerId, playerInfo, logLevel, logGroup]);
 
   useEffect(() => {
     loadGameLogs();
