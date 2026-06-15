@@ -30,8 +30,8 @@ export { hasRenderablePitchData };
 
 export default function PitchCanvas({
   playEvents = [],
-  szTop = 3.5,
-  szBot = 1.5,
+  szTop = 3.55,
+  szBot = 1.47,
   width = 300,
   height = null,
   className = '',

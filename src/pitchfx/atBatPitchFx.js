@@ -112,7 +112,6 @@ function floatCoords(coords = {}) {
 /**
  * Per-pitch strike zone dimensions — gd.min.js:
  * `width: u ? u/12 : r`, `depth: c ? c/12 : a` (inches → feet).
- * Pitch.js render fallback for missing depth: `homePlateFrontY` (plate width).
  */
 export function resolveStrikeZoneDims(pitchData, batter = null) {
   const pd = pitchData || {};
@@ -123,7 +122,7 @@ export function resolveStrikeZoneDims(pitchData, batter = null) {
       szTop: pd.strikeZoneTop,
       szBot: pd.strikeZoneBottom,
       szWidth: widthIn ? widthIn / BASE_FOOT : PLATE_WIDTH_FT,
-      szDepth: depthIn ? depthIn / BASE_FOOT : PLATE_WIDTH_FT,
+      szDepth: depthIn ? depthIn / BASE_FOOT : STRIKE_ZONE_DEPTH_FT,
     };
   }
   if (batter?.strikeZoneTop != null && batter?.strikeZoneBottom != null) {
@@ -131,36 +130,15 @@ export function resolveStrikeZoneDims(pitchData, batter = null) {
       szTop: batter.strikeZoneTop,
       szBot: batter.strikeZoneBottom,
       szWidth: PLATE_WIDTH_FT,
-      szDepth: PLATE_WIDTH_FT,
+      szDepth: STRIKE_ZONE_DEPTH_FT,
     };
   }
   return {
     szTop: DEFAULT_CONFIG.strikeZone.szTop,
     szBot: DEFAULT_CONFIG.strikeZone.szBot,
     szWidth: PLATE_WIDTH_FT,
-    szDepth: PLATE_WIDTH_FT,
+    szDepth: STRIKE_ZONE_DEPTH_FT,
   };
-}
-
-/** Map pX/pZ (feet) → coords.x/y (pixelFoot space) for points2D. Calibrated at pixelFoot=75. */
-function plateCoordMapping(cfg) {
-  const adj = cfg.adjust2d.x;
-  return {
-    plateCoordXIntercept: cfg.interpolatedPlateFront + cfg.pixelFoot / 7,
-    plateCoordXSlope: -cfg.pixelFoot * adj * adj,
-    plateCoordYIntercept: cfg.perspectiveShiftY + cfg.interpolatedPlateFront / 2,
-    plateCoordYSlope: -cfg.pixelFoot * (27 / 75),
-  };
-}
-
-function normalizePlateCoords(rawCoords, scalers) {
-  const c = floatCoords(rawCoords);
-  if (Number.isFinite(c.x) && Number.isFinite(c.y)) return c;
-  if (Number.isFinite(c.pX) && Number.isFinite(c.pZ)) {
-    c.x = scalers.plateCoordXIntercept + scalers.plateCoordXSlope * c.pX;
-    c.y = scalers.plateCoordYIntercept + scalers.plateCoordYSlope * c.pZ;
-  }
-  return c;
 }
 
 export function createScaler(width, overrides = {}) {
@@ -192,11 +170,8 @@ export function createScaler(width, overrides = {}) {
     };
   }
 
-  const plateCoords = plateCoordMapping(cfg);
-
   return {
     ...cfg,
-    ...plateCoords,
     eyetoScreen: cfg.eyeToScreen,
     width: w,
     height: h,
@@ -273,8 +248,13 @@ function points3D(pitch, scalers, step, numberOfPoints) {
 }
 
 function points2D(pitch, scalers) {
-  const coords = normalizePlateCoords(pitch.coords, scalers);
+  const coords = pitch.coords;
+  if (Number.isFinite(coords.pX) && Number.isFinite(coords.pZ)) {
+    return pointOnGrid(scalers, coords.pX, coords.pZ, -pitch.szDepth);
+  }
   if (!Number.isFinite(coords.x) || !Number.isFinite(coords.y)) return null;
+
+  // Older feeds expose MLB's pre-rasterized x/y coordinate pair instead.
   const screenX = (-coords.x / scalers.pixelFoot + scalers.adjust2d.x) * scalers.adjust2d.x;
   const screenY = ((-coords.y + scalers.perspectiveShiftY + scalers.interpolatedPlateFront) / scalers.pixelFoot) * scalers.adjust2d.y;
   return pointOnGrid(scalers, screenX, screenY, 0);
@@ -368,11 +348,9 @@ function strikeZoneCorners(pitch, scalers) {
     ? { szTop: pitch.szTop, szBot: pitch.szBot }
     : scalers.strikeZone;
   const half = pitch.szWidth / 2;
-  // 2d mode: zone and balls both project at z=0 (points2D). 3d uses plate depth.
-  const z = scalers.mode === '2d' ? 0 : -pitch.szDepth;
 
-  const topLeft = pointOnGrid(scalers, -half, sz.szTop, z);
-  const bottomRight = pointOnGrid(scalers, half, sz.szBot, z);
+  const topLeft = pointOnGrid(scalers, -half, sz.szTop, -pitch.szDepth);
+  const bottomRight = pointOnGrid(scalers, half, sz.szBot, -pitch.szDepth);
   return { topLeft, bottomRight, sz };
 }
 
@@ -437,7 +415,6 @@ export function drawAtBatStrikeZone(ctx, pitch, scalers) {
   const boundX = bottomRight[0] - topLeft[0] + szBorder * 2;
   const boundY = bottomRight[1] - topLeft[1] + szBorder * 2;
   const strokeWidth = scalers.hotColdZoneGridStroke;
-  const strokeHalf = strokeWidth / 2;
 
   ctx.save();
   ctx.shadowColor = 'transparent';

@@ -1313,8 +1313,8 @@ export default function GamePage() {
   const allPitchEvents = ld.plays?.currentPlay?.playEvents || [];
   const pitchesSoFar = allPitchEvents.filter((e) => e.isPitch);
   const latestPitch = pitchesSoFar[pitchesSoFar.length - 1];
-  const szTop = latestPitch?.pitchData?.strikeZoneTop || 3.5;
-  const szBot = latestPitch?.pitchData?.strikeZoneBottom || 1.5;
+  const szTop = latestPitch?.pitchData?.strikeZoneTop || 3.55;
+  const szBot = latestPitch?.pitchData?.strikeZoneBottom || 1.47;
   const currentPlay = ld.plays?.currentPlay;
   const batSide = currentPlay?.matchup?.batSide?.code || 'R';
   const batterIsAway = ls?.inningHalf === 'Top'; // top inning → away team bats
@@ -1662,8 +1662,8 @@ export default function GamePage() {
     const pitches = (play.playEvents || []).filter((e) => e.isPitch);
     const hitData = getPlayHitData(play);
     const badge = getPlayBadge(play.result?.eventType);
-    const szT = pitches[pitches.length - 1]?.pitchData?.strikeZoneTop || 3.5;
-    const szB = pitches[pitches.length - 1]?.pitchData?.strikeZoneBottom || 1.5;
+    const szT = pitches[pitches.length - 1]?.pitchData?.strikeZoneTop || 3.55;
+    const szB = pitches[pitches.length - 1]?.pitchData?.strikeZoneBottom || 1.47;
     const inningStr = `${play.about?.halfInning === 'top' ? 'TOP' : 'BOT'} ${play.about?.inning}`;
     const scoreStr = `${away.abbreviation} ${play.result?.awayScore ?? 0} – ${home.abbreviation} ${play.result?.homeScore ?? 0}`;
 
