@@ -121,8 +121,6 @@ function storageKey(gamePk) {
   return gamePk != null ? `mlbPc:lastPitch:${gamePk}` : null;
 }
 
-export { hasRenderablePitchData };
-
 export default function PitchCanvas({
   playEvents = [],
   szTop = 3.55,
@@ -143,9 +141,10 @@ export default function PitchCanvas({
   const fgRef = useRef(null);
   const modelCanvasRef = useRef(null);
   const animRef = useRef(null);
+  const animateRef = useRef(null);
   const onPitchLandedRef = useRef(onPitchLanded);
   const threeRef = useRef(null);
-  const [measuredWidth, setMeasuredWidth] = useState(responsive ? null : width);
+  const [measuredWidth, setMeasuredWidth] = useState(() => (responsive ? null : width));
   const stateRef = useRef({
     prevPitchId: null,
     landedPitchId: null,
@@ -163,10 +162,7 @@ export default function PitchCanvas({
   }, [onPitchLanded]);
 
   useEffect(() => {
-    if (!responsive || strikeZoneView) {
-      setMeasuredWidth(width);
-      return undefined;
-    }
+    if (!responsive || strikeZoneView) return undefined;
     const el = containerRef.current;
     if (!el) return undefined;
     const measure = () => {
@@ -182,7 +178,7 @@ export default function PitchCanvas({
   const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   const W = strikeZoneView
     ? (width ?? AT_BAT_STRIKE_ZONE_CLIP.width)
-    : (measuredWidth ?? width);
+    : (responsive ? (measuredWidth ?? width) : width);
   const H = strikeZoneView
     ? (height ?? AT_BAT_STRIKE_ZONE_CLIP.height)
     : (height ?? Math.round((W / 1158) * 869));
@@ -439,11 +435,15 @@ export default function PitchCanvas({
       renderFg(s.pitches, s.trajectories, currentIdx, s.animProgress, s.phase);
 
       if (s.phase === 'flying') {
-        animRef.current = requestAnimationFrame(animate);
+        animRef.current = requestAnimationFrame(animateRef.current);
       }
     },
     [renderBg, renderFg, gamePk],
   );
+
+  useEffect(() => {
+    animateRef.current = animate;
+  }, [animate]);
 
   useEffect(() => {
     setupCanvas(bgRef.current);
@@ -468,7 +468,7 @@ export default function PitchCanvas({
     const pitchIdStr = String(pitchId);
 
     const sk = storageKey(gamePk);
-    let storedLast = null;
+    let storedLast;
     try { storedLast = sk ? sessionStorage.getItem(sk) : null; } catch { storedLast = null; }
 
     const samePitch = s.prevPitchId != null && String(s.prevPitchId) === pitchIdStr;
@@ -482,7 +482,7 @@ export default function PitchCanvas({
       s.animProgress = 0;
       s.animStart = null;
       if (animRef.current) cancelAnimationFrame(animRef.current);
-      animRef.current = requestAnimationFrame(animate);
+      animRef.current = requestAnimationFrame(animateRef.current);
       return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
     }
 
@@ -501,7 +501,7 @@ export default function PitchCanvas({
     s.animProgress = 0;
     s.animStart = null;
     if (animRef.current) cancelAnimationFrame(animRef.current);
-    animRef.current = requestAnimationFrame(animate);
+    animRef.current = requestAnimationFrame(animateRef.current);
 
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [pitches, trajectories, scaler, animate, renderBg, renderFg, gamePk]);

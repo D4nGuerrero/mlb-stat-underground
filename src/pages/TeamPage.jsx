@@ -580,26 +580,42 @@ function ScheduleTab({
   };
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setGames([]);
+    let cancelled = false;
+    const controller = new AbortController();
+
     (async () => {
       try {
-        const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/schedule?teamId=${teamId}&season=${season}&sportId=1&gameType=R&hydrate=team,linescore`
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
+        const json = await fetchStatsApiJson('/api/v1/schedule', {
+          query: {
+            teamId,
+            season,
+            sportId: 1,
+            gameType: 'R',
+            hydrate: 'team,linescore',
+          },
+          signal: controller.signal,
+          ttl: 60_000,
+          retries: 1,
+        });
         const allGames = dedupeScheduleGames(
           (json.dates ?? []).flatMap((d) => d.games ?? []),
         );
-        setGames(allGames);
+        if (!cancelled) {
+          setGames(allGames);
+          setError(null);
+          setLoading(false);
+        }
       } catch (e) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
+        if (!cancelled && e?.name !== 'AbortError') {
+          setError(e.message);
+          setLoading(false);
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [teamId, season]);
 
   const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -1122,29 +1138,45 @@ function TransactionsTab({ teamId, onNavigateAway }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
+    const controller = new AbortController();
+
     (async () => {
       try {
         const today = new Date();
         const start = new Date(today);
         start.setDate(today.getDate() - 120);
         const fmt2 = (d) => localDateKey(d);
-        const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/transactions?teamId=${teamId}&startDate=${fmt2(start)}&endDate=${fmt2(today)}&sportId=1`
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
+        const json = await fetchStatsApiJson('/api/v1/transactions', {
+          query: {
+            teamId,
+            startDate: fmt2(start),
+            endDate: fmt2(today),
+            sportId: 1,
+          },
+          signal: controller.signal,
+          ttl: 60_000,
+          retries: 1,
+        });
         const sorted = [...(json.transactions ?? [])].sort(
           (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
         );
-        setTxns(sorted);
+        if (!cancelled) {
+          setTxns(sorted);
+          setError(null);
+          setLoading(false);
+        }
       } catch (e) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
+        if (!cancelled && e?.name !== 'AbortError') {
+          setError(e.message);
+          setLoading(false);
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [teamId]);
 
   if (loading) return <LoadingSpinner size="lg" py="py-16" />;
@@ -1413,6 +1445,7 @@ function TeamPageContent({ teamId }) {
               if (key === 'schedule') {
                 return (
                   <ScheduleTab
+                    key={`${teamId}:${season}`}
                     teamId={teamId}
                     season={season}
                     setSeason={setSeason}
@@ -1424,11 +1457,11 @@ function TeamPageContent({ teamId }) {
                   />
                 );
               }
-              if (key === 'roster') return <RosterTab teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
-              if (key === 'depth') return <DepthChartTab teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
-              if (key === 'splits') return <SplitsTab teamId={teamId} season={season} />;
-              if (key === 'injuries') return <InjuriesTab teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
-              if (key === 'transactions') return <TransactionsTab teamId={teamId} onNavigateAway={onNavigateAway} />;
+              if (key === 'roster') return <RosterTab key={`${teamId}:${season}`} teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
+              if (key === 'depth') return <DepthChartTab key={`${teamId}:${season}`} teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
+              if (key === 'splits') return <SplitsTab key={`${teamId}:${season}`} teamId={teamId} season={season} />;
+              if (key === 'injuries') return <InjuriesTab key={`${teamId}:${season}`} teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
+              if (key === 'transactions') return <TransactionsTab key={teamId} teamId={teamId} onNavigateAway={onNavigateAway} />;
               return null;
             }}
           </TabBar>

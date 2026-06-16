@@ -1,19 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { compareTimecodes } from '../utils/liveFeedMerge';
 
-/** Convert any date string → "YYYYMMDD_HHmmss" (MLB timecode format) */
 function formatTimecode(ts) {
   if (!ts) return null;
   if (/^\d{8}_\d{6}$/.test(ts)) return ts;
+
   try {
     const d = new Date(ts);
-    if (isNaN(d.getTime())) return null;
+    if (Number.isNaN(d.getTime())) return null;
     const pad = (n) => String(n).padStart(2, '0');
     return (
       `${d.getUTCFullYear()}` +
       `${pad(d.getUTCMonth() + 1)}` +
       `${pad(d.getUTCDate())}` +
-      `_` +
+      '_' +
       `${pad(d.getUTCHours())}` +
       `${pad(d.getUTCMinutes())}` +
       `${pad(d.getUTCSeconds())}`
@@ -28,52 +28,37 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
 
-  const wsRef = useRef(null);
-  const keepAliveRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
   const currentTimecodeRef = useRef(null);
-  const reconnectAttemptsRef = useRef(0);
-  const messageQueueRef = useRef([]);
-  const processingRef = useRef(false);
-
-  const isLiveGame = gameState === 'Live';
 
   useEffect(() => {
     const tc = formatTimecode(initialTimecode);
     if (tc) currentTimecodeRef.current = tc;
   }, [initialTimecode, gamePk]);
 
-  const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.onerror = null;
-      wsRef.current.onmessage = null;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    if (keepAliveRef.current) {
-      clearInterval(keepAliveRef.current);
-      keepAliveRef.current = null;
-    }
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    messageQueueRef.current = [];
-    processingRef.current = false;
-    setStatus('disconnected');
-    reconnectAttemptsRef.current = 0;
-  }, []);
+  useEffect(() => {
+    if (!gamePk || gameState !== 'Live') return undefined;
 
-  const connect = useCallback(() => {
-    if (!gamePk || !isLiveGame) return;
+    let ws = null;
+    let keepAliveId = null;
+    let reconnectTimeoutId = null;
+    let reconnectAttempts = 0;
+    let closed = false;
+    const messageQueue = [];
+    let processing = false;
 
-    disconnect();
-    setStatus('connecting');
-    setError(null);
-
-    const wsUrl = `wss://ws.statsapi.mlb.com/api/v1/game/push/subscribe/${gamePk}`;
-    wsRef.current = new WebSocket(wsUrl);
+    const cleanup = () => {
+      closed = true;
+      if (reconnectTimeoutId) clearTimeout(reconnectTimeoutId);
+      if (keepAliveId) clearInterval(keepAliveId);
+      if (ws) {
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.onmessage = null;
+        ws.close();
+        ws = null;
+      }
+      setStatus('disconnected');
+    };
 
     const processMessage = async (event) => {
       try {
@@ -98,7 +83,7 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
         if (updateId) url += `&pushUpdateId=${updateId}`;
 
         const res = await fetch(url);
-        if (res.status === 204) return;
+        if (res.status === 204 || closed) return;
         if (!res.ok) throw new Error(`diffPatch returned ${res.status}`);
 
         const data = await res.json();
@@ -108,6 +93,7 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
           data?.metaData ||
           (data && Object.keys(data).length > 0),
         );
+
         if (!hasPatchData) {
           setLastUpdate({ data: null, timecode: endTc, msg, timestamp: Date.now() });
           return;
@@ -127,81 +113,82 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
           return;
         }
 
-        if (formatted) {
-          currentTimecodeRef.current = formatted;
-        }
-
+        if (formatted) currentTimecodeRef.current = formatted;
         setLastUpdate({ data, timecode: formatted, msg, timestamp: Date.now() });
       } catch (err) {
-        console.error('[MLB WS] Error processing message:', err);
-        setError(err.message);
+        if (!closed) {
+          console.error('[MLB WS] Error processing message:', err);
+          setError(err.message);
+        }
       }
     };
 
     const drainQueue = async () => {
-      if (processingRef.current) return;
-      processingRef.current = true;
+      if (processing || closed) return;
+      processing = true;
       try {
-        while (messageQueueRef.current.length > 0) {
-          const event = messageQueueRef.current.shift();
+        while (messageQueue.length > 0 && !closed) {
+          const event = messageQueue.shift();
           await processMessage(event);
         }
       } finally {
-        processingRef.current = false;
+        processing = false;
       }
     };
 
-    wsRef.current.onopen = () => {
-      setStatus('connected');
-      reconnectAttemptsRef.current = 0;
+    const openSocket = () => {
+      if (closed) return;
 
-      keepAliveRef.current = setInterval(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send('Gameday5');
+      setStatus(reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
+      setError(null);
+
+      ws = new WebSocket(`wss://ws.statsapi.mlb.com/api/v1/game/push/subscribe/${gamePk}`);
+
+      ws.onopen = () => {
+        if (closed) return;
+        setStatus('connected');
+        reconnectAttempts = 0;
+        keepAliveId = setInterval(() => {
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send('Gameday5');
+          }
+        }, 60_000);
+      };
+
+      ws.onmessage = (event) => {
+        messageQueue.push(event);
+        void drainQueue();
+      };
+
+      ws.onerror = () => {
+        if (!closed) setError('WebSocket connection error');
+        ws?.close();
+      };
+
+      ws.onclose = () => {
+        if (keepAliveId) {
+          clearInterval(keepAliveId);
+          keepAliveId = null;
         }
-      }, 60000);
+        if (closed) return;
+
+        setStatus('disconnected');
+        if (reconnectAttempts >= 5) return;
+
+        const delay = Math.min(1000 * 2 ** reconnectAttempts, 15_000);
+        reconnectAttempts += 1;
+        reconnectTimeoutId = setTimeout(openSocket, delay);
+      };
     };
 
-    wsRef.current.onmessage = (event) => {
-      messageQueueRef.current.push(event);
-      drainQueue();
-    };
-
-    wsRef.current.onclose = () => {
-      setStatus('disconnected');
-      if (keepAliveRef.current) {
-        clearInterval(keepAliveRef.current);
-        keepAliveRef.current = null;
-      }
-      if (isLiveGame && reconnectAttemptsRef.current < 5 && gamePk) {
-        setStatus('reconnecting');
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 15000);
-        reconnectAttemptsRef.current++;
-        reconnectTimeoutRef.current = setTimeout(() => connect(), delay);
-      }
-    };
-
-    wsRef.current.onerror = () => {
-      setError('WebSocket connection error');
-      wsRef.current?.close();
-    };
-  }, [gamePk, isLiveGame, disconnect]);
-
-  useEffect(() => {
-    if (gamePk && isLiveGame) {
-      connect();
-    } else {
-      disconnect();
-    }
-    return () => disconnect();
-  }, [gamePk, isLiveGame, connect, disconnect]);
+    openSocket();
+    return cleanup;
+  }, [gamePk, gameState]);
 
   return {
     status,
     lastUpdate,
     error,
-    connect,
-    disconnect,
     isConnected: status === 'connected',
   };
 }

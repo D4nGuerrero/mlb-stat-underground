@@ -111,6 +111,13 @@ function freshPlayerViewState() {
   };
 }
 
+function initialPlayerViewState(locationKey, navigationType) {
+  if (navigationType === 'POP') {
+    return playerViewStateCache.get(locationKey) ?? freshPlayerViewState();
+  }
+  return freshPlayerViewState();
+}
+
 const SEASON_OPTIONS = Array.from({ length: 8 }, (_, i) => {
   const y = CURRENT_YEAR - i;
   return { value: y, label: String(y) };
@@ -136,7 +143,6 @@ const CAREER_GAME_TYPE_OPTIONS = [
 ];
 
 const MINOR_SPORT_IDS = [11, 12, 13, 14,16];
-const MINOR_SPORT_ID_SET = new Set(MINOR_SPORT_IDS);
 
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
 
@@ -494,7 +500,7 @@ function comparePlayerRows(a, b, sortCol, sortDir, col) {
 
   const av = cellSortValue(sortCol, a, col);
   const bv = cellSortValue(sortCol, b, col);
-  let cmp = 0;
+  let cmp;
   if (typeof av === 'string' && typeof bv === 'string') cmp = av.localeCompare(bv);
   else cmp = (Number(av) || 0) - (Number(bv) || 0);
   return sortDir === 'asc' ? cmp : -cmp;
@@ -1171,37 +1177,56 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
 function PlayerTransactionsTab({ playerId }) {
   const navigate = useNavigate();
   const restoredTxnRef = useRef(null);
+  const savedTxnReturn = useMemo(() => readTxnSheetReturn(playerId), [playerId]);
   const [txns, setTxns] = useState([]);
-  const [yearsBack, setYearsBack] = useState(TXN_INITIAL_YEARS);
+  const [yearsBack, setYearsBack] = useState(() => Math.max(
+    TXN_INITIAL_YEARS,
+    Number(savedTxnReturn?.yearsBack) || TXN_INITIAL_YEARS,
+  ));
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [tradeBundle, setTradeBundle] = useState([]);
   const [tradeLoading, setTradeLoading] = useState(false);
 
-  useEffect(() => {
-    restoredTxnRef.current = null;
-    const saved = readTxnSheetReturn(playerId);
-    setYearsBack(Math.max(TXN_INITIAL_YEARS, Number(saved?.yearsBack) || TXN_INITIAL_YEARS));
-    setSelectedTxn(null);
-    setTradeBundle([]);
+  const openTransaction = useCallback(async (txn) => {
+    setSelectedTxn(txn);
+    if (!isTradeTransaction(txn)) {
+      setTradeBundle([txn]);
+      setTradeLoading(false);
+      return;
+    }
+    setTradeLoading(true);
+    setTradeBundle([txn]);
+    const bundle = await fetchTradeBundle(txn);
+    setTradeBundle(bundle);
     setTradeLoading(false);
-  }, [playerId]);
+  }, []);
 
   useEffect(() => {
-    if (!playerId) return;
-    const isLoadMore = yearsBack > TXN_INITIAL_YEARS;
-    if (isLoadMore) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
+    if (!playerId) return undefined;
 
     let cancelled = false;
     (async () => {
       try {
         const sorted = await fetchPlayerTransactions(playerId, yearsBack);
-        if (!cancelled) setTxns(sorted);
+        if (cancelled) return;
+
+        setTxns(sorted);
+
+        if (!savedTxnReturn?.txnKey || restoredTxnRef.current === savedTxnReturn.txnKey) return;
+        const txn = sorted.find((item) => transactionRestoreKey(item) === savedTxnReturn.txnKey) ?? savedTxnReturn.txn;
+        if (!txn) return;
+
+        restoredTxnRef.current = savedTxnReturn.txnKey;
+        clearTxnSheetReturn(playerId);
+        await openTransaction(txn);
+
+        if (Number.isFinite(savedTxnReturn.scrollY)) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: savedTxnReturn.scrollY, left: 0, behavior: 'instant' });
+          });
+        }
       } catch {
         if (!cancelled) setTxns([]);
       } finally {
@@ -1215,47 +1240,14 @@ function PlayerTransactionsTab({ playerId }) {
     return () => {
       cancelled = true;
     };
-  }, [playerId, yearsBack]);
-
-  const openTransaction = async (txn) => {
-    setSelectedTxn(txn);
-    if (!isTradeTransaction(txn)) {
-      setTradeBundle([txn]);
-      setTradeLoading(false);
-      return;
-    }
-    setTradeLoading(true);
-    setTradeBundle([txn]);
-    const bundle = await fetchTradeBundle(txn);
-    setTradeBundle(bundle);
-    setTradeLoading(false);
-  };
-
-  useEffect(() => {
-    if (loading || selectedTxn || !txns.length) return;
-
-    const saved = readTxnSheetReturn(playerId);
-    if (!saved?.txnKey || restoredTxnRef.current === saved.txnKey) return;
-
-    const txn = txns.find((item) => transactionRestoreKey(item) === saved.txnKey) ?? saved.txn;
-    if (!txn) return;
-
-    restoredTxnRef.current = saved.txnKey;
-    clearTxnSheetReturn(playerId);
-    void openTransaction(txn);
-
-    if (Number.isFinite(saved.scrollY)) {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: saved.scrollY, left: 0, behavior: 'instant' });
-      });
-    }
-  }, [loading, playerId, selectedTxn, txns]);
+  }, [openTransaction, playerId, savedTxnReturn, yearsBack]);
 
   const canLoadMore = yearsBack < TXN_MAX_YEARS;
   const oldestYear = txns.length
     ? new Date(txns[txns.length - 1].date + 'T12:00:00').getFullYear()
     : null;
   const loadMoreYears = () => {
+    setLoadingMore(true);
     setYearsBack((y) => Math.min(y + TXN_LOAD_MORE_YEARS, TXN_MAX_YEARS));
   };
 
@@ -1493,38 +1485,138 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
   );
 }
 
-function PlayerPageContent({ playerId }) {
-  const location = useLocation();
-  const navigationType = useNavigationType();
-  const restoredFromHistoryRef = useRef(false);
+function PlayerGameLogsPanel({ playerId, playerInfo, logLevel, logGroup, logSeason, gameLogCols }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!playerId || !playerInfo) return undefined;
+
+    let cancelled = false;
+    const loadGameLogs = async () => {
+      const params = new URLSearchParams({
+        stats: 'gameLog',
+        season: String(logSeason),
+        group: logGroup,
+        gameType: 'R',
+      });
+
+      try {
+        const data = await fetchPlayerStats(playerId, params.toString(), logLevel);
+        let splits = data.stats?.find((s) => s.type?.displayName === 'gameLog')?.splits ?? [];
+        splits = [...splits].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        if (!cancelled) {
+          setRows(
+            splits.map((sp, i) => ({
+              id: `${sp.date}-${sp.game?.gamePk ?? i}`,
+              date: sp.date,
+              team: sp.team,
+              opponent: sp.opponent,
+              isHome: sp.isHome,
+              stat: sp.stat,
+              ...sp.stat,
+            })),
+          );
+        }
+      } catch {
+        if (!cancelled) setRows([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadGameLogs();
+    return () => {
+      cancelled = true;
+    };
+  }, [logGroup, logLevel, logSeason, playerId, playerInfo]);
+
+  if (loading) {
+    return <LoadingSpinner size="md" py="py-12" />;
+  }
+
+  return (
+    <GameLogTable
+      cols={gameLogCols}
+      rows={rows}
+      logGroup={logGroup}
+      emptyMessage={`No game logs for ${logSeason} regular season.`}
+    />
+  );
+}
+
+function PlayerSplitsPanel({ playerId, playerInfo, isPitcher, splitLevel, splitSeason }) {
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(!isPitcher);
+
+  useEffect(() => {
+    if (!playerId || !playerInfo || isPitcher) return undefined;
+
+    let cancelled = false;
+    const loadSplits = async () => {
+      try {
+        const nextSections = await fetchPlayerSplitSections(playerId, splitSeason, splitLevel);
+        if (!cancelled) setSections(nextSections);
+      } catch {
+        if (!cancelled) setSections([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadSplits();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPitcher, playerId, playerInfo, splitLevel, splitSeason]);
+
+  if (isPitcher) {
+    return (
+      <div className="text-slate-500 text-sm text-center py-12">
+        Splits breakdown is available for hitters only.
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <LoadingSpinner size="md" py="py-12" />;
+  }
+
+  return (
+    <SplitsTable
+      sections={sections}
+      emptyMessage={`No splits for ${splitSeason} regular season.`}
+    />
+  );
+}
+
+function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFromHistory }) {
+  const restoredFromHistoryRef = useRef(restoredFromHistory);
   const [playerInfo, setPlayerInfo] = useState(null);
   const [yearByYear, setYearByYear] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [careerLevel, setCareerLevel] = useState('mlb');
-  const [careerGroup, setCareerGroup] = useState('hitting');
-  const [careerGameType, setCareerGameType] = useState('R');
+  const [careerLevel, setCareerLevel] = useState(initialViewState.careerLevel);
+  const [careerGroup, setCareerGroup] = useState(initialViewState.careerGroup);
+  const [careerGameType, setCareerGameType] = useState(initialViewState.careerGameType);
 
-  const [logLevel, setLogLevel] = useState('mlb');
-  const [logGroup, setLogGroup] = useState('hitting');
+  const [logLevel, setLogLevel] = useState(initialViewState.logLevel);
+  const [logGroup, setLogGroup] = useState(initialViewState.logGroup);
 
-  const [logSeason, setLogSeason] = useState(CURRENT_YEAR);
-  const [gameLogRows, setGameLogRows] = useState([]);
-  const [gameLogLoading, setGameLogLoading] = useState(false);
+  const [logSeason, setLogSeason] = useState(initialViewState.logSeason);
 
-  const [splitLevel, setSplitLevel] = useState('mlb');
-  const [splitSeason, setSplitSeason] = useState(CURRENT_YEAR);
-  const [splitSections, setSplitSections] = useState([]);
-  const [splitLoading, setSplitLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('career');
+  const [splitLevel, setSplitLevel] = useState(initialViewState.splitLevel);
+  const [splitSeason, setSplitSeason] = useState(initialViewState.splitSeason);
+  const [activeTab, setActiveTab] = useState(initialViewState.activeTab);
   const { watchlist, isWatching, removeFromWatchlist, upsertWatchlistEntry } = useWatchlist();
   const [watchAnimating, setWatchAnimating] = useState(false);
 
   const isPitcher = isPitcherPosition(playerInfo?.primaryPosition?.abbreviation);
 
   useEffect(() => {
-    playerViewStateCache.set(location.key, {
+    playerViewStateCache.set(locationKey, {
       activeTab,
       careerLevel,
       careerGroup,
@@ -1536,7 +1628,7 @@ function PlayerPageContent({ playerId }) {
       splitSeason,
     });
   }, [
-    location.key,
+    locationKey,
     activeTab,
     careerLevel,
     careerGroup,
@@ -1548,38 +1640,6 @@ function PlayerPageContent({ playerId }) {
     splitSeason,
   ]);
 
-  useLayoutEffect(() => {
-    restoredFromHistoryRef.current = false;
-
-    if (navigationType === 'POP') {
-      const cached = playerViewStateCache.get(location.key);
-      if (cached) {
-        restoredFromHistoryRef.current = true;
-        setActiveTab(cached.activeTab);
-        setCareerLevel(cached.careerLevel);
-        setCareerGroup(cached.careerGroup);
-        setCareerGameType(cached.careerGameType);
-        setLogLevel(cached.logLevel);
-        setLogGroup(cached.logGroup);
-        setLogSeason(cached.logSeason);
-        setSplitLevel(cached.splitLevel);
-        setSplitSeason(cached.splitSeason);
-        return;
-      }
-    }
-
-    const fresh = freshPlayerViewState();
-    setActiveTab(fresh.activeTab);
-    setCareerLevel(fresh.careerLevel);
-    setCareerGroup(fresh.careerGroup);
-    setCareerGameType(fresh.careerGameType);
-    setLogLevel(fresh.logLevel);
-    setLogGroup(fresh.logGroup);
-    setLogSeason(fresh.logSeason);
-    setSplitLevel(fresh.splitLevel);
-    setSplitSeason(fresh.splitSeason);
-  }, [playerId, location.key, navigationType]);
-
   const statGroup = careerGroup;
   const displayCols =
     careerGroup === 'pitching' ? pitchCols : careerGroup === 'fielding' ? fieldCols : hitCols;
@@ -1587,9 +1647,6 @@ function PlayerPageContent({ playerId }) {
 
   useEffect(() => {
     if (!playerId) return;
-    setIsLoading(true);
-    setError(null);
-    setPlayerInfo(null);
 
     let cancelled = false;
     const controller = new AbortController();
@@ -1637,73 +1694,6 @@ function PlayerPageContent({ playerId }) {
       setYearByYear(data.stats || []);
     });
   }, [playerId, playerInfo, careerLevel, careerGameType]);
-
-  const getPeriodMeta = (period) => PERIOD_OPTIONS.find((p) => p.value === period) ?? PERIOD_OPTIONS[0];
-
-  const loadGameLogs = useCallback(async () => {
-    if (!playerId || !playerInfo) return;
-    setGameLogLoading(true);
-    const meta = getPeriodMeta('regular');
-    try {
-      const params = new URLSearchParams({
-        stats: 'gameLog',
-        season: String(logSeason),
-        group: logGroup,
-        gameType: meta.gameType,
-      });
-
-      const data = await fetchPlayerStats(playerId, params.toString(), logLevel);
-      let splits = data.stats?.find((s) => s.type?.displayName === 'gameLog')?.splits ?? [];
-
-      if (meta.limit) {
-        splits = [...splits]
-          .sort((a, b) => new Date(b.date) - new Date(a.date))
-          .slice(0, meta.limit);
-      } else {
-        splits = [...splits].sort((a, b) => new Date(b.date) - new Date(a.date));
-      }
-
-      setGameLogRows(
-        splits.map((sp, i) => ({
-          id: `${sp.date}-${sp.game?.gamePk ?? i}`,
-          date: sp.date,
-          team: sp.team,
-          opponent: sp.opponent,
-          isHome: sp.isHome,
-          stat: sp.stat,
-          ...sp.stat,
-        })),
-      );
-    } catch {
-      setGameLogRows([]);
-    } finally {
-      setGameLogLoading(false);
-    }
-  }, [playerId, playerInfo, logLevel, logGroup, logSeason]);
-
-  const loadSplits = useCallback(async () => {
-    if (!playerId || !playerInfo || isPitcher) {
-      setSplitSections([]);
-      return;
-    }
-    setSplitLoading(true);
-    try {
-      const sections = await fetchPlayerSplitSections(playerId, splitSeason, splitLevel);
-      setSplitSections(sections);
-    } catch {
-      setSplitSections([]);
-    } finally {
-      setSplitLoading(false);
-    }
-  }, [playerId, playerInfo, splitLevel, splitSeason, isPitcher]);
-
-  useEffect(() => {
-    loadGameLogs();
-  }, [loadGameLogs]);
-
-  useEffect(() => {
-    loadSplits();
-  }, [loadSplits]);
 
   const toggleWatchlist = useCallback(() => {
     if (!playerInfo) return;
@@ -1913,16 +1903,15 @@ function PlayerPageContent({ playerId }) {
                         onGroupChange={handleLogGroupChange}
                         hidePeriod
                       />
-                      {gameLogLoading ? (
-                        <LoadingSpinner size="md" py="py-12" />
-                      ) : (
-                        <GameLogTable
-                          cols={gameLogCols}
-                          rows={gameLogRows}
-                          logGroup={logGroup}
-                          emptyMessage={`No game logs for ${logSeason} regular season.`}
-                        />
-                      )}
+                      <PlayerGameLogsPanel
+                        key={`${playerId}:${logLevel}:${logGroup}:${logSeason}`}
+                        playerId={playerId}
+                        playerInfo={playerInfo}
+                        logLevel={logLevel}
+                        logGroup={logGroup}
+                        logSeason={logSeason}
+                        gameLogCols={gameLogCols}
+                      />
                     </>
                   );
                 }
@@ -1936,23 +1925,19 @@ function PlayerPageContent({ playerId }) {
                         onSeasonChange={setSplitSeason}
                         hidePeriod
                       />
-                      {isPitcher ? (
-                        <div className="text-slate-500 text-sm text-center py-12">
-                          Splits breakdown is available for hitters only.
-                        </div>
-                      ) : splitLoading ? (
-                        <LoadingSpinner size="md" py="py-12" />
-                      ) : (
-                        <SplitsTable
-                          sections={splitSections}
-                          emptyMessage={`No splits for ${splitSeason} regular season.`}
-                        />
-                      )}
+                      <PlayerSplitsPanel
+                        key={`${playerId}:${splitLevel}:${splitSeason}:${isPitcher ? 'pitcher' : 'hitter'}`}
+                        playerId={playerId}
+                        playerInfo={playerInfo}
+                        isPitcher={isPitcher}
+                        splitLevel={splitLevel}
+                        splitSeason={splitSeason}
+                      />
                     </>
                   );
                 }
                 if (key === 'transactions') {
-                  return <PlayerTransactionsTab playerId={playerId} />;
+                  return <PlayerTransactionsTab key={playerId} playerId={playerId} />;
                 }
                 return (
                   <div className="text-slate-500 text-sm text-center py-12 border border-dashed border-slate-700 rounded-2xl">
@@ -1970,6 +1955,18 @@ function PlayerPageContent({ playerId }) {
 
 export default function PlayerPage() {
   const { playerId } = useParams();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const startingViewState = initialPlayerViewState(location.key, navigationType);
+  const restoredFromHistory = navigationType === 'POP' && playerViewStateCache.has(location.key);
 
-  return <PlayerPageContent key={playerId} playerId={playerId} />;
+  return (
+    <PlayerPageContent
+      key={`${playerId}:${location.key}`}
+      playerId={playerId}
+      locationKey={location.key}
+      initialViewState={startingViewState}
+      restoredFromHistory={restoredFromHistory}
+    />
+  );
 }

@@ -91,7 +91,7 @@ export default function Scores() {
   const [gamesMap, setGamesMap] = useState({});
   const gamesCacheRef = useRef({});
   const fetchInflightRef = useRef(new Map());
-  const [loadingDates, setLoadingDates] = useState(() => new Set());
+  const [, setLoadingDates] = useState(() => new Set());
   const [liveCount, setLiveCount] = useState(0);
   const maxDate = useMemo(() => getMaxDate(), []);
   const initialCenter = useMemo(
@@ -114,7 +114,7 @@ export default function Scores() {
   const [isInitialReady, setIsInitialReady] = useState(false);
   const [viewMode, setViewMode] = useState(loadViewMode);
   const carouselRef = useRef(null);
-  const carouselStartIndex = useRef(selectedIndex);
+  const [carouselStartIndex, setCarouselStartIndex] = useState(selectedIndex);
   const returnDateAppliedRef = useRef(false);
 
   const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
@@ -387,7 +387,7 @@ export default function Scores() {
         queueMicrotask(() => {
           setSelectedIndex(idx);
           setRenderIndex(idx);
-          carouselStartIndex.current = idx;
+          setCarouselStartIndex(idx);
           requestAnimationFrame(() => carouselRef.current?.scrollTo(idx, true));
           prefetchAroundIndex(idx);
         });
@@ -901,7 +901,7 @@ export default function Scores() {
         ) : (
           <SwipeableCarousel
             ref={carouselRef}
-            startIndex={carouselStartIndex.current}
+            startIndex={carouselStartIndex}
             selectedIndex={selectedIndex}
             onSelectedIndexChange={handleCarouselSelect}
             onSettledIndexChange={handleCarouselSettle}

@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate } from 'react-router-dom';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
-import { assetUrl } from '../utils/baseUrl.js';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2003 + 1 }, (_, i) => {
@@ -145,11 +144,6 @@ export default function Standings() {
 
   const standingsType = STANDINGS_TYPE_BY_TAB[activeTab] ?? 'regularSeason';
 
-  useEffect(() => {
-    fetchStandings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season, standingsType]);
-
   const fetchStandings = async () => {
     const key = `${season}:${standingsType}`;
     if (cache.current[key]) {
@@ -174,6 +168,11 @@ export default function Standings() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchStandings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season, standingsType]);
 
   const buildTeamRow = (tr, { leagueId, divId }) => {
     const splits = tr.records?.splitRecords || [];
@@ -234,7 +233,7 @@ export default function Standings() {
     };
   };
 
-  const parseStandings = (records) => {
+  const parseStandings = useCallback((records) => {
     if (!records) return { al: {}, nl: {}, wildCard: { al: [], nl: [] } };
     const al = {};
     const nl = {};
@@ -282,11 +281,11 @@ export default function Standings() {
     wildCard.nl.sort((a, b) => (a.wildCardRank ?? 99) - (b.wildCardRank ?? 99));
 
     return { al, nl, wildCard };
-  };
+  }, []);
 
   const parsed = useMemo(
     () => (standingsData?.records ? parseStandings(standingsData.records) : null),
-    [standingsData],
+    [parseStandings, standingsData],
   );
 
   const handleSort = (col) => {
