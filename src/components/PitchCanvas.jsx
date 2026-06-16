@@ -1,6 +1,8 @@
 // At Bat pitch visualization — port of MLB Gameday responsive-pitch-fx.
 
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   createScaler,
   buildPitchFromEvent,
@@ -22,6 +24,53 @@ import {
 
 const TRAIL_OPACITY = 0.8;
 const OLD_PITCH_ALPHA = 0.82;
+const TRUE_SPIN_RADIANS_PER_MS_PER_RPM = (Math.PI * 2) / 60_000;
+const DEG_90 = Math.PI / 2;
+
+function normalizedAxisMix(mix = {}) {
+  const x = Number(mix.x || 0);
+  const y = Number(mix.y || 0);
+  const z = Number(mix.z || 0);
+  const total = Math.abs(x) + Math.abs(y) + Math.abs(z);
+  if (!total) return { x: 1, y: 0, z: 0 };
+  return { x: x / total, y: y / total, z: z / total };
+}
+
+function pitchSpinProfile(pitch) {
+  const type = pitch?.type || pitch?.details?.type?.code || '';
+  const rpm = Number(pitch?.spinRate) || null;
+
+  if (type === 'CU' || type === 'KC') {
+    return {
+      axisMix: { x: 1, y: 0, z: 0 },
+      direction: 1,
+      rpm: rpm || 2600,
+      startRotation: { x: DEG_90, y: DEG_90, z: DEG_90 },
+    };
+  }
+  if (type === 'SL' || type === 'ST' || type === 'SV') {
+    return {
+      axisMix: { x: 0, y: 0.4, z: 0.6 },
+      direction: -1,
+      rpm: rpm || 2500,
+      startRotation: { x: 0, y: 0, z: 0 },
+    };
+  }
+  if (type === 'CH' || type === 'FS') {
+    return {
+      axisMix: { x: 1, y: 0, z: 0 },
+      direction: -1,
+      rpm: rpm || 1900,
+      startRotation: { x: 0, y: 0, z: DEG_90 },
+    };
+  }
+  return {
+    axisMix: { x: 1, y: 0, z: 0 },
+    direction: -1,
+    rpm: rpm || 2400,
+    startRotation: { x: 0, y: 0, z: DEG_90 },
+  };
+}
 
 function lerp(a = 0, b = 0, t = 0) {
   return a + (b - a) * t;
@@ -57,6 +106,17 @@ function trajectoryThroughProgress(traj, progress) {
   return points;
 }
 
+function mapPointToCanvas(point, crop, width, height) {
+  if (!point) return null;
+  if (!crop) return { x: point[0], y: point[1], scaleX: 1, scaleY: 1 };
+  return {
+    x: (point[0] - crop.x) * (width / crop.w),
+    y: (point[1] - crop.y) * (height / crop.h),
+    scaleX: width / crop.w,
+    scaleY: height / crop.h,
+  };
+}
+
 function storageKey(gamePk) {
   return gamePk != null ? `mlbPc:lastPitch:${gamePk}` : null;
 }
@@ -75,13 +135,16 @@ export default function PitchCanvas({
   viewMode = 'full',
   showPitchTrails = false,
   onPitchLanded,
+  baseballModelUrl = null,
 }) {
   const strikeZoneView = viewMode === 'strikeZone';
   const containerRef = useRef(null);
   const bgRef = useRef(null);
   const fgRef = useRef(null);
+  const modelCanvasRef = useRef(null);
   const animRef = useRef(null);
   const onPitchLandedRef = useRef(onPitchLanded);
+  const threeRef = useRef(null);
   const [measuredWidth, setMeasuredWidth] = useState(responsive ? null : width);
   const stateRef = useRef({
     prevPitchId: null,
@@ -123,6 +186,65 @@ export default function PitchCanvas({
   const H = strikeZoneView
     ? (height ?? AT_BAT_STRIKE_ZONE_CLIP.height)
     : (height ?? Math.round((W / 1158) * 869));
+
+  useEffect(() => {
+    if (!baseballModelUrl || !modelCanvasRef.current) return undefined;
+
+    const canvas = modelCanvasRef.current;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      alpha: true,
+      antialias: true,
+    });
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(W, H, false);
+    renderer.setClearColor(0x000000, 0);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(0, W, H, 0, -1000, 1000);
+    camera.position.z = 100;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+    keyLight.position.set(-2, -3, 5);
+    scene.add(keyLight);
+
+    const group = new THREE.Group();
+    group.visible = false;
+    scene.add(group);
+
+    const state = {
+      renderer,
+      scene,
+      camera,
+      group,
+      model: null,
+      disposed: false,
+    };
+    threeRef.current = state;
+
+    const loader = new GLTFLoader();
+    loader.load(baseballModelUrl, (gltf) => {
+      if (state.disposed) return;
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+      model.position.sub(center);
+      model.scale.setScalar(1 / maxDim);
+      group.add(model);
+      state.model = model;
+      renderer.render(scene, camera);
+    });
+
+    return () => {
+      state.disposed = true;
+      if (threeRef.current === state) threeRef.current = null;
+      renderer.dispose();
+    };
+  }, [baseballModelUrl, W, H, DPR]);
 
   const scaler = useMemo(() => {
     if (strikeZoneView) {
@@ -210,11 +332,50 @@ export default function PitchCanvas({
     [W, H, scaler, setupCanvas, crop, showPitchTrails],
   );
 
+  const renderModelBaseball = useCallback(
+    (point, progress, pitch, visible) => {
+      const state = threeRef.current;
+      if (!state) return;
+      const { renderer, scene, camera, group, model } = state;
+      if (!visible || !point || !model) {
+        group.visible = false;
+        renderer.clear();
+        return;
+      }
+
+      const mapped = mapPointToCanvas(point, crop, W, H);
+      if (!mapped) return;
+      const depthRadius = (point[4] || scaler.ballRadius) * mapped.scaleX;
+      const landedRadius = Math.max(scaler.ballRadius * mapped.scaleX, strikeZoneView ? 8 : 5);
+      const radius = Math.max(depthRadius, landedRadius * 0.28);
+      const profile = pitchSpinProfile(pitch);
+      const mix = normalizedAxisMix(profile.axisMix);
+      const elapsedMs = progress * AT_BAT_ANIMATION_MS;
+      const spin = elapsedMs * profile.rpm * TRUE_SPIN_RADIANS_PER_MS_PER_RPM * profile.direction;
+      const base = profile.startRotation || { x: 0, y: 0, z: 0 };
+
+      group.visible = true;
+      // Three's orthographic Y axis points up; canvas pitch coordinates point down.
+      group.position.set(mapped.x, H - mapped.y, 0);
+      group.scale.setScalar(radius * 2);
+      group.rotation.set(
+        base.x + spin * mix.x,
+        base.y + spin * mix.y,
+        base.z + spin * mix.z,
+      );
+
+      renderer.clear();
+      renderer.render(scene, camera);
+    },
+    [W, H, crop, scaler, strikeZoneView],
+  );
+
   const renderFg = useCallback(
     (pitchList, trajList, currentIdx, progress, phase) => {
       const ctx = setupCanvas(fgRef.current);
       if (!ctx) return;
       ctx.clearRect(crop?.x ?? 0, crop?.y ?? 0, crop?.w ?? W, crop?.h ?? H);
+      renderModelBaseball(null, progress, null, false);
 
       const refPitch = pitchList[pitchList.length - 1] || refPitchForCrop;
       drawAtBatStrikeZone(ctx, refPitch, scaler);
@@ -238,9 +399,14 @@ export default function PitchCanvas({
         return;
       }
 
-      drawAtBatSpinningBaseball(ctx, interpolateTrajectoryPoint(traj, progress), progress, scaler, pitch, 1);
+      const animatedPoint = interpolateTrajectoryPoint(traj, progress);
+      if (baseballModelUrl) {
+        renderModelBaseball(animatedPoint, progress, pitch, true);
+        return;
+      }
+      drawAtBatSpinningBaseball(ctx, animatedPoint, progress, scaler, pitch, 1);
     },
-    [W, H, scaler, setupCanvas, refPitchForCrop, crop],
+    [W, H, scaler, setupCanvas, refPitchForCrop, crop, baseballModelUrl, renderModelBaseball],
   );
 
   const animate = useCallback(
@@ -360,6 +526,13 @@ export default function PitchCanvas({
             className="absolute inset-0 w-full h-full pointer-events-none"
             aria-hidden
           />
+          {baseballModelUrl && (
+            <canvas
+              ref={modelCanvasRef}
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              aria-hidden
+            />
+          )}
         </>
       )}
     </div>

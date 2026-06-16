@@ -41,6 +41,7 @@ import GameLineupsView from '../components/GameLineupsView';
 import { formatGameStartDisplay, formatVenueLine } from '../utils/gamePreview';
 import { fetchGameLineups, lineupsAvailable } from '../utils/gameLineups';
 import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../utils/liveFeedMerge';
+import { assetUrl } from '../utils/baseUrl.js';
 import {
   buildLiveRecentPlaysFeed,
   dueUpFromOffense,
@@ -2326,6 +2327,7 @@ export default function GamePage() {
               strikes={ls.strikes}
               outs={ls.outs}
               onRecentRowReady={revealLiveRecentRow}
+              baseballModelUrl={assetUrl('baseball-centered.glb')}
             />
 
             {/* ── MATCHUP ROW: Pitcher | Count+Outs+Diamond | Batter ── */}

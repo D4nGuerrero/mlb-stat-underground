@@ -341,6 +341,8 @@ export function buildPitchFromEvent(event, pitchNumber, batter = null) {
     code: details.code,
     startSpeed: pitchData.startSpeed,
     endSpeed: pitchData.endSpeed,
+    spinRate: pitchData.breaks?.spinRate ?? null,
+    spinDirection: pitchData.breaks?.spinDirection ?? null,
     szTop: sz.szTop,
     szBot: sz.szBot,
     szWidth: sz.szWidth,

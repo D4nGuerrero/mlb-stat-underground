@@ -89,6 +89,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   strikes,
   outs,
   onRecentRowReady,
+  baseballModelUrl = null,
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
   const stablePlayEvents = useMemo(() => playEvents, [sig]);
@@ -216,6 +217,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
             height={AT_BAT_STRIKE_ZONE_CLIP.height}
             showPitchTrails
             onPitchLanded={showLandedPitchToast}
+            baseballModelUrl={baseballModelUrl}
             className="mx-auto shrink-0"
           />
           <LivePitchToast item={toastItem} onComplete={clearToast} />
