@@ -59,38 +59,65 @@ body {
 }
 
 @media (max-width: 639px) {
-  .modal-sheet-from,
+  .modal-sheet-motion {
+    transform-origin: bottom center;
+    will-change: transform, opacity;
+    transition-property: none;
+  }
+
+  .modal-sheet-from {
+    opacity: 0;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 18px)) scale(0.985);
+  }
+
   .modal-sheet-to,
-  .modal-sheet-leave-from,
+  .modal-sheet-leave-from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
   .modal-sheet-leave-to {
-    transform: none !important;
-    opacity: 1 !important;
+    opacity: 0;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 18px)) scale(0.985);
   }
 
-  .modal-sheet-motion[data-enter] {
-    animation: modalSheetSlideUp 380ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  .modal-sheet-motion[data-enter],
+  .modal-sheet-motion.modal-sheet-from {
+    animation: modalSheetSlideUp 560ms cubic-bezier(0.18, 0.92, 0.2, 1) both;
   }
 
-  .modal-sheet-motion[data-leave] {
-    animation: modalSheetSlideDown 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  .modal-sheet-motion[data-leave],
+  .modal-sheet-motion.modal-sheet-leave-to {
+    animation: modalSheetSlideDown 340ms cubic-bezier(0.4, 0, 0.2, 1) both;
   }
 }
 
 @keyframes modalSheetSlideUp {
-  from {
-    transform: translateY(100%);
+  0% {
+    opacity: 0;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 18px)) scale(0.985);
   }
-  to {
+  62% {
+    opacity: 1;
+    transform: translateY(-10px) scale(1);
+  }
+  82% {
+    transform: translateY(3px) scale(1);
+  }
+  100% {
+    opacity: 1;
     transform: translateY(0);
   }
 }
 
 @keyframes modalSheetSlideDown {
-  from {
+  0% {
+    opacity: 1;
     transform: translateY(0);
   }
-  to {
-    transform: translateY(100%);
+  100% {
+    opacity: 0;
+    transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 18px)) scale(0.985);
   }
 }
 

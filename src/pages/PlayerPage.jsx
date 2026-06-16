@@ -32,6 +32,64 @@ import { TABLE_TEXT_CLASS, TABLE_MIN_W, TABLE_YEAR_COL_CLASS } from '../theme/ta
 const CURRENT_YEAR = new Date().getFullYear();
 
 const playerViewStateCache = new Map();
+const TXN_SHEET_RETURN_PREFIX = 'playerTxnSheetReturn:';
+
+function transactionRestoreKey(txn) {
+  if (!txn) return null;
+  return [
+    txn.id,
+    txn.date,
+    txn.typeCode ?? txn.typeDesc,
+    txn.fromTeam?.id,
+    txn.toTeam?.id,
+    txn.person?.id,
+  ]
+    .filter((part) => part != null && part !== '')
+    .join('|');
+}
+
+function playerTxnSheetReturnKey(playerId) {
+  return `${TXN_SHEET_RETURN_PREFIX}${playerId}`;
+}
+
+function readTxnSheetReturn(playerId) {
+  if (typeof window === 'undefined' || !playerId) return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(playerTxnSheetReturnKey(playerId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTxnSheetReturn(playerId, txn, yearsBack) {
+  if (typeof window === 'undefined' || !playerId || !txn) return;
+
+  try {
+    window.sessionStorage.setItem(
+      playerTxnSheetReturnKey(playerId),
+      JSON.stringify({
+        txnKey: transactionRestoreKey(txn),
+        txn,
+        yearsBack,
+        scrollY: window.scrollY,
+      }),
+    );
+  } catch {
+    // If storage is unavailable, navigation still works; we just skip sheet restoration.
+  }
+}
+
+function clearTxnSheetReturn(playerId) {
+  if (typeof window === 'undefined' || !playerId) return;
+
+  try {
+    window.sessionStorage.removeItem(playerTxnSheetReturnKey(playerId));
+  } catch {
+    // No-op: storage can be blocked in private browsing modes.
+  }
+}
 
 function isPitcherPosition(abbreviation) {
   return abbreviation === 'P' || abbreviation === 'SP' || abbreviation === 'RP';
@@ -1119,6 +1177,7 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
 
 function PlayerTransactionsTab({ playerId }) {
   const navigate = useNavigate();
+  const restoredTxnRef = useRef(null);
   const [txns, setTxns] = useState([]);
   const [yearsBack, setYearsBack] = useState(TXN_INITIAL_YEARS);
   const [loading, setLoading] = useState(true);
@@ -1128,7 +1187,12 @@ function PlayerTransactionsTab({ playerId }) {
   const [tradeLoading, setTradeLoading] = useState(false);
 
   useEffect(() => {
-    setYearsBack(TXN_INITIAL_YEARS);
+    restoredTxnRef.current = null;
+    const saved = readTxnSheetReturn(playerId);
+    setYearsBack(Math.max(TXN_INITIAL_YEARS, Number(saved?.yearsBack) || TXN_INITIAL_YEARS));
+    setSelectedTxn(null);
+    setTradeBundle([]);
+    setTradeLoading(false);
   }, [playerId]);
 
   useEffect(() => {
@@ -1160,14 +1224,6 @@ function PlayerTransactionsTab({ playerId }) {
     };
   }, [playerId, yearsBack]);
 
-  const canLoadMore = yearsBack < TXN_MAX_YEARS;
-  const oldestYear = txns.length
-    ? new Date(txns[txns.length - 1].date + 'T12:00:00').getFullYear()
-    : null;
-  const loadMoreYears = () => {
-    setYearsBack((y) => Math.min(y + TXN_LOAD_MORE_YEARS, TXN_MAX_YEARS));
-  };
-
   const openTransaction = async (txn) => {
     setSelectedTxn(txn);
     if (!isTradeTransaction(txn)) {
@@ -1182,8 +1238,41 @@ function PlayerTransactionsTab({ playerId }) {
     setTradeLoading(false);
   };
 
-  const handlePlayerClick = (id) => {
+  useEffect(() => {
+    if (loading || selectedTxn || !txns.length) return;
+
+    const saved = readTxnSheetReturn(playerId);
+    if (!saved?.txnKey || restoredTxnRef.current === saved.txnKey) return;
+
+    const txn = txns.find((item) => transactionRestoreKey(item) === saved.txnKey) ?? saved.txn;
+    if (!txn) return;
+
+    restoredTxnRef.current = saved.txnKey;
+    clearTxnSheetReturn(playerId);
+    void openTransaction(txn);
+
+    if (Number.isFinite(saved.scrollY)) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: saved.scrollY, left: 0, behavior: 'instant' });
+      });
+    }
+  }, [loading, playerId, selectedTxn, txns]);
+
+  const canLoadMore = yearsBack < TXN_MAX_YEARS;
+  const oldestYear = txns.length
+    ? new Date(txns[txns.length - 1].date + 'T12:00:00').getFullYear()
+    : null;
+  const loadMoreYears = () => {
+    setYearsBack((y) => Math.min(y + TXN_LOAD_MORE_YEARS, TXN_MAX_YEARS));
+  };
+
+  const closeTransaction = () => {
+    clearTxnSheetReturn(playerId);
     setSelectedTxn(null);
+  };
+
+  const handlePlayerClick = (id) => {
+    writeTxnSheetReturn(playerId, selectedTxn, yearsBack);
     navigate(`/player/${id}`);
   };
 
@@ -1266,7 +1355,7 @@ function PlayerTransactionsTab({ playerId }) {
         txn={selectedTxn}
         tradeBundle={tradeBundle}
         tradeLoading={tradeLoading}
-        onClose={() => setSelectedTxn(null)}
+        onClose={closeTransaction}
         onPlayerClick={handlePlayerClick}
       />
     </>
