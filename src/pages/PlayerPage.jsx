@@ -12,6 +12,7 @@ import {
   SegmentedControl,
   Select,
   TabBar,
+  Modal,
   scrollStickyYearHead,
   scrollStickyYearCell,
   scrollStickyTeamAbbrHead,
@@ -858,9 +859,233 @@ function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
   );
 }
 
+function isTradeTransaction(txn) {
+  return txn?.typeCode === 'TR' || /^trade$/i.test(txn?.typeDesc?.trim() ?? '');
+}
+
+function txnApiDateParam(isoDate) {
+  if (!isoDate) return null;
+  const [y, m, d] = isoDate.split('-');
+  return `${m}/${d}/${y}`;
+}
+
+async function fetchTradeBundle(txn) {
+  const teamId = txn.fromTeam?.id ?? txn.toTeam?.id;
+  const dateParam = txnApiDateParam(txn.date);
+  if (!teamId || !dateParam || txn.id == null) return [txn];
+
+  try {
+    const res = await fetch(
+      `https://statsapi.mlb.com/api/v1/transactions?teamId=${teamId}&date=${dateParam}&sportId=1`,
+    );
+    if (!res.ok) return [txn];
+    const json = await res.json();
+    const related = (json.transactions ?? []).filter((t) => t.id === txn.id);
+    return related.length ? related : [txn];
+  } catch {
+    return [txn];
+  }
+}
+
+function groupTradePlayers(transactions) {
+  const byToTeam = new Map();
+  for (const t of transactions) {
+    if (!t.person?.id || !t.toTeam?.id) continue;
+    const key = t.toTeam.id;
+    if (!byToTeam.has(key)) {
+      byToTeam.set(key, { team: t.toTeam, players: [] });
+    }
+    const bucket = byToTeam.get(key);
+    if (!bucket.players.some((p) => p.id === t.person.id)) {
+      bucket.players.push(t.person);
+    }
+  }
+  return [...byToTeam.values()].sort((a, b) => a.team.name.localeCompare(b.team.name));
+}
+
+function getTradeTeamPair(transactions, fallbackTxn) {
+  const ids = new Map();
+  for (const t of transactions) {
+    if (t.fromTeam?.id) ids.set(t.fromTeam.id, t.fromTeam);
+    if (t.toTeam?.id) ids.set(t.toTeam.id, t.toTeam);
+  }
+  const teams = [...ids.values()];
+  if (teams.length >= 2) return teams.slice(0, 2);
+  if (fallbackTxn?.fromTeam && fallbackTxn?.toTeam) {
+    return [fallbackTxn.fromTeam, fallbackTxn.toTeam];
+  }
+  return teams;
+}
+
+function TransactionTypeLabel({ typeDesc, className = '' }) {
+  const label = typeDesc ?? '—';
+  const isTrade = isTradeTransaction({ typeDesc: label });
+  return (
+    <span
+      className={`font-medium ${isTrade ? `text-${THEME_COLOR}-400` : 'text-slate-200'} ${className}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TransactionPlayerLink({ person, onNavigate }) {
+  if (!person?.id) {
+    return <span className="text-slate-300">{person?.fullName ?? '—'}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(person.id)}
+      className={`text-left text-sm text-slate-200 hover:text-${THEME_COLOR}-400 transition-colors`}
+    >
+      {person.fullName}
+    </button>
+  );
+}
+
+function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPlayerClick }) {
+  if (!txn) return null;
+
+  const isTrade = isTradeTransaction(txn);
+  const tradeGroups = isTrade ? groupTradePlayers(tradeBundle) : [];
+  const [teamA, teamB] = isTrade ? getTradeTeamPair(tradeBundle, txn) : [];
+
+  return (
+    <Modal
+      open={Boolean(txn)}
+      onClose={onClose}
+      size="lg"
+      panelClassName="max-h-[90vh] sm:max-h-[85vh] overflow-y-auto bg-[#0d1520] border-slate-700/70"
+    >
+      <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
+        <div className="w-10 h-1 rounded-full bg-slate-600" />
+      </div>
+
+      <div className="p-5 sm:p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <TransactionTypeLabel typeDesc={txn.typeDesc ?? txn.description} className="text-lg sm:text-xl" />
+            <p className="text-sm text-slate-500 mt-1">{fmtDate(txn.date)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-lg flex-shrink-0"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        {isTrade && (teamA || teamB) && (
+          <div className="flex items-center justify-center gap-4 sm:gap-8 py-2">
+            {teamA && (
+              <div className="flex flex-col items-center gap-1.5 min-w-0 flex-1">
+                <img
+                  src={teamLogoUrl(teamA.id)}
+                  alt=""
+                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
+                />
+                <span className="text-[11px] sm:text-xs text-slate-400 text-center leading-tight">
+                  {getTeamAbbr(teamA) ?? teamA.name}
+                </span>
+              </div>
+            )}
+            <div className="flex flex-col items-center gap-1 flex-shrink-0 text-slate-500">
+              <i className="fa-solid fa-right-left text-base sm:text-lg" aria-hidden />
+            </div>
+            {teamB && (
+              <div className="flex flex-col items-center gap-1.5 min-w-0 flex-1">
+                <img
+                  src={teamLogoUrl(teamB.id)}
+                  alt=""
+                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
+                />
+                <span className="text-[11px] sm:text-xs text-slate-400 text-center leading-tight">
+                  {getTeamAbbr(teamB) ?? teamB.name}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isTrade && txn.fromTeam?.id && txn.toTeam?.id && (
+          <div className="flex items-center justify-center gap-4 sm:gap-6 py-1">
+            <div className="flex flex-col items-center gap-1">
+              <img src={teamLogoUrl(txn.fromTeam.id)} alt="" className="w-12 h-12 object-contain" />
+              <span className="text-[10px] text-slate-500">{getTeamAbbr(txn.fromTeam) ?? txn.fromTeam.name}</span>
+            </div>
+            <i className="fa-solid fa-arrow-right-long text-slate-500" aria-hidden />
+            <div className="flex flex-col items-center gap-1">
+              <img src={teamLogoUrl(txn.toTeam.id)} alt="" className="w-12 h-12 object-contain" />
+              <span className="text-[10px] text-slate-500">{getTeamAbbr(txn.toTeam) ?? txn.toTeam.name}</span>
+            </div>
+          </div>
+        )}
+
+        {isTrade && (
+          <div className="space-y-3">
+            {tradeLoading ? (
+              <LoadingSpinner size="md" py="py-6" />
+            ) : tradeGroups.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {tradeGroups.map(({ team, players }) => (
+                  <div
+                    key={team.id}
+                    className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <img src={teamLogoUrl(team.id)} alt="" className="w-8 h-8 object-contain" />
+                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                        To {getTeamAbbr({ id: team.id, name: team.name }) ?? team.name}
+                      </span>
+                    </div>
+                    <ul className="space-y-2">
+                      {players.map((person) => (
+                        <li key={person.id} className="flex items-center gap-2">
+                          <img
+                            src={playerHeadshotUrl(person.id)}
+                            alt=""
+                            className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
+                          />
+                          <TransactionPlayerLink person={person} onNavigate={onPlayerClick} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : txn.person?.id ? (
+              <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex items-center gap-3">
+                <img
+                  src={playerHeadshotUrl(txn.person.id)}
+                  alt=""
+                  className="w-10 h-10 rounded-full object-cover bg-slate-700"
+                />
+                <TransactionPlayerLink person={txn.person} onNavigate={onPlayerClick} />
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {txn.description && (
+          <p className="text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
+            {txn.description}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function PlayerTransactionsTab({ playerId }) {
+  const navigate = useNavigate();
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTxn, setSelectedTxn] = useState(null);
+  const [tradeBundle, setTradeBundle] = useState([]);
+  const [tradeLoading, setTradeLoading] = useState(false);
 
   useEffect(() => {
     if (!playerId) return;
@@ -891,6 +1116,25 @@ function PlayerTransactionsTab({ playerId }) {
     })();
   }, [playerId]);
 
+  const openTransaction = async (txn) => {
+    setSelectedTxn(txn);
+    if (!isTradeTransaction(txn)) {
+      setTradeBundle([txn]);
+      setTradeLoading(false);
+      return;
+    }
+    setTradeLoading(true);
+    setTradeBundle([txn]);
+    const bundle = await fetchTradeBundle(txn);
+    setTradeBundle(bundle);
+    setTradeLoading(false);
+  };
+
+  const handlePlayerClick = (id) => {
+    setSelectedTxn(null);
+    navigate(`/player/${id}`);
+  };
+
   if (loading) return <LoadingSpinner size="md" py="py-12" />;
 
   if (!txns.length) {
@@ -898,27 +1142,40 @@ function PlayerTransactionsTab({ playerId }) {
   }
 
   return (
-    <div className="space-y-1">
-      {txns.map((t, i) => (
-        <div
-          key={t.id ?? `${t.date}-${i}`}
-          className="flex items-start gap-2 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors rounded-xl"
-        >
-          <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-slate-200">{t.typeDesc ?? t.description ?? '—'}</div>
-            {t.fromTeam?.name && t.toTeam?.name && (
-              <div className="text-xs text-slate-500 mt-0.5">
-                {t.fromTeam.name} → {t.toTeam.name}
-              </div>
-            )}
-            {t.description && t.typeDesc && t.description !== t.typeDesc && (
-              <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="space-y-1">
+        {txns.map((t, i) => (
+          <button
+            key={`${t.id ?? t.date}-${t.person?.id ?? i}`}
+            type="button"
+            onClick={() => openTransaction(t)}
+            className="w-full text-left flex items-start gap-2 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors rounded-xl cursor-pointer"
+          >
+            <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
+            <div className="flex-1 min-w-0">
+              <TransactionTypeLabel typeDesc={t.typeDesc ?? t.description} className="text-sm" />
+              {t.fromTeam?.name && t.toTeam?.name && (
+                <div className="text-xs text-slate-500 mt-0.5">
+                  {t.fromTeam.name} → {t.toTeam.name}
+                </div>
+              )}
+              {t.description && t.typeDesc && t.description !== t.typeDesc && (
+                <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
+              )}
+            </div>
+            <i className="fa-solid fa-chevron-right text-[10px] text-slate-600 mt-1 flex-shrink-0" aria-hidden />
+          </button>
+        ))}
+      </div>
+
+      <TransactionDetailModal
+        txn={selectedTxn}
+        tradeBundle={tradeBundle}
+        tradeLoading={tradeLoading}
+        onClose={() => setSelectedTxn(null)}
+        onPlayerClick={handlePlayerClick}
+      />
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 
 export default function Modal({
   open,
@@ -24,14 +24,20 @@ export default function Modal({
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" aria-hidden="true" />
+      <DialogBackdrop
+        transition
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition duration-300 ease-out data-[closed]:opacity-0"
+      />
 
       <div className={`fixed inset-0 flex ${alignment} justify-center ${className}`}>
         <DialogPanel
+          transition
           className={[
             'w-full bg-slate-900 border border-slate-700 shadow-2xl',
             'rounded-t-3xl sm:rounded-2xl overflow-hidden',
-            'transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0',
+            'transition duration-300 ease-out',
+            'data-[closed]:translate-y-full',
+            'sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95 sm:data-[closed]:opacity-0',
             maxWidth,
             panelClassName,
           ].join(' ')}
