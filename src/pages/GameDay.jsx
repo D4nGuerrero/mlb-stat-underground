@@ -2230,8 +2230,11 @@ export default function GamePage() {
         {!isLive && gameTabBar}
 
         {/* Tab content */}
-        {currentTab === 'live' && isLive && ls && (
-          <div className="space-y-3">
+        {isLive && ls && (
+          <div
+            className={currentTab === 'live' ? 'space-y-3' : 'hidden'}
+            aria-hidden={currentTab !== 'live'}
+          >
 
             <LiveAtBatVisual
               venueId={venueId}
