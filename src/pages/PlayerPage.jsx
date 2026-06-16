@@ -1039,9 +1039,9 @@ async function fetchPlayerTransactions(playerId, yearsBack) {
 
 function ReceivesLabel() {
   return (
-    <div className="mb-2 sm:mb-3">
+    <div className="mb-4 sm:mb-3 pt-0">
       <p className="text-center text-sm font-semibold text-slate-300 tracking-wide">Receives:</p>
-      <div className="receives-display-light mt-1.5" aria-hidden />
+      <div className="divider-7 mt-0" aria-hidden />
     </div>
   );
 }

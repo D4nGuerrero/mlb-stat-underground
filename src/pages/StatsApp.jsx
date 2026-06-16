@@ -151,10 +151,10 @@ const LOWER_IS_BETTER = new Set(['era', 'whip']);
 
 const SCORE_TONE_STYLES = {
   positive: {
-    card: `border-${THEME_COLOR}-500/35 bg-gradient-to-b from-${THEME_COLOR}-500/[0.12] via-slate-950 to-black hover:border-${THEME_COLOR}-500/50`,
+    card: 'border-emerald-500/35 bg-gradient-to-b from-emerald-500/[0.12] via-slate-950 to-black hover:border-emerald-500/50',
     glow: 'bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.18),transparent_50%)]',
-    badge: `bg-${THEME_COLOR}-500/15 border-${THEME_COLOR}-500/30 text-${THEME_COLOR}-300`,
-    photo: `bg-${THEME_COLOR}-500/20`,
+    badge: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+    photo: 'bg-emerald-500/20',
   },
   negative: {
     card: 'border-red-500/35 bg-gradient-to-b from-red-500/[0.10] via-slate-950 to-black hover:border-red-500/50',
@@ -400,18 +400,35 @@ function MoverPlayerCard({ player }) {
               <div className="min-w-0">
                 <Link
                   to={`/player/${player.playerId}`}
-                  className={`text-base sm:text-lg font-bold text-white truncate block hover:text-${THEME_COLOR}-400 transition-colors`}
+                  className="text-base sm:text-lg font-bold text-white truncate block hover:text-emerald-400 transition-colors"
                 >
                   {player.fullName}
                 </Link>
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-0.5">
-                  2025 → 2026 YoY
+                  Role-adjusted 2025 → 2026
                 </div>
               </div>
               <div className={`flex-shrink-0 px-2.5 py-1 rounded-xl border text-center ${tone.badge}`}>
-                <div className="text-[9px] font-semibold uppercase tracking-wider opacity-80">Score</div>
+                <div className="text-[9px] font-semibold uppercase tracking-wider opacity-80">Change</div>
                 <div className="text-sm sm:text-base font-black tabular-nums leading-tight">
                   {formatDeltaScore(player.deltaScore ?? 0)}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px]">
+              <div className="rounded-xl border border-white/5 bg-black/20 px-2 py-1.5">
+                <div className="text-slate-500 uppercase tracking-wider">2025 Value</div>
+                <div className="text-slate-200 font-bold tabular-nums">{player.prevValue ?? '—'}</div>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-black/20 px-2 py-1.5">
+                <div className="text-slate-500 uppercase tracking-wider">2026 Adj</div>
+                <div className="text-slate-200 font-bold tabular-nums">{player.currentValue ?? '—'}</div>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-black/20 px-2 py-1.5">
+                <div className="text-slate-500 uppercase tracking-wider">Role</div>
+                <div className="text-slate-200 font-bold tabular-nums">
+                  {player.roleWeight != null ? `${Math.round(player.roleWeight * 100)}%` : '—'}
                 </div>
               </div>
             </div>
@@ -469,7 +486,7 @@ function MoverPlayerCard({ player }) {
                 key={k}
                 className={`relative overflow-hidden rounded-xl sm:rounded-2xl border transition-all duration-300 ${
                   improved
-                    ? `border-${THEME_COLOR}-500/20 bg-gradient-to-b from-${THEME_COLOR}-500/[0.10] via-slate-900 to-slate-950`
+                    ? 'border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.10] via-slate-900 to-slate-950'
                     : declined
                     ? 'border-red-500/20 bg-gradient-to-b from-red-500/[0.08] via-slate-900 to-slate-950'
                     : 'border-white/5 bg-gradient-to-b from-slate-900 to-slate-950'
@@ -483,7 +500,7 @@ function MoverPlayerCard({ player }) {
                     <div
                       className={`flex items-center justify-center rounded-full border w-4 h-4 sm:w-5 sm:h-5 ${
                         improved
-                          ? `border-${THEME_COLOR}-500/20 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-400`
+                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
                           : declined
                           ? 'border-red-500/20 bg-red-500/10 text-red-400'
                           : 'border-slate-700 bg-slate-800 text-slate-500'
@@ -511,7 +528,7 @@ function MoverPlayerCard({ player }) {
                       <div className="text-[10px] sm:text-[11px] text-slate-500 truncate">Prev: {player.statsPrev?.[k] ?? '—'}</div>
                       <div
                         className={`text-[10px] sm:text-[11px] font-semibold tabular-nums flex-shrink-0 ${
-                          improved ? `text-${THEME_COLOR}-400` : declined ? 'text-red-400' : 'text-slate-500'
+                          improved ? 'text-emerald-400' : declined ? 'text-red-400' : 'text-slate-500'
                         }`}
                       >
                         {improved
@@ -562,9 +579,13 @@ export default function StatsApp() {
   const [hotColdDays, setHotColdDays] = useState(10);
   const [isHotColdLoading, setIsHotColdLoading] = useState(false);
 
-  // New state for league-wide rankings
-  const [exodusRankings, setExodusRankings] = useState([]);
+  const [impactRankings, setImpactRankings] = useState([]);
   const [isRankingLoading, setIsRankingLoading] = useState(false);
+  const [impactProgress, setImpactProgress] = useState({
+    current: 0,
+    total: 0,
+    teamName: '',
+  });
 
   useEffect(() => {
     localStorage.setItem('mlbWatchlist', JSON.stringify(watchlist));
@@ -684,7 +705,7 @@ export default function StatsApp() {
         .filter(Boolean);
 
       const scored = await enrichMoversWithDeltaScores(movers);
-      scored.sort((a, b) => (a.deltaScore ?? 0) - (b.deltaScore ?? 0));
+      scored.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
       setExodusResults(scored);
     } catch (err) {
       console.error(err);
@@ -729,7 +750,7 @@ export default function StatsApp() {
         .filter(Boolean);
 
       const scored = await enrichMoversWithDeltaScores(acquired);
-      scored.sort((a, b) => (b.deltaScore ?? 0) - (a.deltaScore ?? 0));
+      scored.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
       setAcquisitionResults(scored);
     } catch (err) {
       console.error(err);
@@ -773,76 +794,114 @@ export default function StatsApp() {
     }
   };
 
-  // ── NEW: League-wide Exodus Rankings ─────────────────────────────────────────────
-  const analyzeAllExodus = async () => {
+  const moverWeightedValue = (player) =>
+    Number((((player.currentValue ?? 0) * (player.roleWeight ?? 1))).toFixed(1));
+
+  const topMoverName = (players) => {
+    const top = [...players].sort((a, b) => moverWeightedValue(b) - moverWeightedValue(a))[0];
+    return top?.fullName ?? '—';
+  };
+
+  const impactTrend = (netImpact) => {
+    if (netImpact >= 50) return { label: 'Big Upgrade', className: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' };
+    if (netImpact >= 15) return { label: 'Slight Gain', className: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' };
+    if (netImpact <= -50) return { label: 'Big Loss', className: 'text-red-300 bg-red-500/10 border-red-500/25' };
+    if (netImpact <= -15) return { label: 'Slight Loss', className: 'text-red-300 bg-red-500/10 border-red-500/25' };
+    return { label: 'Neutral', className: 'text-slate-300 bg-slate-700/40 border-slate-600/50' };
+  };
+
+  const mapRosterMover = (person, prev, current) => ({
+    fullName: person.fullName,
+    playerId: person.id,
+    photo: `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/${person.id}/headshot/67/current`,
+    teams2025: prev.teams,
+    teams2026: current.teams,
+    statsPrev: prev.stat,
+    statsCurrent: current.stat,
+    group: current.group ?? prev.group,
+  });
+
+  const getTeamRosterMovers = (roster, teamId, direction) =>
+    roster
+      .map((entry) => {
+        const person = entry.person;
+        const prev = processPlayerSeason(person, '2025');
+        const current = processPlayerSeason(person, '2026');
+        if (!prev || !current) return null;
+
+        const wasOnTeam = prev.teams.some((t) => t.id === teamId);
+        const isOnTeamNow = current.teams.some((t) => t.id === teamId);
+
+        if (direction === 'added' && (!isOnTeamNow || wasOnTeam)) return null;
+        if (direction === 'lost' && (!wasOnTeam || isOnTeamNow)) return null;
+
+        return mapRosterMover(person, prev, current);
+      })
+      .filter(Boolean);
+
+  const analyzeImpactRankings = async () => {
     setIsRankingLoading(true);
-    setExodusRankings([]);
+    setImpactRankings([]);
+    setImpactProgress({ current: 0, total: mlbTeams.length, teamName: 'Starting analysis…' });
 
     const rankings = [];
 
-    for (const team of mlbTeams) {
+    for (let i = 0; i < mlbTeams.length; i += 1) {
+      const team = mlbTeams[i];
+      setImpactProgress({ current: i, total: mlbTeams.length, teamName: team.name });
+
       try {
-        const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/teams/${team.id}/roster?season=2025&rosterType=fullRoster&hydrate=person(stats(type=yearByYear))`
-        );
-        const data = await res.json();
-        const roster = data.roster ?? [];
+        const [prevRosterRes, currentRosterRes] = await Promise.all([
+          fetch(
+            `https://statsapi.mlb.com/api/v1/teams/${team.id}/roster?season=2025&rosterType=fullRoster&hydrate=person(stats(type=yearByYear))`
+          ),
+          fetch(
+            `https://statsapi.mlb.com/api/v1/teams/${team.id}/roster?season=2026&rosterType=fullRoster&hydrate=person(stats(type=yearByYear))`
+          ),
+        ]);
 
-        const movers = roster
-          .map((entry) => {
-            const person = entry.person;
-            const prev = processPlayerSeason(person, '2025');
-            const current = processPlayerSeason(person, '2026');
+        const [prevRosterData, currentRosterData] = await Promise.all([
+          prevRosterRes.json(),
+          currentRosterRes.json(),
+        ]);
 
-            if (!prev || !current) return null;
+        const lostMovers = getTeamRosterMovers(prevRosterData.roster ?? [], team.id, 'lost');
+        const addedMovers = getTeamRosterMovers(currentRosterData.roster ?? [], team.id, 'added');
+        const [lostPlayers, addedPlayers] = await Promise.all([
+          enrichMoversWithDeltaScores(lostMovers),
+          enrichMoversWithDeltaScores(addedMovers),
+        ]);
 
-            const wasOnTeam = prev.teams.some((t) => t.id === team.id);
-            const stillOnTeam = current.teams.some((t) => t.id === team.id);
-
-            if (!wasOnTeam || stillOnTeam) return null;
-
-            return {
-              fullName: person.fullName,
-              group: prev.group,
-              statsCurrent: current.stat,
-            };
-          })
-          .filter(Boolean);
-
-        const lostHitters = movers.filter((m) => m.group === 'hitting');
-        const lostPitchers = movers.filter((m) => m.group === 'pitching');
-
-        const avgOPS = lostHitters.length
-          ? lostHitters.reduce((sum, p) => sum + (Number(p.statsCurrent.ops) || 0), 0) / lostHitters.length
-          : 0;
-
-        const avgERA = lostPitchers.length
-          ? lostPitchers.reduce((sum, p) => sum + (Number(p.statsCurrent.era) || 0), 0) / lostPitchers.length
-          : 0;
-
-        const hitterScore = avgOPS * lostHitters.length;
-        const pitcherScore = (5.0 - avgERA) * lostPitchers.length;
-        const exodusScore = hitterScore + pitcherScore;
+        const addedValue = addedPlayers.reduce((sum, player) => sum + moverWeightedValue(player), 0);
+        const lostValue = lostPlayers.reduce((sum, player) => sum + moverWeightedValue(player), 0);
+        const netImpact = addedValue - lostValue;
+        const trend = impactTrend(netImpact);
 
         rankings.push({
           teamId: team.id,
           teamName: team.name,
           abbr: team.abbr,
           logo: `https://www.mlbstatic.com/team-logos/team-cap-on-dark/${team.id}.svg`,
-          lostPlayers: movers.length,
-          lostHitters: lostHitters.length,
-          lostPitchers: lostPitchers.length,
-          avgOPS: avgOPS.toFixed(3),
-          avgERA: avgERA.toFixed(2),
-          exodusScore: Number(exodusScore.toFixed(2)),
+          addedCount: addedPlayers.length,
+          lostCount: lostPlayers.length,
+          addedValue: Number(addedValue.toFixed(1)),
+          lostValue: Number(lostValue.toFixed(1)),
+          netImpact: Number(netImpact.toFixed(1)),
+          bestAdd: topMoverName(addedPlayers),
+          biggestLoss: topMoverName(lostPlayers),
+          trendLabel: trend.label,
+          trendClassName: trend.className,
         });
       } catch (err) {
         console.error(`Failed to analyze team ${team.id}`, err);
+      } finally {
+        setImpactProgress({ current: i + 1, total: mlbTeams.length, teamName: team.name });
       }
     }
 
-    rankings.sort((a, b) => b.exodusScore - a.exodusScore);
-    setExodusRankings(rankings);
+    rankings.sort((a, b) => b.netImpact - a.netImpact);
+    setImpactRankings(rankings);
+    setImpactProgress({ current: mlbTeams.length, total: mlbTeams.length, teamName: 'Complete' });
     setIsRankingLoading(false);
   };
 
@@ -857,6 +916,11 @@ export default function StatsApp() {
       fetchHotCold(hotColdDays);
     }
   };
+
+  const impactProgressPercent = impactProgress.total
+    ? Math.round((impactProgress.current / impactProgress.total) * 100)
+    : 0;
+  const impactBaseballPercent = Math.min(98, Math.max(2, impactProgressPercent));
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -1027,7 +1091,7 @@ export default function StatsApp() {
               options={[
                 { value: 'exodus', label: 'Team Exodus' },
                 { value: 'acquisitions', label: 'Team Acquisitions' },
-                { value: 'rankings', label: 'Exodus Rankings' },
+                { value: 'rankings', label: 'Impact Rankings' },
               ]}
             />
           </div>
@@ -1037,7 +1101,7 @@ export default function StatsApp() {
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">Team Exodus Analyzer</h3>
             <p className="text-sm text-slate-400 mb-4">
-              Players who left after 2025 — sorted by biggest decline first. Score blends wRC+, WAR, Statcast skills, and defense (0 = same, + = better, − = worse).
+              Players who left after 2025 — sorted by adjusted 2026 value. Change blends production, WAR, Statcast quality, role size, and small-sample regression.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1 w-full">
@@ -1054,7 +1118,7 @@ export default function StatsApp() {
               <button
                 onClick={analyzeTeamExodus}
                 disabled={isAnalyzing}
-                className={`px-6 py-3 bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto`}
+                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto"
               >
                 {isAnalyzing ? 'Analyzing Exodus…' : 'Analyze Exodus'}
               </button>
@@ -1082,7 +1146,7 @@ export default function StatsApp() {
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
             <h3 className="font-semibold text-lg mb-1">Team Acquisitions Analyzer</h3>
             <p className="text-sm text-slate-400 mb-4">
-              Players added for 2026 — sorted by biggest improvement first. Same YoY score as Exodus (green = up, gray = flat, red = down).
+              Players added for 2026 — sorted by adjusted 2026 value. Change compares each player to their own 2025 baseline, weighted by role and sample reliability.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1 w-full">
@@ -1099,7 +1163,7 @@ export default function StatsApp() {
               <button
                 onClick={analyzeTeamAcquisitions}
                 disabled={isAnalyzing}
-                className={`px-6 py-3 bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto`}
+                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all flex-shrink-0 w-full sm:w-auto"
               >
                 {isAnalyzing ? 'Analyzing Acquisitions…' : 'Analyze Acquisitions'}
               </button>
@@ -1125,22 +1189,48 @@ export default function StatsApp() {
       {rosterImpactView === 'rankings' && (
         <div>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 mb-6">
-            <h3 className="font-semibold text-lg mb-1">League Exodus Rankings</h3>
+            <h3 className="font-semibold text-lg mb-1">League Impact Rankings</h3>
             <p className="text-sm text-slate-400 mb-4">
-              Which teams got played the hardest? Ranking by total talent lost in the 2025–2026 exodus.
+              Which teams gained the most roster value? Net impact compares adjusted 2026 value added against adjusted 2026 value lost.
             </p>
             <button
-              onClick={analyzeAllExodus}
+              onClick={analyzeImpactRankings}
               disabled={isRankingLoading}
-              className="px-6 py-3 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all"
+              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold rounded-2xl text-sm active:scale-[0.985] transition-all"
             >
-              {isRankingLoading ? 'Analyzing all 30 teams…' : 'Calculate League-Wide Exodus Rankings'}
+              {isRankingLoading ? 'Analyzing all 30 teams…' : 'Calculate League-Wide Impact Rankings'}
             </button>
+
+            {isRankingLoading && (
+              <div className="mt-5">
+                <div className="flex items-center justify-between gap-3 text-xs text-slate-400 mb-2">
+                  <span className="truncate">
+                    {impactProgress.current >= impactProgress.total
+                      ? 'Finishing rankings…'
+                      : `Analyzing ${impactProgress.teamName}`}
+                  </span>
+                  <span className="font-mono text-emerald-300 tabular-nums flex-shrink-0">
+                    {impactProgress.current}/{impactProgress.total} · {impactProgressPercent}%
+                  </span>
+                </div>
+                <div className="impact-fire-track">
+                  <div
+                    className="impact-fire-fill"
+                    style={{ width: `${impactProgressPercent}%` }}
+                  />
+                  <div
+                    className="impact-baseball-runner"
+                    style={{ left: `${impactBaseballPercent}%` }}
+                    aria-hidden
+                  >
+                    <BaseballSpinner size="lg" inline className="impact-baseball-spinner" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {isRankingLoading && <LoadingSpinner size="lg" py="py-16" />}
-
-          {exodusRankings.length > 0 && (
+          {impactRankings.length > 0 && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
               <div className={TABLE_SCROLL}>
                 <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT}`}>
@@ -1148,23 +1238,37 @@ export default function StatsApp() {
                     <tr className="border-b border-slate-700">
                       <th className={`${stickyRankHead('bg-slate-900')} font-medium text-slate-400`}>#</th>
                       <th className={`${stickyTeamAbbrHeadAfterRank('bg-slate-900')} font-medium text-slate-400`}>Team</th>
+                      <th className={`${statHead('text-right font-medium text-slate-400')}`}>Net Impact</th>
+                      <th className={`${statHead('text-right font-medium text-slate-400')}`}>Added Value</th>
+                      <th className={`${statHead('text-right font-medium text-slate-400')}`}>Lost Value</th>
+                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>Added</th>
                       <th className={`${statHead('text-center font-medium text-slate-400')}`}>Lost</th>
-                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>OPS</th>
-                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>ERA</th>
-                      <th className={`${statHead('text-right font-medium text-slate-400')}`}>Score</th>
+                      <th className={`${statHead('text-left font-medium text-slate-400')}`}>Best Add</th>
+                      <th className={`${statHead('text-left font-medium text-slate-400')}`}>Biggest Loss</th>
+                      <th className={`${statHead('text-center font-medium text-slate-400')}`}>Trend</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {exodusRankings.map((team, i) => (
+                    {impactRankings.map((team, i) => (
                       <tr key={team.teamId} className="group border-b border-slate-700 last:border-none hover:bg-slate-800/50">
-                        <td className={`${stickyRankCell('bg-slate-900')} font-mono font-bold text-${THEME_COLOR}-400`}>{i + 1}</td>
+                        <td className={`${stickyRankCell('bg-slate-900')} font-mono font-bold text-emerald-400`}>{i + 1}</td>
                         <td className={stickyTeamAbbrCellAfterRank('bg-slate-900')}>
                           <TeamAbbrCell teamId={team.teamId} teamName={team.teamName} abbrOnly size="sm" abbrClassName="text-xs font-semibold" />
                         </td>
-                        <td className={statCell('text-center')}>{team.lostPlayers}</td>
-                        <td className={statCell(`text-center text-${THEME_COLOR}-300`)}>{team.avgOPS}</td>
-                        <td className={statCell('text-center text-rose-300')}>{team.avgERA}</td>
-                        <td className={statCell('text-right font-bold text-rose-400')}>{team.exodusScore}</td>
+                        <td className={statCell(`text-right font-black ${team.netImpact >= 0 ? 'text-emerald-400' : 'text-red-400'}`)}>
+                          {formatDeltaScore(team.netImpact)}
+                        </td>
+                        <td className={statCell('text-right font-semibold text-emerald-300')}>{team.addedValue.toFixed(1)}</td>
+                        <td className={statCell('text-right font-semibold text-red-300')}>{team.lostValue.toFixed(1)}</td>
+                        <td className={statCell('text-center')}>{team.addedCount}</td>
+                        <td className={statCell('text-center')}>{team.lostCount}</td>
+                        <td className={statCell('text-left text-slate-300 max-w-[180px] truncate')}>{team.bestAdd}</td>
+                        <td className={statCell('text-left text-slate-300 max-w-[180px] truncate')}>{team.biggestLoss}</td>
+                        <td className={statCell('text-center')}>
+                          <span className={`inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${team.trendClassName}`}>
+                            {team.trendLabel}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
