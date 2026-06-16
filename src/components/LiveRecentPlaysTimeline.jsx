@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   teamLogoUrl,
   playerHeadshotUrl,
@@ -278,28 +279,6 @@ function LiveRecentPlayRow({
     );
   }
 
-  if (row.kind === 'due_up') {
-    return (
-      <LiveTimelineRow
-        avatar={(
-          <IconAvatar>
-            <i className="fa-solid fa-clock text-base text-sky-300" />
-          </IconAvatar>
-        )}
-      >
-        <p className="text-sm font-semibold text-slate-200 leading-snug">{row.title}</p>
-        <ul className="mt-1.5 space-y-0.5">
-          {row.batters.map((batter, idx) => (
-            <li key={`${row.key}-${batter.id}`} className="text-sm text-slate-400 leading-snug">
-              <span className="text-slate-600 font-mono text-xs mr-1.5">{idx + 1}.</span>
-              {batter.name}
-            </li>
-          ))}
-        </ul>
-      </LiveTimelineRow>
-    );
-  }
-
   if (row.kind === 'runners') {
     return (
       <LiveTimelineRow
@@ -428,6 +407,25 @@ export default function LiveRecentPlaysTimeline({
   ScoringPlayVideo,
 }) {
   const hasRows = groups.some((g) => g.rows.length > 0);
+  const knownRowKeysRef = useRef(null);
+  const [newRowKeys, setNewRowKeys] = useState(() => new Set());
+
+  useEffect(() => {
+    const keys = groups.flatMap((group) => group.rows.map((row) => row.key));
+    if (knownRowKeysRef.current == null) {
+      knownRowKeysRef.current = new Set(keys);
+      return undefined;
+    }
+
+    const previous = knownRowKeysRef.current;
+    const added = keys.filter((key) => !previous.has(key));
+    knownRowKeysRef.current = new Set(keys);
+    if (!added.length) return undefined;
+
+    setNewRowKeys(new Set(added));
+    const timer = setTimeout(() => setNewRowKeys(new Set()), 900);
+    return () => clearTimeout(timer);
+  }, [groups]);
 
   return (
     <div className="relative">
@@ -448,20 +446,24 @@ export default function LiveRecentPlaysTimeline({
             )}
             <div className="space-y-1.5">
               {group.rows.map((row) => (
-                <LiveRecentPlayRow
+                <div
                   key={row.key}
-                  row={row}
-                  away={away}
-                  home={home}
-                  getPlayBadge={getPlayBadge}
-                  highlightByItemKey={highlightByItemKey}
-                  expandedVideoKey={expandedVideoKey}
-                  pinnedVideo={pinnedVideo}
-                  onPlayerClick={onPlayerClick}
-                  onOpenPlay={onOpenPlay}
-                  onToggleVideo={onToggleVideo}
-                  ScoringPlayVideo={ScoringPlayVideo}
-                />
+                  className={newRowKeys.has(row.key) ? 'recent-play-insert' : undefined}
+                >
+                  <LiveRecentPlayRow
+                    row={row}
+                    away={away}
+                    home={home}
+                    getPlayBadge={getPlayBadge}
+                    highlightByItemKey={highlightByItemKey}
+                    expandedVideoKey={expandedVideoKey}
+                    pinnedVideo={pinnedVideo}
+                    onPlayerClick={onPlayerClick}
+                    onOpenPlay={onOpenPlay}
+                    onToggleVideo={onToggleVideo}
+                    ScoringPlayVideo={ScoringPlayVideo}
+                  />
+                </div>
               ))}
             </div>
           </div>

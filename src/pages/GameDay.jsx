@@ -16,6 +16,7 @@ import {
   sumInningsPitched,
 } from '../utils/mlbHelpers';
 import PitchCanvas from '../components/PitchCanvas';
+import { AT_BAT_STRIKE_ZONE_CLIP } from '../pitchfx/atBatPitchFx';
 import {
   buildSummaryItems,
   buildSummaryLeadIn,
@@ -42,6 +43,7 @@ import { fetchGameLineups, lineupsAvailable } from '../utils/gameLineups';
 import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../utils/liveFeedMerge';
 import {
   buildLiveRecentPlaysFeed,
+  dueUpFromOffense,
   groupLiveRecentRows,
 } from '../utils/liveRecentPlays';
 import LiveRecentPlaysTimeline from '../components/LiveRecentPlaysTimeline';
@@ -1371,6 +1373,16 @@ export default function GamePage() {
     currentInning: ls?.currentInning,
     currentHalf: ls?.inningHalf === 'Top' ? 'top' : 'bottom',
   });
+  const isBetweenHalfInnings = ls?.inningState === 'Middle' || ls?.inningState === 'End';
+  const dueUpBatters = isLive && isBetweenHalfInnings
+    ? dueUpFromOffense(ls?.offense)
+    : [];
+  const showDueUpMatchup = dueUpBatters.length > 0;
+  const dueUpInning = ls?.inningState === 'End'
+    ? (ls?.currentInning ?? 0) + 1
+    : ls?.currentInning;
+  const dueUpInningOrdinal = ORDINALS[dueUpInning] || dueUpInning;
+  const dueUpHalfLabel = ls?.inningState === 'End' ? 'Top' : 'Bottom';
   const highlightByItemKey = buildHighlightMap(allSummaryItems, highlightVideos);
 
   const handleSummaryPlayerClick = (e, batterId) => {
@@ -1818,12 +1830,15 @@ export default function GamePage() {
                   szBot={szB}
                   gamePk={gamePk}
                   viewMode="strikeZone"
-                  width={220}
-                  height={270}
+                  width={AT_BAT_STRIKE_ZONE_CLIP.width}
+                  height={AT_BAT_STRIKE_ZONE_CLIP.height}
                   showPitchTrails={SHOW_PLAY_DETAIL_PITCH_TRAILS}
                   className="mx-auto shrink-0"
                 />
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center w-[220px] mx-auto">
+                <div
+                  className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center mx-auto"
+                  style={{ width: `${AT_BAT_STRIKE_ZONE_CLIP.width}px` }}
+                >
                   {[
                     { color: '#c61b2b', label: 'Strike' },
                     { color: '#098314', label: 'Ball' },
@@ -2254,6 +2269,7 @@ export default function GamePage() {
               venueId={venueId}
               exteriorFailed={exteriorFailed}
               gameDateTime={gd.datetime?.dateTime}
+              currentPlay={currentPlay}
               playEvents={allPitchEvents}
               szTop={szTop}
               szBot={szBot}
@@ -2269,111 +2285,142 @@ export default function GamePage() {
 
             {/* ── MATCHUP ROW: Pitcher | Count+Outs+Diamond | Batter ── */}
             <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-              <div className="grid grid-cols-3 divide-x divide-slate-800">
-                {/* Pitcher */}
-                <button
-                  className="flex flex-col items-center gap-1.5 p-3 hover:bg-slate-800/40 transition-colors"
-                  onClick={() => navigate(`/player/${ls.defense?.pitcher?.id}`)}
-                >
-                  <div className="text-[8px] text-slate-500 uppercase tracking-widest">
-                    Pitching
+              {showDueUpMatchup ? (
+                <div>
+                  <div className="px-4 pt-3 text-center">
+                    <div className={`text-[9px] text-${THEME_COLOR}-300 uppercase tracking-[0.22em] font-semibold`}>
+                      Due Up
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">
+                      {dueUpHalfLabel} {dueUpInningOrdinal}
+                    </div>
                   </div>
-                  <div className="w-14 h-14 rounded-xl overflow-hidden border border-slate-700 flex-shrink-0">
-                    <img
-                      src={pitcherActionShotUrl(ls.defense?.pitcher?.id)}
-                      className="w-full h-full object-cover object-top"
-                      alt=""
-                      onError={(e) => {
-                        e.target.src = playerHeadshotUrl(ls.defense?.pitcher?.id);
-                      }}
-                    />
+                  <div className="grid grid-cols-3 divide-x divide-slate-800">
+                    {dueUpBatters.map((batter, idx) => (
+                      <button
+                        key={batter.id}
+                        className="flex flex-col items-center gap-1.5 p-3 hover:bg-slate-800/40 transition-colors"
+                        onClick={() => navigate(`/player/${batter.id}`)}
+                      >
+                        <div className="text-[8px] text-slate-500 uppercase tracking-widest">
+                          {idx === 0 ? 'Batter' : idx === 1 ? 'On Deck' : 'In Hole'}
+                        </div>
+                        <div className={`w-14 h-14 rounded-xl overflow-hidden border-2 ${idx === 0 ? `border-${THEME_COLOR}-500/40` : 'border-slate-700'} flex-shrink-0`}>
+                          <img
+                            src={playerActionShotUrl(batter.id)}
+                            className="w-full h-full object-cover object-top"
+                            alt=""
+                            onError={(e) => {
+                              e.target.src = playerHeadshotUrl(batter.id);
+                            }}
+                          />
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
+                          {batter.name || batter.fullName || '—'}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                  <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
-                    {ls.defense?.pitcher?.fullName?.split(' ').slice(-1)[0] || '—'}
-                  </div>
-                  {(() => {
-                    const all = {
-                      ...(ld.boxscore?.teams?.away?.players || {}),
-                      ...(ld.boxscore?.teams?.home?.players || {}),
-                    };
-                    const player = all[`ID${ls.defense?.pitcher?.id}`];
-                    const gs = player?.stats?.pitching;
-                    const ss = player?.seasonStats?.pitching;
-                    return (
-                      <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
-                        {gs?.pitchesThrown != null && (
-                          <div className="text-slate-400">
-                            {gs.pitchesThrown} pitches
-                          </div>
-                        )}
-                        {gs?.strikeOuts != null && (
-                          <div>
-                            {gs.strikeOuts}K {gs.baseOnBalls ?? 0}BB
-                          </div>
-                        )}
-                        {ss?.era != null && (
-                          <div>ERA {parseFloat(ss.era).toFixed(2)}</div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </button>
-
-                {/* Center: bases, count, outs */}
-                <div className="flex flex-col items-center justify-center gap-2.5 p-3">
-                  <BaseDiamondIndicator
-                    {...getRunnersOnBase(ls, currentPlay)}
-                    size="md"
-                  />
-                  <span className="text-sm font-bold font-mono text-slate-200 tabular-nums">
-                    {ls.balls ?? 0}-{ls.strikes ?? 0}
-                  </span>
-                  <OutsIndicator outs={ls.outs ?? 0} size="md" />
                 </div>
+              ) : (
+                <div className="grid grid-cols-3 divide-x divide-slate-800">
+                  {/* Pitcher */}
+                  <button
+                    className="flex flex-col items-center gap-1.5 p-3 hover:bg-slate-800/40 transition-colors"
+                    onClick={() => navigate(`/player/${ls.defense?.pitcher?.id}`)}
+                  >
+                    <div className="text-[8px] text-slate-500 uppercase tracking-widest">
+                      Pitching
+                    </div>
+                    <div className="w-14 h-14 rounded-xl overflow-hidden border border-slate-700 flex-shrink-0">
+                      <img
+                        src={pitcherActionShotUrl(ls.defense?.pitcher?.id)}
+                        className="w-full h-full object-cover object-top"
+                        alt=""
+                        onError={(e) => {
+                          e.target.src = playerHeadshotUrl(ls.defense?.pitcher?.id);
+                        }}
+                      />
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
+                      {ls.defense?.pitcher?.fullName?.split(' ').slice(-1)[0] || '—'}
+                    </div>
+                    {(() => {
+                      const all = {
+                        ...(ld.boxscore?.teams?.away?.players || {}),
+                        ...(ld.boxscore?.teams?.home?.players || {}),
+                      };
+                      const player = all[`ID${ls.defense?.pitcher?.id}`];
+                      const gs = player?.stats?.pitching;
+                      const ss = player?.seasonStats?.pitching;
+                      return (
+                        <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
+                          {gs?.pitchesThrown != null && (
+                            <div className="text-slate-400">
+                              {gs.pitchesThrown} pitches
+                            </div>
+                          )}
+                         
+                        </div>
+                      );
+                    })()}
+                  </button>
 
-                {/* Batter */}
-                <button
-                  className="flex flex-col items-center gap-1.5 p-3 hover:bg-slate-800/40 transition-colors"
-                  onClick={() => navigate(`/player/${ls.offense?.batter?.id}`)}
-                >
-                  <div className="text-[8px] text-slate-500 uppercase tracking-widest">
-                    At Bat
-                  </div>
-                  <div className={`w-14 h-14 rounded-xl overflow-hidden border-2 border-${THEME_COLOR}-500/40 flex-shrink-0`}>
-                    <img
-                      src={playerActionShotUrl(ls.offense?.batter?.id)}
-                      className="w-full h-full object-cover object-top"
-                      alt=""
-                      onError={(e) => {
-                        e.target.src = playerHeadshotUrl(ls.offense?.batter?.id);
-                      }}
+                  {/* Center: bases, count, outs */}
+                  <div className="flex flex-col items-center justify-center gap-2.5 p-3">
+                    <BaseDiamondIndicator
+                      {...getRunnersOnBase(ls, currentPlay)}
+                      size="md"
                     />
+                    <span className="text-sm font-bold font-mono text-slate-200 tabular-nums">
+                      {ls.balls ?? 0}-{ls.strikes ?? 0}
+                    </span>
+                    <OutsIndicator outs={ls.outs ?? 0} size="md" />
                   </div>
-                  <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
-                    {ls.offense?.batter?.fullName?.split(' ').slice(-1)[0] || '—'}
-                  </div>
-                  {(() => {
-                    const all = {
-                      ...(ld.boxscore?.teams?.away?.players || {}),
-                      ...(ld.boxscore?.teams?.home?.players || {}),
-                    };
-                    const player = all[`ID${ls.offense?.batter?.id}`];
-                    const gs = player?.stats?.batting;
-                    const ss = player?.seasonStats?.batting;
-                    return (
-                      <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
-                        {gs != null && (
-                          <div className={`text-${THEME_COLOR}-400/80 font-semibold`}>
-                            {gs.hits ?? 0}-{gs.atBats ?? 0}
-                          </div>
-                        )}
-                        {ss?.avg && <div>AVG {ss.avg}</div>}
-                        {ss?.ops && <div>OPS {ss.ops}</div>}
-                      </div>
-                    );
-                  })()}
-                </button>
-              </div>
+
+                  {/* Batter */}
+                  <button
+                    className="flex flex-col items-center gap-1.5 p-3 hover:bg-slate-800/40 transition-colors"
+                    onClick={() => navigate(`/player/${ls.offense?.batter?.id}`)}
+                  >
+                    <div className="text-[8px] text-slate-500 uppercase tracking-widest">
+                      At Bat
+                    </div>
+                    <div className={`w-14 h-14 rounded-xl overflow-hidden border-2 border-${THEME_COLOR}-500/40 flex-shrink-0`}>
+                      <img
+                        src={playerActionShotUrl(ls.offense?.batter?.id)}
+                        className="w-full h-full object-cover object-top"
+                        alt=""
+                        onError={(e) => {
+                          e.target.src = playerHeadshotUrl(ls.offense?.batter?.id);
+                        }}
+                      />
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
+                      {ls.offense?.batter?.fullName?.split(' ').slice(-1)[0] || '—'}
+                    </div>
+                    {(() => {
+                      const all = {
+                        ...(ld.boxscore?.teams?.away?.players || {}),
+                        ...(ld.boxscore?.teams?.home?.players || {}),
+                      };
+                      const player = all[`ID${ls.offense?.batter?.id}`];
+                      const gs = player?.stats?.batting;
+                      const ss = player?.seasonStats?.batting;
+                      return (
+                        <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
+                          {gs != null && (
+                            <div className={`text-${THEME_COLOR}-400/80 font-semibold`}>
+                              {gs.hits ?? 0}-{gs.atBats ?? 0}
+                            </div>
+                          )}
+                        
+                        </div>
+                      );
+                    })()}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ── VS STATS: Batter career stats vs this pitcher ── */}

@@ -95,118 +95,10 @@ function scoringTeamSide(play) {
   return play.about?.halfInning === 'top' ? 'away' : 'home';
 }
 
-function halfInningEnded(play, nextPlay) {
-  if (!play.about?.isComplete || !nextPlay?.about) return false;
-  const pi = play.about.inning;
-  const ph = play.about.halfInning;
-  const ni = nextPlay.about.inning;
-  const nh = nextPlay.about.halfInning;
-  return pi !== ni || ph !== nh;
-}
-
-function nextHalfInfo(afterPlay, ordinals) {
-  const inning = afterPlay.about.inning;
-  const half = afterPlay.about.halfInning;
-  if (half === 'top') {
-    const ord = ordinals[inning] || inning;
-    return { inning, half: 'bottom', halfLabel: 'Bottom', ord, inningKey: `Bottom ${ord}` };
-  }
-  const nextInning = inning + 1;
-  const ord = ordinals[nextInning] || nextInning;
-  return { inning: nextInning, half: 'top', halfLabel: 'Top', ord, inningKey: `Top ${ord}` };
-}
-
-function getLineupBatters(boxscore, side) {
-  const players = boxscore?.teams?.[side]?.players;
-  if (!players) return [];
-  return Object.values(players)
-    .filter((p) => p.battingOrder)
-    .sort((a, b) => parseInt(a.battingOrder, 10) - parseInt(b.battingOrder, 10));
-}
-
-function getDueUpBatters(boxscore, side, leadoffBatterId, fallbackBatter) {
-  const lineup = getLineupBatters(boxscore, side);
-  if (!lineup.length) {
-    if (fallbackBatter?.id) {
-      return [{ id: fallbackBatter.id, name: lastName(fallbackBatter) }];
-    }
-    return [];
-  }
-
-  let idx = leadoffBatterId
-    ? lineup.findIndex((p) => p.person?.id === leadoffBatterId)
-    : 0;
-  if (idx < 0) idx = 0;
-
-  const batters = [];
-  for (let i = 0; i < 3; i += 1) {
-    const p = lineup[(idx + i) % lineup.length];
-    if (p?.person?.id) {
-      batters.push({ id: p.person.id, name: lastName(p.person) });
-    }
-  }
-  return batters;
-}
-
-function dueUpFromOffense(offense) {
+export function dueUpFromOffense(offense) {
   return [offense?.batter, offense?.onDeck, offense?.inHole]
     .filter((p) => p?.id)
-    .map((p) => ({ id: p.id, name: lastName(p) }));
-}
-
-function pushDueUpRow(rows, { key, title, batters, meta, sortTime }) {
-  if (!batters?.length) return;
-  if (rows.some((r) => r.kind === 'due_up' && r.key === key)) return;
-  rows.push({
-    kind: 'due_up',
-    key,
-    title,
-    batters,
-    ...meta,
-    sortTime,
-  });
-}
-
-function halfKey(inning, half) {
-  return `${inning}-${half}`;
-}
-
-function playHalfKey(play) {
-  if (!play?.about) return null;
-  const half = play.about.halfInning === 'top' ? 'top' : 'bottom';
-  return halfKey(play.about.inning, half);
-}
-
-/** Halves that have at least one pitch thrown or a completed plate appearance. */
-function getStartedHalfKeys(allPlays, currentPlay, isLive) {
-  const started = new Set();
-
-  const markIfStarted = (play) => {
-    const key = playHalfKey(play);
-    if (!key) return;
-    const hasPitch = (play.playEvents ?? []).some((e) => e.isPitch);
-    if (play.about?.isComplete || hasPitch) {
-      started.add(key);
-    }
-  };
-
-  for (const play of allPlays) markIfStarted(play);
-  if (isLive && currentPlay) markIfStarted(currentPlay);
-
-  return started;
-}
-
-function pruneDueUpRows(rows, { allPlays, currentPlay, isLive }) {
-  if (!isLive) {
-    return rows.filter((row) => row.kind !== 'due_up');
-  }
-
-  const started = getStartedHalfKeys(allPlays, currentPlay, isLive);
-
-  return rows.filter((row) => {
-    if (row.kind !== 'due_up') return true;
-    return !started.has(halfKey(row.inning, row.half));
-  });
+    .map((p) => ({ id: p.id, name: lastName(p), fullName: p.fullName }));
 }
 
 function isPickoffAttempt(ev) {
@@ -359,7 +251,6 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
 export function buildLiveRecentPlaysRows({
   allPlays,
   gameData,
-  boxscore,
   linescore,
   currentPlay,
   isLive,
@@ -421,45 +312,6 @@ export function buildLiveRecentPlaysRows({
       }
 
       pushRunnersRow(rows, play, play.about?.atBatIndex, meta, sortTime, allPlays);
-
-      const nextPlay = allPlays[playIdx + 1];
-      if (halfInningEnded(play, nextPlay)) {
-        const next = nextHalfInfo(play, ordinals);
-        const side = next.half === 'top' ? 'away' : 'home';
-        const batters = getDueUpBatters(
-          boxscore,
-          side,
-          nextPlay.matchup?.batter?.id,
-          nextPlay.matchup?.batter,
-        );
-        const nextStart = nextPlay.about?.startTime || play.about?.endTime;
-        pushDueUpRow(rows, {
-          key: `due-up-${next.inning}-${next.half}`,
-          title: `Due Up - ${next.halfLabel} ${next.ord}`,
-          batters,
-          meta: { inning: next.inning, half: next.half, inningKey: next.inningKey },
-          sortTime: nextStart
-            ? new Date(new Date(nextStart).getTime() - 1).toISOString()
-            : sortTime,
-        });
-      }
-    }
-  }
-
-  if (isLive && linescore?.inningState === 'Middle' && linescore.offense?.batter) {
-    const half = linescore.inningHalf === 'Top' ? 'top' : 'bottom';
-    const inning = linescore.currentInning ?? 1;
-    const halfLabel = half === 'top' ? 'Top' : 'Bottom';
-    const ord = ordinals[inning] || inning;
-    const key = `due-up-${inning}-${half}`;
-    if (!getStartedHalfKeys(allPlays, currentPlay, isLive).has(halfKey(inning, half))) {
-      pushDueUpRow(rows, {
-        key,
-        title: `Due Up - ${halfLabel} ${ord}`,
-        batters: dueUpFromOffense(linescore.offense),
-        meta: { inning, half, inningKey: `${halfLabel} ${ord}` },
-        sortTime: new Date().toISOString(),
-      });
     }
   }
 
@@ -504,7 +356,7 @@ export function buildLiveRecentPlaysRows({
     return ta - tb;
   });
 
-  return pruneDueUpRows(rows, { allPlays, currentPlay, isLive });
+  return rows;
 }
 
 export function buildLiveRecentPlaysFeed(props) {

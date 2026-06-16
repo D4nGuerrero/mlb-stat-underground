@@ -1303,7 +1303,7 @@ export default function PlayerPage() {
   {/* PLAYER IMG */}
   <img
     src={playerHeadshotUrl(playerId)}
-    className="relative z-10 w-32 h-32 sm:w-40 sm:h-40 rounded-2xl object-cover shadow-lg"
+    className="relative z-10 w-32 h-32 sm:w-40 sm:h-40  object-cover shadow-lg"
     alt={playerInfo.fullName}
   />
 

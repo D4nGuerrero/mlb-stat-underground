@@ -15,6 +15,9 @@ export const STRIKE_ZONE_DEPTH_FT = 8.5 / BASE_FOOT;
 const PLATE_WIDTH_FT = STRIKE_ZONE_WIDTH_FT;
 const GD5_OFFSET = 133;
 const PERSPECTIVE_SHIFT_Y = 186;
+const STRIKE_ZONE_PITCH_NUMBER_FONT_SIZE = 10;
+const FULL_VIEW_PITCH_NUMBER_FONT_SIZE = 9;
+const PITCH_NUMBER_RADIUS_SCALE = 1.15;
 
 export const AT_BAT_BALL_COLORS = {
   ballColorStrike: 'rgba(198, 27, 43, 1)',
@@ -43,8 +46,11 @@ export const AT_BAT_PITCH_TRAIL_COLORS = {
   EP: 'rgba(0, 85, 254, 1.0)',
 };
 
-/** At Bat play-overlay strike zone crop (gd.min.js clip config). */
-export const AT_BAT_STRIKE_ZONE_CLIP = { width: 220, height: 270 };
+/**
+ * Strike-zone viewport. MLB's original crop is about 220px wide; we keep the
+ * zone math the same but show more side padding so chase pitches do not clip.
+ */
+export const AT_BAT_STRIKE_ZONE_CLIP = { width: 280, height: 270 };
 
 /** Internal render width — must match MLB `fixed_width: 960` or the zone shrinks. */
 export const AT_BAT_FIXED_WIDTH = 960;
@@ -248,6 +254,14 @@ function points3D(pitch, scalers, step, numberOfPoints) {
   const point = pointOnGrid(scalers, x, y, z);
   point[3] = Math.min(widthAdjuster, scalers.maxlinewidth);
   return point;
+}
+
+function pitchNumberFontSize(scalers, radius) {
+  const baseFontSize = (scalers.fontSize / scalers.base_width) * scalers.fakeBallSize * 0.72;
+  const minFontSize = scalers.clip
+    ? STRIKE_ZONE_PITCH_NUMBER_FONT_SIZE
+    : FULL_VIEW_PITCH_NUMBER_FONT_SIZE;
+  return Math.max(baseFontSize, radius * PITCH_NUMBER_RADIUS_SCALE, minFontSize);
 }
 
 function points2D(pitch, scalers) {
@@ -528,7 +542,7 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   const radius = point[4] || scalers.ballRadius;
   const strokeWidth = (scalers.canvasDensity > 1 ? scalers.canvasDensity : 1) * 1;
   const safeStroke = radius - strokeWidth / 2;
-  const fontSize = (scalers.fontSize / scalers.base_width) * scalers.fakeBallSize * 0.72;
+  const fontSize = pitchNumberFontSize(scalers, radius);
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -544,10 +558,9 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   ctx.fillStyle = shader.text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,1)';
-  ctx.shadowBlur = 1;
-  ctx.shadowOffsetX = scalers.canvasDensity;
-  ctx.shadowOffsetY = scalers.canvasDensity;
+  ctx.lineWidth = Math.max(2, fontSize * 0.18);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.strokeText(String(pitch.num ?? ''), x, y);
   ctx.fillText(String(pitch.num ?? ''), x, y);
 
   ctx.beginPath();
@@ -563,7 +576,7 @@ export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.
   const [x, y] = point;
   const radius = point[4] || scalers.ballRadius;
   const strokeWidth = (scalers.canvasDensity > 1 ? scalers.canvasDensity : 1) * 1;
-  const fontSize = (scalers.fontSize / scalers.base_width) * scalers.fakeBallSize * 0.72 * 0.9;
+  const fontSize = pitchNumberFontSize(scalers, radius);
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -578,10 +591,9 @@ export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.
   ctx.font = `bold ${fontSize}px Helvetica Neue, Helvetica, Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,1)';
-  ctx.shadowBlur = 1;
-  ctx.shadowOffsetX = scalers.canvasDensity;
-  ctx.shadowOffsetY = scalers.canvasDensity;
+  ctx.lineWidth = Math.max(2, fontSize * 0.18);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.strokeText(String(pitch.num ?? ''), x, y);
   ctx.fillText(String(pitch.num ?? ''), x, y);
   ctx.restore();
 }
