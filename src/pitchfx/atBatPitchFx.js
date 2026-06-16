@@ -571,6 +571,77 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   ctx.restore();
 }
 
+function drawBaseballSeam(ctx, radius, offset, rotation, flip = 1) {
+  ctx.save();
+  ctx.rotate(rotation);
+  ctx.scale(flip, 1);
+  ctx.beginPath();
+  ctx.ellipse(offset, 0, radius * 0.34, radius * 0.94, 0, -Math.PI / 2, Math.PI / 2);
+  ctx.lineWidth = Math.max(1, radius * 0.12);
+  ctx.strokeStyle = 'rgba(185, 28, 28, 0.95)';
+  ctx.stroke();
+
+  // Tiny stitch marks sell the spin without needing a bitmap sprite.
+  ctx.lineWidth = Math.max(0.7, radius * 0.055);
+  for (let i = -3; i <= 3; i += 1) {
+    const y = (i / 3) * radius * 0.62;
+    const x = offset + Math.cos((y / radius) * 1.1) * radius * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(x - radius * 0.14, y - radius * 0.05);
+    ctx.lineTo(x + radius * 0.14, y + radius * 0.05);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+export function drawAtBatSpinningBaseball(ctx, point, progress, scalers, alpha = 1) {
+  if (!point) return;
+  const [x, y] = point;
+  const depthRadius = point[4] || scalers.ballRadius;
+  const landedRadius = Math.max(scalers.ballRadius, scalers.clip ? 8 : 5);
+  const radius = Math.max(depthRadius, landedRadius * 0.28);
+  const spin = progress * Math.PI * 8;
+  const seamTravel = Math.sin(spin) * radius * 0.2;
+  const squash = 0.82 + Math.abs(Math.cos(spin)) * 0.18;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.scale(squash, 1);
+
+  const grad = ctx.createRadialGradient(
+    -radius * 0.34,
+    -radius * 0.42,
+    radius * 0.08,
+    0,
+    0,
+    radius,
+  );
+  grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  grad.addColorStop(0.56, 'rgba(244, 241, 231, 1)');
+  grad.addColorStop(1, 'rgba(184, 176, 158, 1)');
+
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.clip();
+
+  drawBaseballSeam(ctx, radius, -radius * 0.48 + seamTravel, spin * 0.16, 1);
+  drawBaseballSeam(ctx, radius, radius * 0.48 + seamTravel, -spin * 0.16, -1);
+
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(1, radius * 0.1);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.55) {
   if (!point) return;
   const [x, y] = point;

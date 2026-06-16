@@ -9,6 +9,7 @@ import {
   drawAtBatStrikeZone,
   drawAtBatTrail,
   drawAtBatBall,
+  drawAtBatSpinningBaseball,
   drawAtBatPitchDot,
   hasRenderablePitchData,
   AT_BAT_ANIMATION_MS,
@@ -200,7 +201,11 @@ export default function PitchCanvas({
       if (phase === 'settled') {
         const last = traj[traj.length - 1];
         drawAtBatBall(ctx, last, pitch, scaler, shader, 1);
+        return;
       }
+
+      const idx = Math.min(Math.floor(progress * (traj.length - 1)), traj.length - 1);
+      drawAtBatSpinningBaseball(ctx, traj[idx], progress, scaler, 1);
     },
     [W, H, scaler, setupCanvas, refPitchForCrop, crop],
   );
