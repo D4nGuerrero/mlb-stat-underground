@@ -8,6 +8,8 @@ import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
 import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
 import { computeCareerTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
+import { useWatchlist } from '../hooks/useWatchlist';
+import { fetchStatsApiJson } from '../lib/mlb/client';
 import {
   SegmentedControl,
   Select,
@@ -139,15 +141,6 @@ const MINOR_SPORT_ID_SET = new Set(MINOR_SPORT_IDS);
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
 
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
-const WATCHLIST_KEY = 'mlbWatchlist';
-
-function loadWatchlist() {
-  try {
-    return JSON.parse(localStorage.getItem(WATCHLIST_KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
 
 function mapPlayerToWatchEntry(player) {
   return {
@@ -1500,9 +1493,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
   );
 }
 
-export default function PlayerPage() {
-  const { playerId } = useParams();
-  const navigate = useNavigate();
+function PlayerPageContent({ playerId }) {
   const location = useLocation();
   const navigationType = useNavigationType();
   const restoredFromHistoryRef = useRef(false);
@@ -1527,7 +1518,7 @@ export default function PlayerPage() {
   const [splitSections, setSplitSections] = useState([]);
   const [splitLoading, setSplitLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('career');
-  const [watchlist, setWatchlist] = useState(loadWatchlist);
+  const { watchlist, isWatching, removeFromWatchlist, upsertWatchlistEntry } = useWatchlist();
   const [watchAnimating, setWatchAnimating] = useState(false);
 
   const isPitcher = isPitcherPosition(playerInfo?.primaryPosition?.abbreviation);
@@ -1600,9 +1591,19 @@ export default function PlayerPage() {
     setError(null);
     setPlayerInfo(null);
 
-    fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam(team),awards,rosterEntries`)
-      .then((r) => r.json())
-      .then((bioData) => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadPlayer = async () => {
+      try {
+        const bioData = await fetchStatsApiJson(`/api/v1/people/${playerId}`, {
+          query: { hydrate: 'currentTeam(team),awards,rosterEntries' },
+          signal: controller.signal,
+          ttl: 5 * 60_000,
+          retries: 1,
+        });
+        if (cancelled) return;
+
         const player = bioData.people?.[0] || null;
         setPlayerInfo(player);
         if (restoredFromHistoryRef.current) return;
@@ -1613,9 +1614,20 @@ export default function PlayerPage() {
         const pitcher = isPitcherPosition(player?.primaryPosition?.abbreviation);
         setCareerGroup(pitcher ? 'pitching' : 'hitting');
         setLogGroup(pitcher ? 'pitching' : 'hitting');
-      })
-      .catch(() => setError('Failed to load player data.'))
-      .finally(() => setIsLoading(false));
+      } catch (error) {
+        if (!cancelled && error?.name !== 'AbortError') {
+          setError('Failed to load player data.');
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    loadPlayer();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [playerId]);
 
   useEffect(() => {
@@ -1686,14 +1698,6 @@ export default function PlayerPage() {
   }, [playerId, playerInfo, splitLevel, splitSeason, isPitcher]);
 
   useEffect(() => {
-    setLogSeason(CURRENT_YEAR);
-  }, [playerId]);
-
-  useEffect(() => {
-    setLogSeason(CURRENT_YEAR);
-  }, [logGroup, logLevel]);
-
-  useEffect(() => {
     loadGameLogs();
   }, [loadGameLogs]);
 
@@ -1701,28 +1705,27 @@ export default function PlayerPage() {
     loadSplits();
   }, [loadSplits]);
 
-  useEffect(() => {
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist));
-  }, [watchlist]);
-
-  useEffect(() => {
-    const refreshWatchlist = () => setWatchlist(loadWatchlist());
-    window.addEventListener('focus', refreshWatchlist);
-    return () => window.removeEventListener('focus', refreshWatchlist);
-  }, []);
-
   const toggleWatchlist = useCallback(() => {
     if (!playerInfo) return;
     const id = Number(playerId);
-    const exists = watchlist.some((p) => p.id === id);
-    if (exists) {
-      setWatchlist(watchlist.filter((p) => p.id !== id));
+    if (isWatching(id)) {
+      removeFromWatchlist(id);
       return;
     }
-    setWatchlist([mapPlayerToWatchEntry(playerInfo), ...watchlist]);
+    upsertWatchlistEntry(mapPlayerToWatchEntry(playerInfo));
     setWatchAnimating(true);
     window.setTimeout(() => setWatchAnimating(false), 250);
-  }, [playerInfo, playerId, watchlist]);
+  }, [isWatching, playerId, playerInfo, removeFromWatchlist, upsertWatchlistEntry]);
+
+  const handleLogLevelChange = useCallback((nextLevel) => {
+    setLogLevel(nextLevel);
+    setLogSeason(CURRENT_YEAR);
+  }, []);
+
+  const handleLogGroupChange = useCallback((nextGroup) => {
+    setLogGroup(nextGroup);
+    setLogSeason(CURRENT_YEAR);
+  }, []);
 
   const getYearByYearSplits = (group) =>
     yearByYear?.find((s) => s.type?.displayName === 'yearByYear' && s.group?.displayName === group)?.splits ?? [];
@@ -1902,12 +1905,12 @@ export default function PlayerPage() {
                     <>
                       <FilterBar
                         level={logLevel}
-                        onLevelChange={setLogLevel}
+                        onLevelChange={handleLogLevelChange}
                         season={logSeason}
                         onSeasonChange={setLogSeason}
                         seasonOptions={SEASON_OPTIONS}
                         group={logGroup}
-                        onGroupChange={setLogGroup}
+                        onGroupChange={handleLogGroupChange}
                         hidePeriod
                       />
                       {gameLogLoading ? (
@@ -1963,4 +1966,10 @@ export default function PlayerPage() {
       )}
     </div>
   );
+}
+
+export default function PlayerPage() {
+  const { playerId } = useParams();
+
+  return <PlayerPageContent key={playerId} playerId={playerId} />;
 }

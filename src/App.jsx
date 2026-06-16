@@ -1,18 +1,22 @@
+import { Suspense, lazy } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import { THEME_COLOR } from './theme/theme.js';
 import { assetUrl } from './utils/baseUrl.js';
-import Scores from './pages/Scores';
-import GameDay from './pages/GameDay';
-import StatsApp from './pages/StatsApp';
-import APIDocs from './pages/APIDocs';
-import PlayerPage from './pages/PlayerPage';
-import StatLeaders from './pages/StatLeaders';
-import Standings from './pages/Standings';
-import BaseballSimulator from './pages/BaseballSimulator';
-import TeamPage from './pages/TeamPage';
-import Debug from './pages/Debug';
-import ProspectWatch from './pages/ProspectWatch';
+import { LoadingSpinner } from './components/ui';
+import PwaUpdateToast from './components/PwaUpdateToast.jsx';
 import { Home, BarChart3, Binoculars, TrendingUp, Cpu } from 'lucide-react';
+
+const Scores = lazy(() => import('./pages/Scores.jsx'));
+const GameDay = lazy(() => import('./pages/GameDay.jsx'));
+const StatsApp = lazy(() => import('./pages/StatsApp.jsx'));
+const APIDocs = lazy(() => import('./pages/APIDocs.jsx'));
+const PlayerPage = lazy(() => import('./pages/PlayerPage.jsx'));
+const StatLeaders = lazy(() => import('./pages/StatLeaders.jsx'));
+const Standings = lazy(() => import('./pages/Standings.jsx'));
+const BaseballSimulator = lazy(() => import('./pages/BaseballSimulator.jsx'));
+const TeamPage = lazy(() => import('./pages/TeamPage.jsx'));
+const Debug = lazy(() => import('./pages/Debug.jsx'));
+const ProspectWatch = lazy(() => import('./pages/ProspectWatch.jsx'));
 
 function StandingsFlagIcon({ className = 'w-4 h-4' }) {
   return (
@@ -86,19 +90,22 @@ function App() {
         </div>
       </nav>
 
-      <Routes>
-        <Route path="/" element={<Scores />} />
-        <Route path="/game/:gamePk" element={<GameDay />} />
-        <Route path="/stats" element={<StatsApp />} />
-        <Route path="/leaders" element={<StatLeaders />} />
-        <Route path="/standings" element={<Standings />} />
-        <Route path="/simulator" element={<BaseballSimulator />} />
-        <Route path="/prospects" element={<ProspectWatch />} />
-        <Route path="/docs" element={<APIDocs />} />
-        <Route path="/debug" element={<Debug />} />
-        <Route path="/player/:playerId" element={<PlayerPage />} />
-        <Route path="/team/:teamId" element={<TeamPage />} />
-      </Routes>
+      <Suspense fallback={<LoadingSpinner size="lg" py="py-16" />}>
+        <Routes>
+          <Route path="/" element={<Scores />} />
+          <Route path="/game/:gamePk" element={<GameDay />} />
+          <Route path="/stats" element={<StatsApp />} />
+          <Route path="/leaders" element={<StatLeaders />} />
+          <Route path="/standings" element={<Standings />} />
+          <Route path="/simulator" element={<BaseballSimulator />} />
+          <Route path="/prospects" element={<ProspectWatch />} />
+          <Route path="/docs" element={<APIDocs />} />
+          <Route path="/debug" element={<Debug />} />
+          <Route path="/player/:playerId" element={<PlayerPage />} />
+          <Route path="/team/:teamId" element={<TeamPage />} />
+        </Routes>
+      </Suspense>
+      <PwaUpdateToast />
     </div>
   );
 }

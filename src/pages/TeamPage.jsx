@@ -5,6 +5,8 @@ import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbH
 import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
+import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
+import { fetchStatsApiJson } from '../lib/mlb/client';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2002 + 1 }, (_, i) => {
@@ -268,12 +270,7 @@ function TeamLeaderCard({ label, statKey, dec, leaders, onNavigateAway }) {
 }
 
 function TeamLeadersCarousel({ leaderStats, rows, battingRateQualify, pitchingRateQualify, onNavigateAway }) {
-  const [slideIndex, setSlideIndex] = useState(0);
   const carouselKey = leaderStats.map((s) => s.key).join(',');
-
-  useEffect(() => {
-    setSlideIndex(0);
-  }, [carouselKey]);
 
   const cards = leaderStats.map(({ label, key, dec }) => {
     const isPitchRate = PITCHING_RATE_KEYS.has(key);
@@ -300,6 +297,12 @@ function TeamLeadersCarousel({ leaderStats, rows, battingRateQualify, pitchingRa
   }).filter(Boolean);
 
   if (!cards.length) return null;
+
+  return <TeamLeadersCarouselViewport key={carouselKey} cards={cards} carouselKey={carouselKey} />;
+}
+
+function TeamLeadersCarouselViewport({ cards, carouselKey }) {
+  const [slideIndex, setSlideIndex] = useState(0);
 
   return (
     <SwipeableCarousel
@@ -361,6 +364,9 @@ const FIELD_COLS = [
   { key: 'doublePlays', label: 'DP', dec: 0 },
   { key: 'chances', label: 'TC', dec: 0 },
 ];
+
+const TEAM_STATS_GROUP_MAP = { batting: 'hitting', pitching: 'pitching', fielding: 'fielding' };
+const TEAM_STATS_COLS_MAP = { batting: BAT_COLS, pitching: PITCH_COLS, fielding: FIELD_COLS };
 
 // ─── Sortable table ───────────────────────────────────────────────────────────
 function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id', onNavigateAway }) {
@@ -438,35 +444,50 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const groupMap = { batting: 'hitting', pitching: 'pitching', fielding: 'fielding' };
-  const colsMap = { batting: BAT_COLS, pitching: PITCH_COLS, fielding: FIELD_COLS };
-
-  useEffect(() => {
-    setData({ batting: null, pitching: null, fielding: null });
-  }, [teamId, season]);
-
-  const fetchStats = useCallback(async (group) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${groupMap[group]}&season=${season}&teamId=${teamId}&playerPool=all&sportId=1&limit=200&hydrate=player,team`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const splits = json.stats?.[0]?.splits ?? [];
-      setData((prev) => ({ ...prev, [group]: splits }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [teamId, season]);
-
   useEffect(() => {
     if (data[sub] != null) return;
-    fetchStats(sub);
-  }, [sub, teamId, season, data, fetchStats]);
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadStats = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const json = await fetchStatsApiJson('/api/v1/stats', {
+          query: {
+            stats: 'season',
+            group: TEAM_STATS_GROUP_MAP[sub],
+            season,
+            teamId,
+            playerPool: 'all',
+            sportId: 1,
+            limit: 200,
+            hydrate: 'player,team',
+          },
+          signal: controller.signal,
+          ttl: 60_000,
+          retries: 1,
+        });
+        if (!cancelled) {
+          const splits = json.stats?.[0]?.splits ?? [];
+          setData((prev) => ({ ...prev, [sub]: splits }));
+        }
+      } catch (e) {
+        if (!cancelled && e?.name !== 'AbortError') {
+          setError(e.message);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadStats();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [data, season, sub, teamId]);
 
   // top leader in each key category
   const leaderStats = sub === 'batting'
@@ -525,7 +546,7 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
       {error && <div className="py-8 text-center text-red-400 text-sm">{error}</div>}
       {!loading && !error && rows.length > 0 && (
         <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
-          <SortableTable cols={colsMap[sub]} rows={rows} onNavigateAway={onNavigateAway} />
+          <SortableTable cols={TEAM_STATS_COLS_MAP[sub]} rows={rows} onNavigateAway={onNavigateAway} />
         </div>
       )}
       {!loading && !error && rows.length === 0 && data[sub] != null && (
@@ -1177,10 +1198,7 @@ function readTeamPageDefaults(teamId) {
 }
 
 // ─── Main TeamPage ────────────────────────────────────────────────────────────
-export default function TeamPage() {
-  const { teamId } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+function TeamPageContent({ teamId }) {
   const [teamInfo, setTeamInfo] = useState(null);
   const [teamRecord, setTeamRecord] = useState(null);
   const defaults = useMemo(() => readTeamPageDefaults(teamId), [teamId]);
@@ -1189,55 +1207,72 @@ export default function TeamPage() {
   const [statsSub, setStatsSub] = useState(defaults.statsSub);
   const [scheduleView, setScheduleView] = useState(defaults.scheduleView);
   const [scheduleMonth, setScheduleMonth] = useState(defaults.scheduleMonth);
-  const [favoriteTeams, setFavoriteTeams] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]');
-    } catch {
-      return [];
-    }
-  });
-
-  const isFavorite = favoriteTeams.includes(Number(teamId));
+  const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
+  const isFavorite = isFavoriteTeam(teamId);
 
   useEffect(() => {
-    localStorage.setItem('mlbFavoriteTeams', JSON.stringify(favoriteTeams));
-  }, [favoriteTeams]);
-
-  useEffect(() => {
-    fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}?hydrate=division,league,venue`)
-      .then((r) => r.json())
-      .then((json) => setTeamInfo(json.teams?.[0] ?? null))
-      .catch(() => {});
-  }, [teamId]);
-
-  useEffect(() => {
-    fetch(`https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`)
-      .then((r) => r.json())
-      .then((json) => {
-        const records = (json.records ?? []).flatMap((r) => r.teamRecords ?? []);
-        const rec = records.find((r) => r.team?.id === Number(teamId));
-        setTeamRecord(rec?.leagueRecord ?? rec?.records?.splitRecords?.[0] ?? null);
-      })
-      .catch(() => setTeamRecord(null));
-  }, [teamId, season]);
-
-  useEffect(() => {
-    try {
-      setFavoriteTeams(JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]'));
-    } catch {
-      setFavoriteTeams([]);
-    }
-  }, [teamId]);
-
-  useEffect(() => {
-    const next = readTeamPageDefaults(teamId);
-    setActiveTab(next.activeTab);
-    setSeason(next.season);
-    setStatsSub(next.statsSub);
-    setScheduleView(next.scheduleView);
-    setScheduleMonth(next.scheduleMonth);
     restoreTeamPageScroll(teamId);
-  }, [teamId, location.key]);
+  }, [teamId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadTeamInfo = async () => {
+      try {
+        const json = await fetchStatsApiJson(`/api/v1/teams/${teamId}`, {
+          query: { hydrate: 'division,league,venue' },
+          signal: controller.signal,
+          ttl: 5 * 60_000,
+          retries: 1,
+        });
+        if (!cancelled) setTeamInfo(json.teams?.[0] ?? null);
+      } catch (error) {
+        if (!cancelled && error?.name !== 'AbortError') setTeamInfo(null);
+      }
+    };
+
+    loadTeamInfo();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [teamId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadStandings = async () => {
+      try {
+        const json = await fetchStatsApiJson('/api/v1/standings', {
+          query: {
+            leagueId: '103,104',
+            season,
+            standingsTypes: 'regularSeason',
+          },
+          signal: controller.signal,
+          ttl: 60_000,
+          retries: 1,
+        });
+        if (cancelled) return;
+
+        const records = (json.records ?? []).flatMap((record) => record.teamRecords ?? []);
+        const rec = records.find((record) => record.team?.id === Number(teamId));
+        setTeamRecord(rec?.leagueRecord ?? rec?.records?.splitRecords?.[0] ?? null);
+      } catch (error) {
+        if (!cancelled && error?.name !== 'AbortError') {
+          setTeamRecord(null);
+        }
+      }
+    };
+
+    loadStandings();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [teamId, season]);
 
   useEffect(() => {
     saveTeamPageState(teamId, {
@@ -1264,7 +1299,7 @@ export default function TeamPage() {
   const toggleFavorite = () => {
     const idNum = Number(teamId);
     if (!idNum) return;
-    setFavoriteTeams((prev) => (prev.includes(idNum) ? prev.filter((x) => x !== idNum) : [idNum, ...prev]));
+    toggleFavoriteTeam(idNum);
   };
 
   const TABS = [
@@ -1366,6 +1401,7 @@ export default function TeamPage() {
               if (key === 'stats') {
                 return (
                   <StatsTab
+                    key={`${teamId}:${season}`}
                     teamId={teamId}
                     season={season}
                     sub={statsSub}
@@ -1400,4 +1436,11 @@ export default function TeamPage() {
       </div>
     </div>
   );
+}
+
+export default function TeamPage() {
+  const { teamId } = useParams();
+  const location = useLocation();
+
+  return <TeamPageContent key={`${teamId}:${location.key}`} teamId={teamId} />;
 }
