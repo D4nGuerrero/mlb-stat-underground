@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useNavigationType, Link } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr, spotracPlayerUrl } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
@@ -30,6 +30,26 @@ import {
 import { TABLE_TEXT_CLASS, TABLE_MIN_W, TABLE_YEAR_COL_CLASS } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+const playerViewStateCache = new Map();
+
+function isPitcherPosition(abbreviation) {
+  return abbreviation === 'P' || abbreviation === 'SP' || abbreviation === 'RP';
+}
+
+function freshPlayerViewState() {
+  return {
+    activeTab: 'career',
+    careerLevel: 'mlb',
+    careerGroup: 'hitting',
+    careerGameType: 'R',
+    logLevel: 'mlb',
+    logGroup: 'hitting',
+    logSeason: CURRENT_YEAR,
+    splitLevel: 'mlb',
+    splitSeason: CURRENT_YEAR,
+  };
+}
 
 const SEASON_OPTIONS = Array.from({ length: 8 }, (_, i) => {
   const y = CURRENT_YEAR - i;
@@ -923,20 +943,6 @@ function groupTradePlayers(transactions) {
   return [...byToTeam.values()].sort((a, b) => a.team.name.localeCompare(b.team.name));
 }
 
-function getTradeTeamPair(transactions, fallbackTxn) {
-  const ids = new Map();
-  for (const t of transactions) {
-    if (t.fromTeam?.id) ids.set(t.fromTeam.id, t.fromTeam);
-    if (t.toTeam?.id) ids.set(t.toTeam.id, t.toTeam);
-  }
-  const teams = [...ids.values()];
-  if (teams.length >= 2) return teams.slice(0, 2);
-  if (fallbackTxn?.fromTeam && fallbackTxn?.toTeam) {
-    return [fallbackTxn.fromTeam, fallbackTxn.toTeam];
-  }
-  return teams;
-}
-
 function TransactionTypeLabel({ typeDesc, className = '' }) {
   const label = typeDesc ?? '—';
   const isTrade = isTradeTransaction({ typeDesc: label });
@@ -946,6 +952,39 @@ function TransactionTypeLabel({ typeDesc, className = '' }) {
     >
       {label}
     </span>
+  );
+}
+
+const TXN_INITIAL_YEARS = 5;
+const TXN_LOAD_MORE_YEARS = 5;
+const TXN_MAX_YEARS = 50;
+
+function formatTxnApiDate(date) {
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${m}/${day}/${date.getFullYear()}`;
+}
+
+async function fetchPlayerTransactions(playerId, yearsBack) {
+  const today = new Date();
+  const start = new Date(today);
+  start.setFullYear(today.getFullYear() - yearsBack);
+  const res = await fetch(
+    `https://statsapi.mlb.com/api/v1/transactions?playerId=${playerId}&startDate=${formatTxnApiDate(start)}&endDate=${formatTxnApiDate(today)}&sportId=1`,
+  );
+  if (!res.ok) return [];
+  const json = await res.json();
+  return [...(json.transactions ?? [])].sort(
+    (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
+  );
+}
+
+function ReceivesLabel() {
+  return (
+    <div className="mb-2 sm:mb-3">
+      <p className="text-center text-sm font-semibold text-slate-300 tracking-wide">Receives:</p>
+      <div className="receives-display-light mt-1.5" aria-hidden />
+    </div>
   );
 }
 
@@ -969,7 +1008,6 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
 
   const isTrade = isTradeTransaction(txn);
   const tradeGroups = isTrade ? groupTradePlayers(tradeBundle) : [];
-  const [teamA, teamB] = isTrade ? getTradeTeamPair(tradeBundle, txn) : [];
 
   return (
     <Modal
@@ -998,38 +1036,6 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
           </button>
         </div>
 
-        {isTrade && (teamA || teamB) && (
-          <div className="flex items-center justify-center gap-4 sm:gap-8 py-2">
-            {teamA && (
-              <div className="flex flex-col items-center gap-1.5 min-w-0 flex-1">
-                <img
-                  src={teamLogoUrl(teamA.id)}
-                  alt=""
-                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
-                />
-                <span className="text-[11px] sm:text-xs text-slate-400 text-center leading-tight">
-                  {getTeamAbbr(teamA) ?? teamA.name}
-                </span>
-              </div>
-            )}
-            <div className="flex flex-col items-center gap-1 flex-shrink-0 text-slate-500">
-              <i className="fa-solid fa-right-left text-base sm:text-lg" aria-hidden />
-            </div>
-            {teamB && (
-              <div className="flex flex-col items-center gap-1.5 min-w-0 flex-1">
-                <img
-                  src={teamLogoUrl(teamB.id)}
-                  alt=""
-                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
-                />
-                <span className="text-[11px] sm:text-xs text-slate-400 text-center leading-tight">
-                  {getTeamAbbr(teamB) ?? teamB.name}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
         {!isTrade && txn.fromTeam?.id && txn.toTeam?.id && (
           <div className="flex items-center justify-center gap-4 sm:gap-6 py-1">
             <div className="flex flex-col items-center gap-1">
@@ -1049,33 +1055,45 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
             {tradeLoading ? (
               <LoadingSpinner size="md" py="py-6" />
             ) : tradeGroups.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {tradeGroups.map(({ team, players }) => (
-                  <div
-                    key={team.id}
-                    className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4"
-                  >
-                    <div className="flex items-center gap-2 mb-3">
-                      <img src={teamLogoUrl(team.id)} alt="" className="w-8 h-8 object-contain" />
-                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                        To {getTeamAbbr({ id: team.id, name: team.name }) ?? team.name}
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                  {tradeGroups.map(({ team }) => (
+                    <div key={`trade-logo-${team.id}`} className="flex flex-col items-center gap-1.5 min-w-0 px-1">
+                      <img
+                        src={teamLogoUrl(team.id)}
+                        alt=""
+                        className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                      />
+                      <span className="text-xs sm:text-sm text-slate-400 text-center leading-tight">
+                        {getTeamAbbr(team) ?? team.name}
                       </span>
                     </div>
-                    <ul className="space-y-2">
-                      {players.map((person) => (
-                        <li key={person.id} className="flex items-center gap-2">
-                          <img
-                            src={playerHeadshotUrl(person.id)}
-                            alt=""
-                            className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
-                          />
-                          <TransactionPlayerLink person={person} onNavigate={onPlayerClick} />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  {tradeGroups.map(({ team, players }) => (
+                    <div
+                      key={team.id}
+                      className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-3 sm:p-4"
+                    >
+                      <ReceivesLabel />
+                      <ul className="space-y-2">
+                        {players.map((person) => (
+                          <li key={person.id} className="flex items-center gap-2">
+                            <img
+                              src={playerHeadshotUrl(person.id)}
+                              alt=""
+                              className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
+                            />
+                            <TransactionPlayerLink person={person} onNavigate={onPlayerClick} />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : txn.person?.id ? (
               <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex items-center gap-3">
                 <img
@@ -1102,39 +1120,53 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
 function PlayerTransactionsTab({ playerId }) {
   const navigate = useNavigate();
   const [txns, setTxns] = useState([]);
+  const [yearsBack, setYearsBack] = useState(TXN_INITIAL_YEARS);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [tradeBundle, setTradeBundle] = useState([]);
   const [tradeLoading, setTradeLoading] = useState(false);
 
   useEffect(() => {
+    setYearsBack(TXN_INITIAL_YEARS);
+  }, [playerId]);
+
+  useEffect(() => {
     if (!playerId) return;
-    setLoading(true);
+    const isLoadMore = yearsBack > TXN_INITIAL_YEARS;
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
+    let cancelled = false;
     (async () => {
       try {
-        const today = new Date();
-        const start = new Date(today);
-        start.setFullYear(today.getFullYear() - 5);
-        const fmt = (d) => {
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${m}/${day}/${d.getFullYear()}`;
-        };
-        const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/transactions?playerId=${playerId}&startDate=${fmt(start)}&endDate=${fmt(today)}&sportId=1`,
-        );
-        const json = await res.json();
-        const sorted = [...(json.transactions ?? [])].sort(
-          (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
-        );
-        setTxns(sorted);
+        const sorted = await fetchPlayerTransactions(playerId, yearsBack);
+        if (!cancelled) setTxns(sorted);
       } catch {
-        setTxns([]);
+        if (!cancelled) setTxns([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     })();
-  }, [playerId]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playerId, yearsBack]);
+
+  const canLoadMore = yearsBack < TXN_MAX_YEARS;
+  const oldestYear = txns.length
+    ? new Date(txns[txns.length - 1].date + 'T12:00:00').getFullYear()
+    : null;
+  const loadMoreYears = () => {
+    setYearsBack((y) => Math.min(y + TXN_LOAD_MORE_YEARS, TXN_MAX_YEARS));
+  };
 
   const openTransaction = async (txn) => {
     setSelectedTxn(txn);
@@ -1164,29 +1196,71 @@ function PlayerTransactionsTab({ playerId }) {
   return (
     <>
       <div className="space-y-1">
-        {txns.map((t, i) => (
-          <button
-            key={`${t.id ?? t.date}-${t.person?.id ?? i}`}
-            type="button"
-            onClick={() => openTransaction(t)}
-            className="w-full text-left flex items-start gap-2 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors rounded-xl cursor-pointer"
-          >
-            <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
-            <div className="flex-1 min-w-0">
-              <TransactionTypeLabel typeDesc={t.typeDesc ?? t.description} className="text-sm" />
-              {t.fromTeam?.name && t.toTeam?.name && (
-                <div className="text-xs text-slate-500 mt-0.5">
-                  {t.fromTeam.name} → {t.toTeam.name}
-                </div>
+        {txns.map((t, i) => {
+          const isTrade = isTradeTransaction(t);
+          const rowKey = `${t.id ?? t.date}-${t.person?.id ?? i}`;
+          const rowContent = (
+            <>
+              <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
+              <div className="flex-1 min-w-0">
+                <TransactionTypeLabel typeDesc={t.typeDesc ?? t.description} className="text-sm" />
+                {t.fromTeam?.name && t.toTeam?.name && (
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {t.fromTeam.name} → {t.toTeam.name}
+                  </div>
+                )}
+                {t.description && t.typeDesc && t.description !== t.typeDesc && (
+                  <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
+                )}
+              </div>
+              {isTrade && (
+                <i className="fa-solid fa-chevron-right text-[10px] text-slate-600 mt-1 flex-shrink-0" aria-hidden />
               )}
-              {t.description && t.typeDesc && t.description !== t.typeDesc && (
-                <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
-              )}
-            </div>
-            <i className="fa-solid fa-chevron-right text-[10px] text-slate-600 mt-1 flex-shrink-0" aria-hidden />
-          </button>
-        ))}
+            </>
+          );
+
+          if (!isTrade) {
+            return (
+              <div
+                key={rowKey}
+                className="w-full flex items-start gap-2 px-4 py-3 border-b border-slate-800/40 rounded-xl"
+              >
+                {rowContent}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={rowKey}
+              type="button"
+              onClick={() => openTransaction(t)}
+              className="w-full text-left flex items-start gap-2 px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors rounded-xl cursor-pointer"
+            >
+              {rowContent}
+            </button>
+          );
+        })}
       </div>
+
+      {canLoadMore && (
+        <div className="pt-4 pb-2 flex flex-col items-center gap-1.5">
+          <button
+            type="button"
+            onClick={loadMoreYears}
+            disabled={loadingMore}
+            className="text-sm font-semibold text-slate-400 hover:text-slate-200 disabled:opacity-50 transition-colors px-4 py-2 rounded-xl border border-slate-700/60 hover:border-slate-600 hover:bg-slate-800/40"
+          >
+            {loadingMore ? 'Loading…' : 'See more'}
+          </button>
+          {oldestYear != null && !loadingMore && (
+            <span className="text-[10px] text-slate-600">
+              Showing back to {oldestYear}
+              {yearsBack < TXN_MAX_YEARS ? ` · ${yearsBack} years loaded` : ' · full history'}
+            </span>
+          )}
+        </div>
+      )}
 
       <TransactionDetailModal
         txn={selectedTxn}
@@ -1340,6 +1414,9 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
 export default function PlayerPage() {
   const { playerId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const restoredFromHistoryRef = useRef(false);
   const [playerInfo, setPlayerInfo] = useState(null);
   const [yearByYear, setYearByYear] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1364,10 +1441,64 @@ export default function PlayerPage() {
   const [watchlist, setWatchlist] = useState(loadWatchlist);
   const [watchAnimating, setWatchAnimating] = useState(false);
 
-  const isPitcher =
-    playerInfo?.primaryPosition?.abbreviation === 'P' ||
-    playerInfo?.primaryPosition?.abbreviation === 'SP' ||
-    playerInfo?.primaryPosition?.abbreviation === 'RP';
+  const isPitcher = isPitcherPosition(playerInfo?.primaryPosition?.abbreviation);
+
+  useEffect(() => {
+    playerViewStateCache.set(location.key, {
+      activeTab,
+      careerLevel,
+      careerGroup,
+      careerGameType,
+      logLevel,
+      logGroup,
+      logSeason,
+      splitLevel,
+      splitSeason,
+    });
+  }, [
+    location.key,
+    activeTab,
+    careerLevel,
+    careerGroup,
+    careerGameType,
+    logLevel,
+    logGroup,
+    logSeason,
+    splitLevel,
+    splitSeason,
+  ]);
+
+  useLayoutEffect(() => {
+    restoredFromHistoryRef.current = false;
+
+    if (navigationType === 'POP') {
+      const cached = playerViewStateCache.get(location.key);
+      if (cached) {
+        restoredFromHistoryRef.current = true;
+        setActiveTab(cached.activeTab);
+        setCareerLevel(cached.careerLevel);
+        setCareerGroup(cached.careerGroup);
+        setCareerGameType(cached.careerGameType);
+        setLogLevel(cached.logLevel);
+        setLogGroup(cached.logGroup);
+        setLogSeason(cached.logSeason);
+        setSplitLevel(cached.splitLevel);
+        setSplitSeason(cached.splitSeason);
+        return;
+      }
+    }
+
+    const fresh = freshPlayerViewState();
+    setActiveTab(fresh.activeTab);
+    setCareerLevel(fresh.careerLevel);
+    setCareerGroup(fresh.careerGroup);
+    setCareerGameType(fresh.careerGameType);
+    setLogLevel(fresh.logLevel);
+    setLogGroup(fresh.logGroup);
+    setLogSeason(fresh.logSeason);
+    setSplitLevel(fresh.splitLevel);
+    setSplitSeason(fresh.splitSeason);
+  }, [playerId, location.key, navigationType]);
 
   const statGroup = careerGroup;
   const displayCols =
@@ -1384,15 +1515,15 @@ export default function PlayerPage() {
       .then((r) => r.json())
       .then((bioData) => {
         const player = bioData.people?.[0] || null;
+        setPlayerInfo(player);
+        if (restoredFromHistoryRef.current) return;
         const defaultLevel = defaultStatsLevelForPlayer(player);
         setCareerLevel(defaultLevel);
         setLogLevel(defaultLevel);
         setSplitLevel(defaultLevel);
-        setPlayerInfo(player);
-        if (player?.primaryPosition?.abbreviation === 'P') {
-          setCareerGroup('pitching');
-          setLogGroup('pitching');
-        }
+        const pitcher = isPitcherPosition(player?.primaryPosition?.abbreviation);
+        setCareerGroup(pitcher ? 'pitching' : 'hitting');
+        setLogGroup(pitcher ? 'pitching' : 'hitting');
       })
       .catch(() => setError('Failed to load player data.'))
       .finally(() => setIsLoading(false));

@@ -1,4 +1,12 @@
-import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
+import { Fragment } from 'react';
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogPanel,
+  DialogTitle,
+  Transition,
+  TransitionChild,
+} from '@headlessui/react';
 
 export default function Modal({
   open,
@@ -24,31 +32,49 @@ export default function Modal({
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
-      <DialogBackdrop
-        transition
-        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition duration-300 ease-out data-[closed]:opacity-0"
-      />
-
-      <div className={`fixed inset-0 flex ${alignment} justify-center ${className}`}>
-        <DialogPanel
-          transition
-          className={[
-            'w-full bg-slate-900 border border-slate-700 shadow-2xl',
-            'rounded-t-3xl sm:rounded-2xl overflow-hidden',
-            'transition duration-300 ease-out',
-            'data-[closed]:translate-y-full',
-            'sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95 sm:data-[closed]:opacity-0',
-            maxWidth,
-            panelClassName,
-          ].join(' ')}
+      <Transition appear show={open} as={Fragment}>
+        <TransitionChild
+          as="div"
+          className="fixed inset-0"
+          enter="modal-backdrop-enter"
+          enterFrom="modal-backdrop-from"
+          enterTo="modal-backdrop-to"
+          leave="modal-backdrop-enter"
+          leaveFrom="modal-backdrop-to"
+          leaveTo="modal-backdrop-from"
         >
-          {title && (
-            <div className="p-4 border-b border-slate-800">
-              <DialogTitle className="text-sm font-semibold text-white">{title}</DialogTitle>
-            </div>
-          )}
-          {children}
-        </DialogPanel>
+          <DialogBackdrop className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+        </TransitionChild>
+      </Transition>
+
+      <div className={`fixed inset-0 flex ${alignment} justify-center pointer-events-none ${className}`}>
+        <Transition appear show={open} as={Fragment}>
+          <TransitionChild
+            as="div"
+            className={['pointer-events-auto w-full', maxWidth].join(' ')}
+            enter="modal-sheet-motion"
+            enterFrom="modal-sheet-from"
+            enterTo="modal-sheet-to"
+            leave="modal-sheet-motion"
+            leaveFrom="modal-sheet-leave-from"
+            leaveTo="modal-sheet-leave-to"
+          >
+            <DialogPanel
+              className={[
+                'w-full bg-slate-900 border border-slate-700 shadow-2xl',
+                'rounded-t-3xl sm:rounded-2xl overflow-hidden',
+                panelClassName,
+              ].join(' ')}
+            >
+              {title && (
+                <div className="p-4 border-b border-slate-800">
+                  <DialogTitle className="text-sm font-semibold text-white">{title}</DialogTitle>
+                </div>
+              )}
+              {children}
+            </DialogPanel>
+          </TransitionChild>
+        </Transition>
       </div>
     </Dialog>
   );
