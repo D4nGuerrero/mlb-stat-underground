@@ -23,6 +23,40 @@ import {
 const TRAIL_OPACITY = 0.8;
 const OLD_PITCH_ALPHA = 0.82;
 
+function lerp(a = 0, b = 0, t = 0) {
+  return a + (b - a) * t;
+}
+
+function interpolateTrajectoryPoint(traj, progress) {
+  if (!traj?.length) return null;
+  if (traj.length === 1) return traj[0];
+  const exact = Math.min(Math.max(progress, 0), 1) * (traj.length - 1);
+  const fromIdx = Math.floor(exact);
+  const toIdx = Math.min(fromIdx + 1, traj.length - 1);
+  const t = exact - fromIdx;
+  const from = traj[fromIdx];
+  const to = traj[toIdx];
+  return [
+    lerp(from[0], to[0], t),
+    lerp(from[1], to[1], t),
+    lerp(from[2], to[2], t),
+    lerp(from[3], to[3], t),
+    lerp(from[4], to[4], t),
+  ];
+}
+
+function trajectoryThroughProgress(traj, progress) {
+  if (!traj?.length) return [];
+  const point = interpolateTrajectoryPoint(traj, progress);
+  if (!point) return [];
+  const exact = Math.min(Math.max(progress, 0), 1) * (traj.length - 1);
+  const endIdx = Math.max(0, Math.floor(exact));
+  const points = traj.slice(0, endIdx + 1);
+  const last = points[points.length - 1];
+  if (!last || last[0] !== point[0] || last[1] !== point[1]) points.push(point);
+  return points;
+}
+
 function storageKey(gamePk) {
   return gamePk != null ? `mlbPc:lastPitch:${gamePk}` : null;
 }
@@ -167,8 +201,8 @@ export default function PitchCanvas({
         const traj = trajList[currentIdx];
         const shader = getPitchShader(pitchList[currentIdx], scaler);
         if (traj?.length > 1) {
-          const end = Math.min(Math.max(1, Math.floor((traj.length - 1) * progress)), traj.length - 1);
-          drawAtBatTrail(ctx, traj, shader, 0, end);
+          const animatedTrail = trajectoryThroughProgress(traj, progress);
+          drawAtBatTrail(ctx, animatedTrail, shader, 0, animatedTrail.length - 1);
         }
       }
       ctx.globalAlpha = 1;
@@ -204,8 +238,7 @@ export default function PitchCanvas({
         return;
       }
 
-      const idx = Math.min(Math.floor(progress * (traj.length - 1)), traj.length - 1);
-      drawAtBatSpinningBaseball(ctx, traj[idx], progress, scaler, 1);
+      drawAtBatSpinningBaseball(ctx, interpolateTrajectoryPoint(traj, progress), progress, scaler, pitch, 1);
     },
     [W, H, scaler, setupCanvas, refPitchForCrop, crop],
   );

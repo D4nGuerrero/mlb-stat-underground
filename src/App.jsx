@@ -10,6 +10,7 @@ import StatLeaders from './pages/StatLeaders';
 import Standings from './pages/Standings';
 import BaseballSimulator from './pages/BaseballSimulator';
 import TeamPage from './pages/TeamPage';
+import Debug from './pages/Debug';
 import { Home, BarChart3, BookOpen, TrendingUp, Cpu } from 'lucide-react';
 
 function StandingsFlagIcon({ className = 'w-4 h-4' }) {
@@ -92,6 +93,7 @@ function App() {
         <Route path="/standings" element={<Standings />} />
         <Route path="/simulator" element={<BaseballSimulator />} />
         <Route path="/docs" element={<APIDocs />} />
+        <Route path="/debug" element={<Debug />} />
         <Route path="/player/:playerId" element={<PlayerPage />} />
         <Route path="/team/:teamId" element={<TeamPage />} />
       </Routes>

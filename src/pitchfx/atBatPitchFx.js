@@ -594,13 +594,19 @@ function drawBaseballSeam(ctx, radius, offset, rotation, flip = 1) {
   ctx.restore();
 }
 
-export function drawAtBatSpinningBaseball(ctx, point, progress, scalers, alpha = 1) {
+function pitchSpinDirection(pitch) {
+  const type = pitch?.type || pitch?.details?.type?.code || '';
+  if (type === 'CU' || type === 'KC' || type === 'SV') return 1;
+  return -1;
+}
+
+export function drawAtBatSpinningBaseball(ctx, point, progress, scalers, pitch = null, alpha = 1) {
   if (!point) return;
   const [x, y] = point;
   const depthRadius = point[4] || scalers.ballRadius;
   const landedRadius = Math.max(scalers.ballRadius, scalers.clip ? 8 : 5);
   const radius = Math.max(depthRadius, landedRadius * 0.28);
-  const spin = progress * Math.PI * 8;
+  const spin = progress * Math.PI * 100 * pitchSpinDirection(pitch);
   const seamTravel = Math.sin(spin) * radius * 0.2;
   const squash = 0.82 + Math.abs(Math.cos(spin)) * 0.18;
 
