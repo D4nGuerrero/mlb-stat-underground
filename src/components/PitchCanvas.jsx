@@ -39,15 +39,18 @@ export default function PitchCanvas({
   responsive = false,
   viewMode = 'full',
   showPitchTrails = false,
+  onPitchLanded,
 }) {
   const strikeZoneView = viewMode === 'strikeZone';
   const containerRef = useRef(null);
   const bgRef = useRef(null);
   const fgRef = useRef(null);
   const animRef = useRef(null);
+  const onPitchLandedRef = useRef(onPitchLanded);
   const [measuredWidth, setMeasuredWidth] = useState(responsive ? null : width);
   const stateRef = useRef({
     prevPitchId: null,
+    landedPitchId: null,
     animProgress: 1,
     phase: 'idle',
     animStart: null,
@@ -56,6 +59,10 @@ export default function PitchCanvas({
     trajectories: [],
     currentTrajectory: null,
   });
+
+  useEffect(() => {
+    onPitchLandedRef.current = onPitchLanded;
+  }, [onPitchLanded]);
 
   useEffect(() => {
     if (!responsive || strikeZoneView) {
@@ -193,11 +200,7 @@ export default function PitchCanvas({
       if (phase === 'settled') {
         const last = traj[traj.length - 1];
         drawAtBatBall(ctx, last, pitch, scaler, shader, 1);
-        return;
       }
-
-      const idx = Math.min(Math.floor(progress * (traj.length - 1)), traj.length - 1);
-      drawAtBatBall(ctx, traj[idx], pitch, scaler, shader, 1);
     },
     [W, H, scaler, setupCanvas, refPitchForCrop, crop],
   );
@@ -215,11 +218,15 @@ export default function PitchCanvas({
         if (t >= 1) {
           s.phase = 'settled';
           s.animProgress = 1;
+          const last = s.pitches[s.pitches.length - 1];
+          const lid = last?.event?.playId ?? last?.num ?? s.pitches.length;
           const sk = storageKey(gamePk);
           if (sk) {
-            const last = s.pitches[s.pitches.length - 1];
-            const lid = last?.event?.playId ?? last?.num ?? s.pitches.length;
             try { sessionStorage.setItem(sk, String(lid)); } catch { /* ignore */ }
+          }
+          if (s.landedPitchId == null || String(s.landedPitchId) !== String(lid)) {
+            s.landedPitchId = lid;
+            onPitchLandedRef.current?.(last);
           }
         }
       }
@@ -266,6 +273,7 @@ export default function PitchCanvas({
 
     if (isNewPitch) {
       s.prevPitchId = pitchId;
+      s.landedPitchId = null;
       s.phase = 'flying';
       s.animProgress = 0;
       s.animStart = null;
@@ -284,6 +292,7 @@ export default function PitchCanvas({
     }
 
     s.prevPitchId = pitchId;
+    s.landedPitchId = null;
     s.phase = 'flying';
     s.animProgress = 0;
     s.animStart = null;

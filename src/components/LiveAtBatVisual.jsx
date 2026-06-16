@@ -62,6 +62,16 @@ function buildLiveToastItem(playEvents, currentPlay) {
   };
 }
 
+function latestPitchRowKey(playEvents, currentPlay) {
+  const events = playEvents ?? [];
+  for (let idx = events.length - 1; idx >= 0; idx -= 1) {
+    if (events[idx]?.isPitch) {
+      return `live-pitch-${currentPlay?.about?.atBatIndex}-${idx}`;
+    }
+  }
+  return null;
+}
+
 const LiveAtBatVisual = memo(function LiveAtBatVisual({
   venueId,
   exteriorFailed,
@@ -78,21 +88,64 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   balls,
   strikes,
   outs,
+  onRecentRowReady,
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
   const stablePlayEvents = useMemo(() => playEvents, [sig]);
 
   const [toastItem, setToastItem] = useState(null);
   const lastToastIdRef = useRef(null);
+  const lastLandedPitchIdRef = useRef(null);
+  const toastItemRef = useRef(null);
+  const pendingToastRef = useRef(null);
+
+  useEffect(() => {
+    toastItemRef.current = toastItem;
+  }, [toastItem]);
 
   useEffect(() => {
     const item = buildLiveToastItem(playEvents, currentPlay);
-    if (!item || lastToastIdRef.current === item.id) return;
+    if (!item || !item.id?.startsWith('play-') || lastToastIdRef.current === item.id) return;
     lastToastIdRef.current = item.id;
-    setToastItem(item);
+    const nextToast = {
+      ...item,
+      rowKey: currentPlay?.about?.atBatIndex != null
+        ? `atbat-${currentPlay.about.atBatIndex}`
+        : null,
+    };
+    if (toastItemRef.current) {
+      pendingToastRef.current = nextToast;
+      return;
+    }
+    setToastItem(nextToast);
   }, [sig, playEvents, currentPlay]);
 
-  const clearToast = useCallback(() => setToastItem(null), []);
+  const showLandedPitchToast = useCallback((pitch) => {
+    const pitchId = pitch?.event?.playId ?? pitch?.num;
+    if (pitchId != null && String(lastLandedPitchIdRef.current) === String(pitchId)) return;
+
+    const item = buildLiveToastItem(playEvents, currentPlay);
+    if (!item || lastToastIdRef.current === item.id) return;
+
+    lastLandedPitchIdRef.current = pitchId;
+    lastToastIdRef.current = item.id;
+    setToastItem({
+      ...item,
+      rowKey: latestPitchRowKey(playEvents, currentPlay),
+    });
+  }, [playEvents, currentPlay]);
+
+  const clearToast = useCallback(() => {
+    setToastItem((current) => {
+      if (current?.rowKey) onRecentRowReady?.(current.rowKey);
+      const pending = pendingToastRef.current;
+      if (pending) {
+        pendingToastRef.current = null;
+        return pending;
+      }
+      return null;
+    });
+  }, [onRecentRowReady]);
 
   const exteriorTimeOfDay = stadiumTimeOfDay(gameDateTime);
   const batterSide = batterIsAway ? 'away' : 'home';
@@ -162,6 +215,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
             width={AT_BAT_STRIKE_ZONE_CLIP.width}
             height={AT_BAT_STRIKE_ZONE_CLIP.height}
             showPitchTrails
+            onPitchLanded={showLandedPitchToast}
             className="mx-auto shrink-0"
           />
           <LivePitchToast item={toastItem} onComplete={clearToast} />

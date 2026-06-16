@@ -970,9 +970,12 @@ export default function GamePage() {
   const summaryScrollYRef = useRef(0);
   const feedTimecodeRef = useRef(null);
   const scoringPlaysCountRef = useRef(-1);
+  const liveRecentSeenKeysRef = useRef(null);
+  const liveRecentRevealTimersRef = useRef(new Map());
   const [gameContent, setGameContent] = useState(null);
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
   const [pinnedVideo, setPinnedVideo] = useState(null);
+  const [deferredLiveRecentKeys, setDeferredLiveRecentKeys] = useState(() => new Set());
   const [daySchedule, setDaySchedule] = useState([]);
   const [dayScheduleLoading, setDayScheduleLoading] = useState(false);
   const [previewLineups, setPreviewLineups] = useState(null);
@@ -1029,6 +1032,10 @@ export default function GamePage() {
     summaryScrollYRef.current = 0;
     feedTimecodeRef.current = null;
     scoringPlaysCountRef.current = -1;
+    liveRecentSeenKeysRef.current = null;
+    liveRecentRevealTimersRef.current.forEach((timer) => clearTimeout(timer));
+    liveRecentRevealTimersRef.current.clear();
+    setDeferredLiveRecentKeys(new Set());
     setGameContent(null);
     setExpandedVideoKey(null);
     setPinnedVideo(null);
@@ -1252,6 +1259,73 @@ export default function GamePage() {
     feed?.liveData?.linescore?.defense?.pitcher?.id,
   ]);
 
+  const liveRecentFeed = useMemo(() => {
+    if (!feed || !isValidLiveFeed(feed)) {
+      return { displayRows: [], firstPitch: null };
+    }
+    const gameData = feed.gameData;
+    const liveData = feed.liveData;
+    return buildLiveRecentPlaysFeed({
+      allPlays: liveData?.plays?.allPlays || [],
+      gameData,
+      boxscore: liveData?.boxscore,
+      linescore: liveData?.linescore,
+      currentPlay: liveData?.plays?.currentPlay,
+      isLive: gameData?.status?.abstractGameState === 'Live',
+      ordinals: ORDINALS,
+    });
+  }, [feed]);
+
+  const liveRecentRows = liveRecentFeed.displayRows;
+  const liveFirstPitch = liveRecentFeed.firstPitch;
+
+  const revealLiveRecentRow = useCallback((rowKey) => {
+    if (!rowKey) return;
+    const timer = liveRecentRevealTimersRef.current.get(rowKey);
+    if (timer) {
+      clearTimeout(timer);
+      liveRecentRevealTimersRef.current.delete(rowKey);
+    }
+    setDeferredLiveRecentKeys((prev) => {
+      if (!prev.has(rowKey)) return prev;
+      const next = new Set(prev);
+      next.delete(rowKey);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const keys = liveRecentRows.map((row) => row.key);
+    if (liveRecentSeenKeysRef.current == null) {
+      liveRecentSeenKeysRef.current = new Set(keys);
+      return undefined;
+    }
+
+    const previous = liveRecentSeenKeysRef.current;
+    const newlyAddedRows = liveRecentRows.filter(
+      (row) => !previous.has(row.key) && row.kind === 'live_pitch',
+    );
+    liveRecentSeenKeysRef.current = new Set(keys);
+    if (!newlyAddedRows.length) return undefined;
+
+    setDeferredLiveRecentKeys((prev) => {
+      const next = new Set(prev);
+      newlyAddedRows.forEach((row) => next.add(row.key));
+      return next;
+    });
+
+    newlyAddedRows.forEach((row) => {
+      if (liveRecentRevealTimersRef.current.has(row.key)) return;
+      const timer = setTimeout(() => {
+        liveRecentRevealTimersRef.current.delete(row.key);
+        revealLiveRecentRow(row.key);
+      }, 5000);
+      liveRecentRevealTimersRef.current.set(row.key, timer);
+    });
+
+    return undefined;
+  }, [liveRecentRows, revealLiveRecentRow]);
+
   // ── derived data ───────────────────────────────────────────────────────────
 
   if (loading) {
@@ -1327,16 +1401,15 @@ export default function GamePage() {
   const summaryItems = filterSummaryItems(allSummaryItems, summaryFilter);
   const summaryItemGroups = groupSummaryByInning(summaryItems, ORDINALS);
   const highlightVideos = parseGameHighlightVideos(gameContent);
-  const { displayRows: liveRecentRows, firstPitch: liveFirstPitch } = buildLiveRecentPlaysFeed({
-    allPlays,
-    gameData: gd,
-    boxscore: ld.boxscore,
-    linescore: ls,
-    currentPlay,
-    isLive,
-    ordinals: ORDINALS,
+  const visibleLiveRecentRows = liveRecentRows.filter((row) => {
+    if (deferredLiveRecentKeys.has(row.key)) return false;
+    const seenKeys = liveRecentSeenKeysRef.current;
+    if (seenKeys && row.kind === 'live_pitch' && !seenKeys.has(row.key)) {
+      return false;
+    }
+    return true;
   });
-  const liveRecentGroups = groupLiveRecentRows(liveRecentRows, {
+  const liveRecentGroups = groupLiveRecentRows(visibleLiveRecentRows, {
     isLive,
     currentInning: ls?.currentInning,
     currentHalf: ls?.inningHalf === 'Top' ? 'top' : 'bottom',
@@ -2252,6 +2325,7 @@ export default function GamePage() {
               balls={ls.balls}
               strikes={ls.strikes}
               outs={ls.outs}
+              onRecentRowReady={revealLiveRecentRow}
             />
 
             {/* ── MATCHUP ROW: Pitcher | Count+Outs+Diamond | Batter ── */}

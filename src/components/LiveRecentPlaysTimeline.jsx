@@ -10,11 +10,13 @@ import {
 import { getPitchResultKind } from '../utils/liveRecentPlays';
 import { BaseDiamondIndicator } from './LiveGameIndicators';
 
+const ROW_PAD_X = 'px-2';
 const AVATAR_SLOT = 'w-16';
 const PLAYER_SIZE = 'w-16 h-16';
 const ICON_SIZE = 'w-11 h-11';
 const PITCH_SIZE = 'w-8 h-8';
-const TIMELINE_CENTER = 'left-8';
+// px-2 (0.5rem) + half of w-16 (2rem) = 2.5rem
+const TIMELINE_CENTER = 'left-10';
 
 const STATUS_CHANGE_BADGE = {
   label: 'Status Change',
@@ -66,7 +68,7 @@ function LiveTimelineRow({ avatar, children, onClick, avatarScale = 'icon', clas
   return (
     <div
       onClick={onClick}
-      className={`flex gap-2.5 py-2 px-2 relative z-10 ${scale.align} ${onClick ? 'cursor-pointer hover:bg-slate-800/50 transition-all' : ''} ${className}`}
+      className={`flex gap-2.5 py-2 ${ROW_PAD_X} relative z-10 ${scale.align} ${onClick ? 'cursor-pointer hover:bg-slate-800/50 transition-all' : ''} ${className}`}
     >
       <div
         className={`${AVATAR_SLOT} ${scale.slot} flex-shrink-0 flex items-center justify-center relative z-10`}
@@ -431,7 +433,7 @@ export default function LiveRecentPlaysTimeline({
     <div className="relative">
       {(hasRows || firstPitch) && (
         <div
-          className={`absolute ${TIMELINE_CENTER} top-8 bottom-8 w-px bg-slate-600/60 pointer-events-none z-0`}
+          className={`absolute ${TIMELINE_CENTER} top-8 bottom-8 w-px -translate-x-1/2 bg-slate-600/60 pointer-events-none z-0`}
           aria-hidden
         />
       )}

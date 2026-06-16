@@ -45,7 +45,6 @@ body {
 
 .recent-play-insert {
   animation: recentPlayInsert 780ms cubic-bezier(0.16, 1, 0.3, 1);
-  animation-delay: 1.55s;
   animation-fill-mode: both;
 }
 
