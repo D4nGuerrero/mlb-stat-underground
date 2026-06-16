@@ -8,9 +8,9 @@ import {
   BaseDiamondIndicator,
   getRunnersOnBase,
   formatLiveInningLabel,
-  LiveSituationStack,
   OutsIndicator,
 } from '../components/LiveGameIndicators';
+import ScoresListGameRow from '../components/ScoresListGameRow';
 import { SegmentedControl, SwipeableCarousel, BaseballSpinner, LoadingSpinner } from '../components/ui';
 
 const MIN_DATE = new Date('2024-03-01');
@@ -60,40 +60,6 @@ const resolveScoresCenterDate = (returnDate) => {
   }
   return startOfDay(new Date());
 };
-
-const LIST_GAME_ROW_GRID = 'grid grid-cols-[4rem_3.5rem_minmax(0,1fr)_3.5rem_4rem] items-center gap-x-3';
-
-function ListTeamLogo({ team, record, onTeamClick }) {
-  return (
-    <div className="flex flex-col items-center gap-1 justify-self-center w-16">
-      <img
-        src={teamLogoUrl(team.id)}
-        className="w-14 h-14 object-contain"
-        alt={team.abbreviation}
-        onClick={onTeamClick}
-      />
-      <span className="text-[14px] font-bold text-slate-500 font-mono h-3.5 leading-none tabular-nums">
-        {record ? `${record.wins}-${record.losses}` : '\u00A0'}
-      </span>
-    </div>
-  );
-}
-
-function ListGameScore({ score, isWinner, isFinal, show }) {
-  return (
-    <div className="flex items-center justify-center min-h-[3rem] justify-self-center w-full">
-      {show && (
-        <span
-          className={`font-display text-5xl tabular-nums leading-none ${
-            isWinner ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'
-          }`}
-        >
-          {score}
-        </span>
-      )}
-    </div>
-  );
-}
 
 const loadViewMode = () => {
   try {
@@ -492,92 +458,16 @@ export default function Scores() {
     if (viewMode === 'list') {
       return (
         <div className="divide-y divide-slate-800/60">
-          {sortedGames.map((game) => {
-            const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
-            const isPreview = !isFinal && !isLive;
-            const awayScore = parseInt(game.teams.away.score ?? 0);
-            const homeScore = parseInt(game.teams.home.score ?? 0);
-            const awayWin = isFinal && awayScore > homeScore;
-            const homeWin = isFinal && homeScore > awayScore;
-            const awayRec = game.teams.away.leagueRecord;
-            const homeRec = game.teams.home.leagueRecord;
-            const noHitAlerts = getNoHitAlert(game);
-            return (
-              <div
-                key={game.gamePk}
-                onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
-                className={`${LIST_GAME_ROW_GRID} px-4 py-4 cursor-pointer hover:bg-slate-800/30 active:bg-slate-800/40 transition-colors`}
-              >
-                <ListTeamLogo
-                  team={game.teams.away.team}
-                  record={awayRec}
-                  onTeamClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.away.team.id}`); }}
-                />
-                <ListGameScore
-                  score={awayScore}
-                  isWinner={awayWin}
-                  isFinal={isFinal}
-                  show={!isPreview}
-                />
-                <div className="flex flex-col items-center justify-center text-center min-w-0 gap-1 justify-self-center">
-                  {isPostponed ? (
-                    <span className="text-[10px] font-bold text-orange-400 tracking-widest">PPD</span>
-                  ) : isDelayed && isLive && game.linescore ? (
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-[9px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
-                      <LiveSituationStack linescore={game.linescore} size="sm" />
-                    </div>
-                  ) : isDelayed && isLive ? (
-                    <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
-                  ) : isDelayed ? (
-                    <>
-                      <span className="text-[10px] font-bold text-yellow-400 tracking-wide">DELAYED</span>
-                      {game.gameDate && (
-                        <span className="text-[9px] text-slate-600 font-mono">
-                          {new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </>
-                  ) : isLive && game.linescore ? (
-                    <LiveSituationStack linescore={game.linescore} size="sm" />
-                  ) : isLive ? (
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-red-400">
-                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />LIVE
-                    </span>
-                  ) : isFinal ? (
-                    <span className="text-xs font-bold text-slate-400 tracking-widest">{formatFinalStatus(game.linescore)}</span>
-                  ) : (
-                    <span className="text-xs text-slate-400 font-semibold">
-                      {game.gameDate
-                        ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                        : '—'}
-                    </span>
-                  )}
-                  {isPreview && !isPostponed && (
-                    <div className="text-[10px] text-slate-600">
-                      {game.teams.away.team.abbreviation} @ {game.teams.home.team.abbreviation}
-                    </div>
-                  )}
-                  {noHitAlerts?.map((a) => (
-                    <span key={a.side} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                      {a.label}
-                    </span>
-                  ))}
-                </div>
-                <ListGameScore
-                  score={homeScore}
-                  isWinner={homeWin}
-                  isFinal={isFinal}
-                  show={!isPreview}
-                />
-                <ListTeamLogo
-                  team={game.teams.home.team}
-                  record={homeRec}
-                  onTeamClick={(e) => { e.stopPropagation(); navigate(`/team/${game.teams.home.team.id}`); }}
-                />
-              </div>
-            );
-          })}
+          {sortedGames.map((game) => (
+            <ScoresListGameRow
+              key={game.gamePk}
+              game={game}
+              noHitAlerts={getNoHitAlert(game)}
+              onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
+              onAwayTeamClick={() => navigate(`/team/${game.teams.away.team.id}`)}
+              onHomeTeamClick={() => navigate(`/team/${game.teams.home.team.id}`)}
+            />
+          ))}
         </div>
       );
     }

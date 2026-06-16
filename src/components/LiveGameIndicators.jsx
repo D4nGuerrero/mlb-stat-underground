@@ -189,17 +189,25 @@ export function OutsIndicator({ outs = 0, size = 'md', className = '' }) {
   );
 }
 
-export function LiveSituationStack({ linescore, size = 'sm', showInning = true, className = '' }) {
+export function LiveSituationStack({
+  linescore,
+  size = 'sm',
+  showInning = true,
+  showCount = true,
+  className = '',
+  inningClassName = 'text-[10px] font-bold text-slate-300 tracking-wide font-mono',
+}) {
   if (!linescore) return null;
 
   const balls = linescore.balls ?? 0;
   const strikes = linescore.strikes ?? 0;
   const outs = linescore.outs ?? 0;
+  const outsSize = size === 'xs' ? 'xs' : 'sm';
 
   return (
-    <div className={`flex flex-col items-center gap-1 ${className}`}>
+    <div className={`flex flex-col items-center gap-0.5 ${className}`}>
       {showInning && (
-        <span className="text-[10px] font-bold text-slate-300 tracking-wide font-mono">
+        <span className={inningClassName}>
           {formatLiveInningLabel(linescore)}
         </span>
       )}
@@ -207,9 +215,13 @@ export function LiveSituationStack({ linescore, size = 'sm', showInning = true, 
         {...getRunnersOnBase(linescore)}
         size={size}
       />
-      <span className="text-[10px] text-slate-400 font-mono">
-        {balls}-{strikes}, {outs} out{outs === 1 ? '' : 's'}
-      </span>
+      {showCount ? (
+        <span className="text-[10px] text-slate-400 font-mono">
+          {balls}-{strikes}, {outs} out{outs === 1 ? '' : 's'}
+        </span>
+      ) : (
+        <OutsIndicator outs={outs} size={outsSize} />
+      )}
     </div>
   );
 }

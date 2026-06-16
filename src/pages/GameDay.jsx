@@ -54,6 +54,7 @@ import {
   getRunnersOnBase,
   getPlayDetailSituation,
 } from '../components/LiveGameIndicators';
+import ScoresListGameRow from '../components/ScoresListGameRow';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -881,29 +882,21 @@ function dedupeDaySchedule(games) {
     );
     if (!prev || score(g) > score(prev)) byPk.set(g.gamePk, g);
   }
+  const pickerOrder = (game) => {
+    const state = game.status?.abstractGameState;
+    if (state === 'Live') return 0;
+    if (state === 'Final') return 2;
+    return 1;
+  };
+
   return [...byPk.values()].sort((a, b) => {
+    const stateDiff = pickerOrder(a) - pickerOrder(b);
+    if (stateDiff !== 0) return stateDiff;
     const numA = a.gameNumber ?? 1;
     const numB = b.gameNumber ?? 1;
     if (numA !== numB) return numA - numB;
     return new Date(a.gameDate ?? 0) - new Date(b.gameDate ?? 0);
   });
-}
-
-function formatDayGameStatus(game) {
-  const away = game.teams?.away;
-  const home = game.teams?.home;
-  const isFinal = game.status?.abstractGameState === 'Final';
-  const isLive = game.status?.abstractGameState === 'Live';
-  if (isFinal) {
-    const awayScore = away?.score ?? game.linescore?.teams?.away?.runs ?? 0;
-    const homeScore = home?.score ?? game.linescore?.teams?.home?.runs ?? 0;
-    return `${awayScore}-${homeScore}`;
-  }
-  if (isLive) return 'LIVE';
-  if (game.gameDate) {
-    return new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  }
-  return 'TBD';
 }
 
 function GamedayDayPicker({ games, currentGamePk, loading, onSelect }) {
@@ -920,7 +913,7 @@ function GamedayDayPicker({ games, currentGamePk, loading, onSelect }) {
       <MenuItems
         anchor="bottom"
         transition
-        className="z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] max-h-80 overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 py-1 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+        className="z-50 mt-2 w-[min(100vw-1rem,20rem)] max-h-[min(70vh,22rem)] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
       >
         {loading && (
           <div className="px-4 py-3 text-xs text-slate-500">Loading games…</div>
@@ -928,54 +921,29 @@ function GamedayDayPicker({ games, currentGamePk, loading, onSelect }) {
         {!loading && count === 0 && (
           <div className="px-4 py-3 text-xs text-slate-500">No other games today</div>
         )}
-        {!loading && games.map((game) => {
-          const away = game.teams?.away;
-          const home = game.teams?.home;
-          const isCurrent = String(game.gamePk) === String(currentGamePk);
-          const dhLabel = game.gameNumber > 1 ? `G${game.gameNumber}` : null;
-          return (
-            <MenuItem key={game.gamePk} disabled={isCurrent}>
-              {({ focus, close }) => (
-                <button
-                  type="button"
-                  disabled={isCurrent}
-                  onClick={() => {
-                    close();
-                    onSelect(game.gamePk);
-                  }}
-                  className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
-                    isCurrent
-                      ? 'bg-slate-800/80 text-slate-400 cursor-default'
-                      : focus
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-200'
-                  }`}
-                >
-                  <img
-                    src={teamLogoUrl(away?.team?.id)}
-                    alt=""
-                    className="w-7 h-7 object-contain flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {dhLabel && <span className="text-slate-500 mr-1">{dhLabel}</span>}
-                      {away?.team?.abbreviation} @ {home?.team?.abbreviation}
-                    </div>
-                    <div className="text-[11px] text-slate-500">{formatDayGameStatus(game)}</div>
-                  </div>
-                  <img
-                    src={teamLogoUrl(home?.team?.id)}
-                    alt=""
-                    className="w-7 h-7 object-contain flex-shrink-0"
-                  />
-                  {isCurrent && (
-                    <i className="fa-solid fa-check text-[10px] text-slate-500 flex-shrink-0" aria-hidden />
+        {!loading && count > 0 && (
+          <div className="divide-y divide-slate-800/60">
+            {games.map((game) => {
+              const isCurrent = String(game.gamePk) === String(currentGamePk);
+              return (
+                <MenuItem key={game.gamePk} disabled={isCurrent} as="div">
+                  {({ focus, close }) => (
+                    <ScoresListGameRow
+                      game={game}
+                      compact
+                      isSelected={isCurrent}
+                      className={focus && !isCurrent ? 'bg-slate-800/60' : ''}
+                      onClick={isCurrent ? undefined : () => {
+                        close();
+                        onSelect(game.gamePk);
+                      }}
+                    />
                   )}
-                </button>
-              )}
-            </MenuItem>
-          );
-        })}
+                </MenuItem>
+              );
+            })}
+          </div>
+        )}
       </MenuItems>
     </Menu>
   );
@@ -1041,7 +1009,7 @@ export default function GamePage() {
     }
     let cancelled = false;
     setDayScheduleLoading(true);
-    fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${officialDate}&hydrate=team,linescore`)
+    fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${officialDate}&hydrate=team(record),linescore`)
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
