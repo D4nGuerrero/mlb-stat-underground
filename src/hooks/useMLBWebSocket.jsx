@@ -81,12 +81,20 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
         const { timeStamp, updateId } = msg;
 
         const startTc = currentTimecodeRef.current || formatTimecode(timeStamp);
+        const endTc = formatTimecode(timeStamp);
         if (!startTc) {
           setLastUpdate({ data: null, msg, timestamp: Date.now() });
           return;
         }
 
+        if (msg.changeEvent?.type === 'full_refresh') {
+          if (endTc) currentTimecodeRef.current = endTc;
+          setLastUpdate({ data: null, timecode: endTc, msg, timestamp: Date.now() });
+          return;
+        }
+
         let url = `https://ws.statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live/diffPatch?language=en&startTimecode=${startTc}`;
+        if (endTc && compareTimecodes(endTc, startTc) > 0) url += `&endTimecode=${endTc}`;
         if (updateId) url += `&pushUpdateId=${updateId}`;
 
         const res = await fetch(url);
@@ -94,6 +102,16 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
         if (!res.ok) throw new Error(`diffPatch returned ${res.status}`);
 
         const data = await res.json();
+        const hasPatchData = Boolean(
+          data?.gameData ||
+          data?.liveData ||
+          data?.metaData ||
+          (data && Object.keys(data).length > 0),
+        );
+        if (!hasPatchData) {
+          setLastUpdate({ data: null, timecode: endTc, msg, timestamp: Date.now() });
+          return;
+        }
 
         const nextTs =
           data?.metaData?.timeStamp ||
@@ -149,7 +167,7 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
       drainQueue();
     };
 
-    wsRef.current.onclose = (e) => {
+    wsRef.current.onclose = () => {
       setStatus('disconnected');
       if (keepAliveRef.current) {
         clearInterval(keepAliveRef.current);

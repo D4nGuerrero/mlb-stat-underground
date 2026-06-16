@@ -20,7 +20,7 @@ import {
 } from '../pitchfx/atBatPitchFx';
 
 const TRAIL_OPACITY = 0.8;
-const OLD_PITCH_ALPHA = 0.33;
+const OLD_PITCH_ALPHA = 0.82;
 
 function storageKey(gamePk) {
   return gamePk != null ? `mlbPc:lastPitch:${gamePk}` : null;
@@ -38,6 +38,7 @@ export default function PitchCanvas({
   gamePk = null,
   responsive = false,
   viewMode = 'full',
+  showPitchTrails = false,
 }) {
   const strikeZoneView = viewMode === 'strikeZone';
   const containerRef = useRef(null);
@@ -143,6 +144,7 @@ export default function PitchCanvas({
       const ctx = setupCanvas(bgRef.current);
       if (!ctx) return;
       ctx.clearRect(crop?.x ?? 0, crop?.y ?? 0, crop?.w ?? W, crop?.h ?? H);
+      if (!showPitchTrails) return;
       ctx.globalAlpha = TRAIL_OPACITY;
 
       for (let i = 0; i < pitchList.length - 1; i += 1) {
@@ -163,7 +165,7 @@ export default function PitchCanvas({
       }
       ctx.globalAlpha = 1;
     },
-    [W, H, scaler, setupCanvas, crop],
+    [W, H, scaler, setupCanvas, crop, showPitchTrails],
   );
 
   const renderFg = useCallback(

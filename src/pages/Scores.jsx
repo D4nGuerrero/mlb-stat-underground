@@ -16,6 +16,8 @@ import { SegmentedControl, SwipeableCarousel, BaseballSpinner, LoadingSpinner } 
 const MIN_DATE = new Date('2024-03-01');
 const WINDOW_PAST = 60;
 const FUTURE_DAYS = 180;
+const LIVE_SCORES_POLL_MS = 10_000;
+const TODAY_SCORES_POLL_MS = 30_000;
 
 const startOfDay = (date) => {
   const d = new Date(date);
@@ -356,9 +358,12 @@ export default function Scores() {
 
   useEffect(() => {
     if (!isToday(selectedDate)) return undefined;
-    const interval = setInterval(() => fetchGamesForDate(selectedDate, { force: true }), 60000);
+    const interval = setInterval(
+      () => fetchGamesForDate(selectedDate, { force: true }),
+      liveCount > 0 ? LIVE_SCORES_POLL_MS : TODAY_SCORES_POLL_MS,
+    );
     return () => clearInterval(interval);
-  }, [selectedDate, fetchGamesForDate]);
+  }, [selectedDate, fetchGamesForDate, liveCount]);
 
   useEffect(() => {
     localStorage.setItem(VIEW_MODE_KEY, viewMode);

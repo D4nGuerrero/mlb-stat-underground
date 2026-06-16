@@ -115,6 +115,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
           viewMode="strikeZone"
           width={220}
           height={270}
+          showPitchTrails
           className="mx-auto shrink-0"
         />
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-300/90 justify-center w-[220px] mx-auto">

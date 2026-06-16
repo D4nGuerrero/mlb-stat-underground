@@ -55,6 +55,10 @@ import {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+const LIVE_DIFF_POLL_MS = 2_500;
+const LIVE_FULL_FEED_REFRESH_MS = 4_000;
+const SHOW_PLAY_DETAIL_PITCH_TRAILS = false;
+
 const PLAY_BADGE = {
   single: {
     label: 'Single',
@@ -1168,9 +1172,16 @@ export default function GamePage() {
       }
     };
 
-    const id = setInterval(pollDiff, 8000);
+    const id = setInterval(pollDiff, LIVE_DIFF_POLL_MS);
     return () => clearInterval(id);
   }, [gamePk, feed?.gameData?.status?.abstractGameState, applyFeedPatch]);
+
+  useEffect(() => {
+    if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Live') return undefined;
+    fetchGame();
+    const id = setInterval(fetchGame, LIVE_FULL_FEED_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [gamePk, feed?.gameData?.status?.abstractGameState, fetchGame]);
 
   useEffect(() => {
     const saveScroll = () => {
@@ -1182,10 +1193,11 @@ export default function GamePage() {
 
   useLayoutEffect(() => {
     if (expandedVideoKey) return;
+    if (selectedPlay) return;
     if (activeTab === 'summary' && summaryScrollYRef.current > 0) {
       window.scrollTo(0, summaryScrollYRef.current);
     }
-  }, [feed, activeTab, expandedVideoKey]);
+  }, [feed, activeTab, expandedVideoKey, selectedPlay]);
 
   // Hide nav bar on mobile while game page is open
   useEffect(() => {
@@ -1660,7 +1672,7 @@ export default function GamePage() {
 
   // ── Play Detail Bottom Sheet ───────────────────────────────────────────────
 
-  const PlayDetailSheet = () => {
+  const renderPlayDetailSheet = () => {
     if (!selectedPlay) return null;
 
     const play = selectedPlay;
@@ -1808,6 +1820,7 @@ export default function GamePage() {
                   viewMode="strikeZone"
                   width={220}
                   height={270}
+                  showPitchTrails={SHOW_PLAY_DETAIL_PITCH_TRAILS}
                   className="mx-auto shrink-0"
                 />
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center w-[220px] mx-auto">
@@ -1816,8 +1829,8 @@ export default function GamePage() {
                     { color: '#098314', label: 'Ball' },
                     { color: '#0062e3', label: 'In Play' },
                     { color: '#7756b3', label: 'Out' },
-                    { color: '#ffffff', label: 'Trail' },
-                  ].map(({ color, label }) => (
+                    SHOW_PLAY_DETAIL_PITCH_TRAILS ? { color: '#ffffff', label: 'Trail' } : null,
+                  ].filter(Boolean).map(({ color, label }) => (
                     <span key={label} className="flex items-center gap-1">
                       <span
                         className="w-1.5 h-1.5 rounded-full border border-slate-500 shrink-0"
@@ -2538,7 +2551,7 @@ export default function GamePage() {
           </div>
         )}
 
-        <PlayDetailSheet />
+        {renderPlayDetailSheet()}
           </>
         )}
       </div>

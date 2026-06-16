@@ -48,11 +48,14 @@ export const AT_BAT_STRIKE_ZONE_CLIP = { width: 220, height: 270 };
 
 /** Internal render width — must match MLB `fixed_width: 960` or the zone shrinks. */
 export const AT_BAT_FIXED_WIDTH = 960;
+export const AT_BAT_BALL_SIZE = 2.9;
+export const AT_BAT_STRIKE_ZONE_BALL_SIZE = 3.15;
 
 export const AT_BAT_STRIKE_ZONE_VIEW = {
-  mode: '2d',
+  mode: '3d',
   clip: AT_BAT_STRIKE_ZONE_CLIP,
   fontSize: 92,
+  ballSize: AT_BAT_STRIKE_ZONE_BALL_SIZE,
   canvasDensity: 1,
 };
 
@@ -64,7 +67,7 @@ const DEFAULT_CONFIG = {
   eyeToScreen: EYE_TO_SCREEN,
   homePlateWidth: PLATE_WIDTH_FT,
   homePlateFrontY: PLATE_WIDTH_FT,
-  ballSize: 2.9,
+  ballSize: AT_BAT_BALL_SIZE,
   fontSize: 80,
   x_center: 0.5,
   y_center: 0.5,
@@ -484,21 +487,38 @@ export function drawAtBatTrail(ctx, points, shader, fromIdx, toIdx) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  ctx.beginPath();
-  ctx.moveTo(start[0], start[1]);
   for (let i = fromIdx + 1; i <= toIdx; i += 1) {
-    ctx.lineTo(points[i][0], points[i][1]);
+    const prev = points[i - 1];
+    const next = points[i];
+    const width = Math.max(0.8, next[3] || 2);
+    const t = (i - fromIdx) / Math.max(1, toIdx - fromIdx);
+
+    ctx.beginPath();
+    ctx.moveTo(prev[0], prev[1]);
+    ctx.lineTo(next[0], next[1]);
+    ctx.globalAlpha = Math.min(1, 0.35 + t * 0.65);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = shader.fill;
+    ctx.stroke();
   }
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = end[3] || 2;
-  ctx.strokeStyle = shader.fill;
-  ctx.stroke();
 
   const grad = ctx.createLinearGradient(start[0], start[1], end[0], end[1]);
   grad.addColorStop(0, shader.gradientStart);
   grad.addColorStop(0.25, shader.gradientStop);
-  ctx.strokeStyle = grad;
-  ctx.stroke();
+  for (let i = fromIdx + 1; i <= toIdx; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    const width = Math.max(0.8, next[3] || 2);
+    const t = (i - fromIdx) / Math.max(1, toIdx - fromIdx);
+
+    ctx.beginPath();
+    ctx.moveTo(prev[0], prev[1]);
+    ctx.lineTo(next[0], next[1]);
+    ctx.globalAlpha = Math.min(1, 0.35 + t * 0.65);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = grad;
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -541,9 +561,9 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
 export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.55) {
   if (!point) return;
   const [x, y] = point;
-  const radius = (point[4] || scalers.ballRadius) * 0.85;
+  const radius = point[4] || scalers.ballRadius;
   const strokeWidth = (scalers.canvasDensity > 1 ? scalers.canvasDensity : 1) * 1;
-  const fontSize = (scalers.fontSize / scalers.base_width) * scalers.fakeBallSize * 0.72 * 0.55;
+  const fontSize = (scalers.fontSize / scalers.base_width) * scalers.fakeBallSize * 0.72 * 0.9;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -558,6 +578,10 @@ export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.
   ctx.font = `bold ${fontSize}px Helvetica Neue, Helvetica, Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,1)';
+  ctx.shadowBlur = 1;
+  ctx.shadowOffsetX = scalers.canvasDensity;
+  ctx.shadowOffsetY = scalers.canvasDensity;
   ctx.fillText(String(pitch.num ?? ''), x, y);
   ctx.restore();
 }
