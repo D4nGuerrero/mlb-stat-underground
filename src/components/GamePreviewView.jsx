@@ -210,7 +210,7 @@ function PitcherMatchupSection({ teamAbbr, pitcher, onPlayerClick }) {
   );
 }
 
-export default function GamePreviewView({
+function GamePreviewViewContent({
   gamePk,
   probablePitchers,
   away,
@@ -223,7 +223,6 @@ export default function GamePreviewView({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     loadGamePreviewData({
       gamePk,
       probablePitchers,
@@ -249,7 +248,7 @@ export default function GamePreviewView({
     return () => {
       cancelled = true;
     };
-  }, [gamePk, probablePitchers?.away?.id, probablePitchers?.home?.id, away?.id, home?.id, season]);
+  }, [gamePk, probablePitchers, away?.id, home?.id, season]);
 
   if (loading) {
     return (
@@ -302,4 +301,17 @@ export default function GamePreviewView({
       </PreviewCard>
     </div>
   );
+}
+
+export default function GamePreviewView(props) {
+  const key = [
+    props.gamePk,
+    props.probablePitchers?.away?.id ?? 'away',
+    props.probablePitchers?.home?.id ?? 'home',
+    props.away?.id ?? 'awayTeam',
+    props.home?.id ?? 'homeTeam',
+    props.season,
+  ].join(':');
+
+  return <GamePreviewViewContent key={key} {...props} />;
 }

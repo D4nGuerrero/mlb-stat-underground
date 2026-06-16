@@ -34,7 +34,7 @@ import {
   shareHighlightVideo,
   copyHighlightLink,
 } from '../utils/gameContent';
-import { TabBar, Modal, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
+import { TabBar, Modal, SegmentedControl, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import GamePreviewView from '../components/GamePreviewView';
 import GameLineupsView from '../components/GameLineupsView';
@@ -62,6 +62,14 @@ import ScoresListGameRow from '../components/ScoresListGameRow';
 const LIVE_DIFF_POLL_MS = 2_500;
 const LIVE_FULL_FEED_REFRESH_MS = 4_000;
 const SHOW_PLAY_DETAIL_PITCH_TRAILS = false;
+
+async function fetchLiveGameFeed(gamePk) {
+  const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!isValidLiveFeed(data)) throw new Error('Invalid live feed');
+  return data;
+}
 
 const PLAY_BADGE = {
   single: {
@@ -952,10 +960,7 @@ function GamedayDayPicker({ games, currentGamePk, loading, onSelect }) {
 
 // ─── component ──────────────────────────────────────────────────────────────
 
-export default function GamePage() {
-  const { gamePk } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+function GamePageContent({ gamePk, navigate, location }) {
 
   const [feed, setFeed] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -965,6 +970,7 @@ export default function GamePage() {
   const [activeTab, setActiveTab] = useState('live');
   const [boxScoreSide, setBoxScoreSide] = useState('away');
   const [vsStats, setVsStats] = useState(null);
+  const [vsStatsByMatchup, setVsStatsByMatchup] = useState({});
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
   const vsStatsCacheRef = useRef({});
@@ -973,46 +979,42 @@ export default function GamePage() {
   const scoringPlaysCountRef = useRef(-1);
   const liveRecentSeenKeysRef = useRef(null);
   const liveRecentRevealTimersRef = useRef(new Map());
+  const [liveRecentSeenKeys, setLiveRecentSeenKeys] = useState(() => new Set());
   const [gameContent, setGameContent] = useState(null);
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
   const [pinnedVideo, setPinnedVideo] = useState(null);
   const [deferredLiveRecentKeys, setDeferredLiveRecentKeys] = useState(() => new Set());
   const [daySchedule, setDaySchedule] = useState([]);
-  const [dayScheduleLoading, setDayScheduleLoading] = useState(false);
   const [previewLineups, setPreviewLineups] = useState(null);
   const [previewLineupsLoading, setPreviewLineupsLoading] = useState(false);
   const [previewTab, setPreviewTab] = useState('preview');
 
-  const fetchGame = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`,
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (isValidLiveFeed(data)) {
+  useEffect(() => {
+    if (!gamePk) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchLiveGameFeed(gamePk);
+        if (cancelled) return;
         feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
         setFeed(data);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [gamePk]);
 
   useEffect(() => {
-    fetchGame();
-  }, [fetchGame]);
-
-  useEffect(() => {
     const officialDate = feed?.gameData?.datetime?.officialDate;
-    if (!officialDate) {
-      setDaySchedule([]);
-      return;
-    }
+    if (!officialDate) return undefined;
     let cancelled = false;
-    setDayScheduleLoading(true);
     fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${officialDate}&hydrate=team(record),linescore`)
       .then((r) => r.json())
       .then((json) => {
@@ -1022,33 +1024,12 @@ export default function GamePage() {
       })
       .catch(() => {
         if (!cancelled) setDaySchedule([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDayScheduleLoading(false);
       });
     return () => { cancelled = true; };
   }, [feed?.gameData?.datetime?.officialDate]);
 
   useEffect(() => {
-    summaryScrollYRef.current = 0;
-    feedTimecodeRef.current = null;
-    scoringPlaysCountRef.current = -1;
-    liveRecentSeenKeysRef.current = null;
-    liveRecentRevealTimersRef.current.forEach((timer) => clearTimeout(timer));
-    liveRecentRevealTimersRef.current.clear();
-    setDeferredLiveRecentKeys(new Set());
-    setGameContent(null);
-    setExpandedVideoKey(null);
-    setPinnedVideo(null);
-    setPreviewTab('preview');
-    setPreviewLineups(null);
-  }, [gamePk]);
-
-  useEffect(() => {
-    if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Preview') {
-      setPreviewLineups(null);
-      return undefined;
-    }
+    if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Preview') return undefined;
 
     let cancelled = false;
 
@@ -1128,9 +1109,17 @@ export default function GamePage() {
     if (lastUpdate.data) {
       applyFeedPatch(lastUpdate.data);
     } else {
-      fetchGame();
+      (async () => {
+        try {
+          const data = await fetchLiveGameFeed(gamePk);
+          feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
+          setFeed(data);
+        } catch (err) {
+          setError(err.message);
+        }
+      })();
     }
-  }, [lastUpdate, fetchGame, applyFeedPatch]);
+  }, [lastUpdate, applyFeedPatch, gamePk]);
 
   useEffect(() => {
     if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Live') return;
@@ -1156,10 +1145,20 @@ export default function GamePage() {
 
   useEffect(() => {
     if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Live') return undefined;
-    fetchGame();
-    const id = setInterval(fetchGame, LIVE_FULL_FEED_REFRESH_MS);
+    const pollFullFeed = async () => {
+      try {
+        const data = await fetchLiveGameFeed(gamePk);
+        feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
+        setFeed(data);
+      } catch (err) {
+        setError(err.message);
+      }
+    };
+
+    void pollFullFeed();
+    const id = setInterval(pollFullFeed, LIVE_FULL_FEED_REFRESH_MS);
     return () => clearInterval(id);
-  }, [gamePk, feed?.gameData?.status?.abstractGameState, fetchGame]);
+  }, [gamePk, feed?.gameData?.status?.abstractGameState]);
 
   useEffect(() => {
     const saveScroll = () => {
@@ -1185,19 +1184,24 @@ export default function GamePage() {
 
   const venueId = feed?.gameData?.venue?.id;
   const exteriorTimeOfDay = stadiumTimeOfDay(feed?.gameData?.gameDate);
-  const [exteriorFailed, setExteriorFailed] = useState(false);
+  const exteriorSrc = venueId ? stadiumExteriorUrl(venueId, exteriorTimeOfDay) : null;
+  const [exteriorFailed, setExteriorFailed] = useState(() => !exteriorSrc);
 
   useEffect(() => {
-    if (!venueId) {
-      setExteriorFailed(true);
-      return;
-    }
-    setExteriorFailed(false);
+    if (!exteriorSrc) return undefined;
+    let cancelled = false;
     const img = new Image();
-    img.onload = () => setExteriorFailed(false);
-    img.onerror = () => setExteriorFailed(true);
-    img.src = stadiumExteriorUrl(venueId, exteriorTimeOfDay);
-  }, [venueId, exteriorTimeOfDay]);
+    img.onload = () => {
+      if (!cancelled) setExteriorFailed(false);
+    };
+    img.onerror = () => {
+      if (!cancelled) setExteriorFailed(true);
+    };
+    img.src = exteriorSrc;
+    return () => {
+      cancelled = true;
+    };
+  }, [exteriorSrc]);
 
   // History API: push state when sheet opens so back button closes it
   const openSheet = useCallback((play) => {
@@ -1215,7 +1219,7 @@ export default function GamePage() {
   }, []);
 
   useEffect(() => {
-    const onPopState = (e) => {
+    const onPopState = () => {
       if (selectedPlay) {
         sheetHistoryRef.current = false;
         setSelectedPlay(null);
@@ -1230,12 +1234,9 @@ export default function GamePage() {
   useEffect(() => {
     const batterId = feed?.liveData?.linescore?.offense?.batter?.id;
     const pitcherId = feed?.liveData?.linescore?.defense?.pitcher?.id;
-    if (!batterId || !pitcherId) { setVsStats(null); return; }
+    if (!batterId || !pitcherId) return undefined;
     const key = `${batterId}-${pitcherId}`;
-    if (vsStatsCacheRef.current[key] !== undefined) {
-      setVsStats(vsStatsCacheRef.current[key]);
-      return;
-    }
+    if (vsStatsCacheRef.current[key] !== undefined) return undefined;
     const season = new Date().getFullYear();
     fetch(
       `https://statsapi.mlb.com/api/v1/people/${batterId}?hydrate=stats(group=batting,type=vsPlayerTotal,opposingPlayerId=${pitcherId},season=${season})`,
@@ -1249,12 +1250,15 @@ export default function GamePage() {
               s.type?.displayName === 'vsPlayer',
           )?.splits?.[0]?.stat || null;
         vsStatsCacheRef.current[key] = stat;
+        setVsStatsByMatchup((prev) => ({ ...prev, [key]: stat }));
         setVsStats(stat);
       })
       .catch(() => {
         vsStatsCacheRef.current[key] = null;
+        setVsStatsByMatchup((prev) => ({ ...prev, [key]: null }));
         setVsStats(null);
       });
+    return undefined;
   }, [
     feed?.liveData?.linescore?.offense?.batter?.id,
     feed?.liveData?.linescore?.defense?.pitcher?.id,
@@ -1298,7 +1302,9 @@ export default function GamePage() {
   useEffect(() => {
     const keys = liveRecentRows.map((row) => row.key);
     if (liveRecentSeenKeysRef.current == null) {
-      liveRecentSeenKeysRef.current = new Set(keys);
+      const initialSeen = new Set(keys);
+      liveRecentSeenKeysRef.current = initialSeen;
+      setLiveRecentSeenKeys(initialSeen);
       return undefined;
     }
 
@@ -1306,7 +1312,9 @@ export default function GamePage() {
     const newlyAddedRows = liveRecentRows.filter(
       (row) => !previous.has(row.key) && row.kind === 'live_pitch',
     );
-    liveRecentSeenKeysRef.current = new Set(keys);
+    const nextSeen = new Set(keys);
+    liveRecentSeenKeysRef.current = nextSeen;
+    setLiveRecentSeenKeys(nextSeen);
     if (!newlyAddedRows.length) return undefined;
 
     setDeferredLiveRecentKeys((prev) => {
@@ -1402,10 +1410,16 @@ export default function GamePage() {
   const summaryItems = filterSummaryItems(allSummaryItems, summaryFilter);
   const summaryItemGroups = groupSummaryByInning(summaryItems, ORDINALS);
   const highlightVideos = parseGameHighlightVideos(gameContent);
+  const batterId = feed?.liveData?.linescore?.offense?.batter?.id;
+  const pitcherId = feed?.liveData?.linescore?.defense?.pitcher?.id;
+  const vsStatsKey = batterId && pitcherId ? `${batterId}-${pitcherId}` : null;
+  const visibleVsStats = vsStatsKey
+    ? (vsStatsByMatchup[vsStatsKey] ?? vsStats)
+    : null;
+  const dayScheduleLoading = Boolean(feed?.gameData?.datetime?.officialDate) && daySchedule.length === 0;
   const visibleLiveRecentRows = liveRecentRows.filter((row) => {
     if (deferredLiveRecentKeys.has(row.key)) return false;
-    const seenKeys = liveRecentSeenKeysRef.current;
-    if (seenKeys && row.kind === 'live_pitch' && !seenKeys.has(row.key)) {
+    if (liveRecentSeenKeys.size > 0 && row.kind === 'live_pitch' && !liveRecentSeenKeys.has(row.key)) {
       return false;
     }
     return true;
@@ -1458,7 +1472,7 @@ export default function GamePage() {
     return String(v).replace(/^0(?=\.)/, '');
   };
 
-  const TeamBoxSection = ({ sideKey, team, hideHeader }) => {
+  const renderTeamBoxSection = ({ sideKey, team, hideHeader }) => {
     const teamBox = ld.boxscore?.teams?.[sideKey];
     if (!teamBox) return null;
 
@@ -2399,7 +2413,6 @@ export default function GamePage() {
                       };
                       const player = all[`ID${ls.defense?.pitcher?.id}`];
                       const gs = player?.stats?.pitching;
-                      const ss = player?.seasonStats?.pitching;
                       return (
                         <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
                           {gs?.pitchesThrown != null && (
@@ -2453,7 +2466,6 @@ export default function GamePage() {
                       };
                       const player = all[`ID${ls.offense?.batter?.id}`];
                       const gs = player?.stats?.batting;
-                      const ss = player?.seasonStats?.batting;
                       return (
                         <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
                           {gs != null && (
@@ -2471,7 +2483,7 @@ export default function GamePage() {
             </div>
 
             {/* ── VS STATS: Batter career stats vs this pitcher ── */}
-            {vsStats && vsStats.atBats > 0 && (
+            {visibleVsStats && visibleVsStats.atBats > 0 && (
               <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-3">
                 <div className="text-[9px] text-slate-500 uppercase tracking-widest mb-2.5 text-center">
                   {ls.offense?.batter?.fullName?.split(' ').slice(-1)[0]} vs{' '}
@@ -2479,13 +2491,13 @@ export default function GamePage() {
                 </div>
                 <div className="flex items-center justify-center gap-3 flex-wrap">
                   {[
-                    { label: 'AB', value: vsStats.atBats },
-                    { label: 'AVG', value: vsStats.avg },
-                    { label: 'H', value: vsStats.hits },
-                    { label: 'HR', value: vsStats.homeRuns },
-                    { label: 'K', value: vsStats.strikeOuts },
-                    { label: 'BB', value: vsStats.baseOnBalls },
-                    vsStats.ops ? { label: 'OPS', value: vsStats.ops } : null,
+                    { label: 'AB', value: visibleVsStats.atBats },
+                    { label: 'AVG', value: visibleVsStats.avg },
+                    { label: 'H', value: visibleVsStats.hits },
+                    { label: 'HR', value: visibleVsStats.homeRuns },
+                    { label: 'K', value: visibleVsStats.strikeOuts },
+                    { label: 'BB', value: visibleVsStats.baseOnBalls },
+                    visibleVsStats.ops ? { label: 'OPS', value: visibleVsStats.ops } : null,
                   ]
                     .filter(Boolean)
                     .filter(
@@ -2557,11 +2569,11 @@ export default function GamePage() {
               />
               <span className="text-sm text-slate-400 tabular-nums">{gameStart.dateLine}</span>
             </div>
-            <TeamBoxSection
-              sideKey={boxScoreSide}
-              team={boxScoreSide === 'away' ? away : home}
-              hideHeader
-            />
+            {renderTeamBoxSection({
+              sideKey: boxScoreSide,
+              team: boxScoreSide === 'away' ? away : home,
+              hideHeader: true,
+            })}
 
             {ld.boxscore.info?.length > 0 && (
               <div className="mt-2 pt-4 border-t border-slate-700/40 text-[11px] text-slate-500 space-y-1">
@@ -2652,4 +2664,12 @@ export default function GamePage() {
       {/* end px-3 sm:px-0 */}
     </div>
   );
+}
+
+export default function GamePage() {
+  const { gamePk } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  return <GamePageContent key={gamePk} gamePk={gamePk} navigate={navigate} location={location} />;
 }

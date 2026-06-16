@@ -80,6 +80,11 @@ function teamById(id) {
 
 const initialSession = typeof window !== 'undefined' ? loadSimulatorSession() : null;
 
+function buildRosterRequestKey(team, opposingHand, lineupMode, isHome) {
+  if (!team?.id) return null;
+  return [team.id, opposingHand || 'R', lineupMode, isHome ? 'home' : 'away'].join(':');
+}
+
 export default function BaseballSimulator() {
   const [tab, setTab] = useState(() => initialSession?.tab ?? 'game');
   const [awayTeam, setAwayTeam] = useState(() => (initialSession?.awayTeamId ? teamById(initialSession.awayTeamId) : null));
@@ -100,13 +105,13 @@ export default function BaseballSimulator() {
   const [homeStarter, setHomeStarter] = useState(null);
   const [awayPitchers, setAwayPitchers] = useState([]);
   const [homePitchers, setHomePitchers] = useState([]);
-  const [awayLoading, setAwayLoading] = useState(false);
-  const [homeLoading, setHomeLoading] = useState(false);
+  const [awayRosterKey, setAwayRosterKey] = useState(null);
+  const [homeRosterKey, setHomeRosterKey] = useState(null);
   const [showLineup, setShowLineup] = useState(() => initialSession?.showLineup ?? false);
   const [lineupMode, setLineupMode] = useState(() => initialSession?.lineupMode ?? 'realistic');
   const [seasonYear, setSeasonYear] = useState(String(CURRENT_SEASON));
   const [seasonPreview, setSeasonPreview] = useState(null);
-  const [seasonPreviewLoading, setSeasonPreviewLoading] = useState(false);
+  const [seasonPreviewKey, setSeasonPreviewKey] = useState(null);
   const [playoffYear, setPlayoffYear] = useState(String(CURRENT_SEASON - 1));
   const [histSeasonA, setHistSeasonA] = useState('2003');
   const [histSeasonB, setHistSeasonB] = useState(String(CURRENT_SEASON));
@@ -160,65 +165,73 @@ export default function BaseballSimulator() {
     };
   }, [awayTeam, homeTeam, result, tab, speed, resultTab, boxTab, showLineup, lineupMode]);
 
+  const awayRequestKey = buildRosterRequestKey(awayTeam, homeStarter?.throwsHand || 'R', lineupMode, false);
+  const homeRequestKey = buildRosterRequestKey(homeTeam, awayStarter?.throwsHand || 'R', lineupMode, true);
+  const seasonPreviewRequestKey = tab === 'season' && homeTeam
+    ? `${homeTeam.id}:${seasonYear}`
+    : null;
+  const awayLoading = Boolean(awayRequestKey) && awayRosterKey !== awayRequestKey;
+  const homeLoading = Boolean(homeRequestKey) && homeRosterKey !== homeRequestKey;
+  const seasonPreviewLoading = Boolean(seasonPreviewRequestKey) && seasonPreviewKey !== seasonPreviewRequestKey;
+
   useEffect(() => {
-    if (!awayTeam) return;
-    setAwayLoading(true);
-    setAwayLineup([]);
-    setAwayStarter(null);
+    if (!awayTeam || !awayRequestKey) return;
     loadTeamForGame(awayTeam, CURRENT_SEASON, { opposingHand: homeStarter?.throwsHand || 'R', isHome: false }, lineupMode)
       .then((data) => {
         setAwayLineup(data.lineup);
         setAwayBench(data.bench || []);
         setAwayPitchers(data.pitchers);
         setAwayStarter(data.starter);
+        setAwayRosterKey(awayRequestKey);
       })
       .catch(() => {
         setAwayLineup(Array.from({ length: 9 }, (_, index) => defaultPlayer(awayTeam.id, index)));
         setAwayBench([]);
-      })
-      .finally(() => setAwayLoading(false));
-  }, [awayTeam, lineupMode, homeStarter?.throwsHand]);
+        setAwayPitchers([]);
+        setAwayStarter(null);
+        setAwayRosterKey(awayRequestKey);
+      });
+  }, [awayRequestKey, awayTeam, homeStarter?.throwsHand, lineupMode]);
 
   useEffect(() => {
-    if (!homeTeam) return;
-    setHomeLoading(true);
-    setHomeLineup([]);
-    setHomeStarter(null);
+    if (!homeTeam || !homeRequestKey) return;
     loadTeamForGame(homeTeam, CURRENT_SEASON, { opposingHand: awayStarter?.throwsHand || 'R', isHome: true }, lineupMode)
       .then((data) => {
         setHomeLineup(data.lineup);
         setHomeBench(data.bench || []);
         setHomePitchers(data.pitchers);
         setHomeStarter(data.starter);
+        setHomeRosterKey(homeRequestKey);
       })
       .catch(() => {
         setHomeLineup(Array.from({ length: 9 }, (_, index) => defaultPlayer(homeTeam.id, index)));
         setHomeBench([]);
-      })
-      .finally(() => setHomeLoading(false));
-  }, [homeTeam, lineupMode, awayStarter?.throwsHand]);
+        setHomePitchers([]);
+        setHomeStarter(null);
+        setHomeRosterKey(homeRequestKey);
+      });
+  }, [awayStarter?.throwsHand, homeRequestKey, homeTeam, lineupMode]);
 
   useEffect(() => {
-    if (tab !== 'season' || !homeTeam) {
-      setSeasonPreview(null);
-      return undefined;
-    }
+    if (!seasonPreviewRequestKey || !homeTeam) return undefined;
 
     let cancelled = false;
-    setSeasonPreviewLoading(true);
     fetchScheduleSummary(homeTeam.id, parseInt(seasonYear, 10))
       .then((summary) => {
-        if (!cancelled) setSeasonPreview(summary);
+        if (!cancelled) {
+          setSeasonPreview(summary);
+          setSeasonPreviewKey(seasonPreviewRequestKey);
+        }
       })
       .catch(() => {
-        if (!cancelled) setSeasonPreview(null);
-      })
-      .finally(() => {
-        if (!cancelled) setSeasonPreviewLoading(false);
+        if (!cancelled) {
+          setSeasonPreview(null);
+          setSeasonPreviewKey(seasonPreviewRequestKey);
+        }
       });
 
     return () => { cancelled = true; };
-  }, [tab, homeTeam, seasonYear]);
+  }, [homeTeam, seasonPreviewRequestKey, seasonYear]);
 
   const movePlayer = (lineup, setLineup, idx, dir) => {
     const newIdx = idx + dir;
@@ -270,7 +283,7 @@ export default function BaseballSimulator() {
       setResultTab('plays');
       setSimming(false);
     }, 80);
-  }, [awayTeam, homeTeam, awayLineup, homeLineup, awayBench, homeBench, awayStarter, homeStarter, awayPitchers, homePitchers, speed, resetBulkState]);
+  }, [awayTeam, homeTeam, awayLineup, homeLineup, awayBench, homeBench, awayStarter, homeStarter, awayPitchers, homePitchers, resetBulkState]);
 
   const runSeasonSimulation = useCallback(async () => {
     if (!homeTeam) return;
