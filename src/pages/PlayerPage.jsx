@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr } from '../utils/mlbHelpers';
+import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr, spotracPlayerUrl } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
@@ -301,28 +301,48 @@ function defaultStatsLevelForPlayer(player) {
   return isActiveOnMinorsTeam(player) ? 'minors' : 'mlb';
 }
 
-function PlayerRosterStatus({ rosterEntries }) {
+function PlayerRosterStatus({ rosterEntries, player }) {
   const entry = rosterEntries?.find((e) => e.isActive) ?? rosterEntries?.[0];
-  if (!entry?.status) return null;
+  const contractUrl = spotracPlayerUrl(player);
+  const hasStatus = Boolean(entry?.status);
 
-  const { code, description } = entry.status;
-  const badgeCls = getRosterStatusStyle(code, description);
-  const statusDate = entry.statusDate
+  if (!hasStatus && !contractUrl) return null;
+
+  const { code, description } = entry?.status ?? {};
+  const badgeCls = hasStatus ? getRosterStatusStyle(code, description) : '';
+  const statusDate = entry?.statusDate
     ? new Date(entry.statusDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
 
   return (
-    <div className="px-5 sm:px-8 py-3 border-b border-slate-700/50 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Status</div>
-      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${badgeCls}`}>
-        {code !== 'A' && <i className="fa-solid fa-kit-medical text-[10px]" aria-hidden />}
-        {description || code}
-      </span>
-      {statusDate && code !== 'A' && (
-        <span className="text-xs text-slate-500">since {statusDate}</span>
-      )}
-      {entry.team?.name && (
-        <span className="text-xs text-slate-500">{entry.team.name} 40-man</span>
+    <div className="px-5 sm:px-8 py-3 border-b border-slate-700/50 flex items-center gap-x-4 gap-y-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0">
+        {hasStatus ? (
+          <>
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Status</div>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${badgeCls}`}>
+              {code !== 'A' && <i className="fa-solid fa-kit-medical text-[10px]" aria-hidden />}
+              {description || code}
+            </span>
+            {statusDate && code !== 'A' && (
+              <span className="text-xs text-slate-500">since {statusDate}</span>
+            )}
+          </>
+        ) : (
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">Status</div>
+        )}
+      </div>
+      {contractUrl && (
+        <a
+          href={contractUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="View contract on Spotrac"
+          aria-label="View contract on Spotrac"
+          className="ml-auto flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 hover:text-emerald-300 transition-all"
+        >
+          <i className="fa-solid fa-dollar-sign text-sm" aria-hidden />
+        </a>
       )}
     </div>
   );
@@ -1611,7 +1631,7 @@ export default function PlayerPage() {
             ))}
           </div>
 
-          <PlayerRosterStatus rosterEntries={playerInfo.rosterEntries} />
+          <PlayerRosterStatus rosterEntries={playerInfo.rosterEntries} player={playerInfo} />
 
           <div className=" sm:px-8 py-5 sm:py-6">
             <TabBar variant="page" tabs={PLAYER_TABS} activeKey={activeTab} onChange={setActiveTab}>

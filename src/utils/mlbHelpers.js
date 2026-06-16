@@ -109,6 +109,32 @@ export const playerHeadshotUrl = (playerId, type = 1) => {
 
 }
 
+/** Spotrac player slug from MLB nameSlug or full name (e.g. "Corey Seager" → "corey-seager"). */
+export function spotracPlayerSlug({ nameSlug, fullName, firstName, lastName } = {}) {
+  if (nameSlug) return nameSlug.replace(/-\d+$/, '');
+  if (firstName && lastName) {
+    return `${firstName}-${lastName}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+  if (fullName) {
+    return fullName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+  return '';
+}
+
+/**
+ * Spotrac contract page URL. Search resolves directly for most MLB players;
+ * ambiguous names may land on Spotrac search results.
+ */
+export function spotracPlayerUrl(player = {}) {
+  const fullName = player.fullName ?? [player.firstName, player.lastName].filter(Boolean).join(' ');
+  if (fullName) {
+    return `https://www.spotrac.com/search?q=${encodeURIComponent(fullName)}`;
+  }
+  const slug = spotracPlayerSlug(player);
+  if (slug) return `https://www.spotrac.com/search?q=${encodeURIComponent(slug.replace(/-/g, ' '))}`;
+  return null;
+}
+
 // Hero shot – batter (horizontal pose)
 export const playerHeroShotUrl = (playerId) =>
 `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:action:hero:current.jpg/q_auto:good,w_2208/v1/people/${playerId}/action/hero/current`
