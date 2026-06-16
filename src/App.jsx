@@ -11,7 +11,8 @@ import Standings from './pages/Standings';
 import BaseballSimulator from './pages/BaseballSimulator';
 import TeamPage from './pages/TeamPage';
 import Debug from './pages/Debug';
-import { Home, BarChart3, BookOpen, TrendingUp, Cpu } from 'lucide-react';
+import ProspectWatch from './pages/ProspectWatch';
+import { Home, BarChart3, Binoculars, TrendingUp, Cpu } from 'lucide-react';
 
 function StandingsFlagIcon({ className = 'w-4 h-4' }) {
   return (
@@ -58,7 +59,7 @@ function App() {
               { to: '/leaders', icon: <TrendingUp size={15} />, label: 'Leaders' },
               { to: '/standings', icon: <StandingsFlagIcon />, label: 'Standings' },
               { to: '/simulator', icon: <Cpu size={15} />, label: 'Simulator' },
-              { to: '/docs', icon: <BookOpen size={15} />, label: 'API Docs' },
+              { to: '/prospects', icon: <Binoculars size={15} />, label: 'Prospects' },
             ].map(({ to, icon, label }) => (
               <NavLink
                 key={to}
@@ -92,6 +93,7 @@ function App() {
         <Route path="/leaders" element={<StatLeaders />} />
         <Route path="/standings" element={<Standings />} />
         <Route path="/simulator" element={<BaseballSimulator />} />
+        <Route path="/prospects" element={<ProspectWatch />} />
         <Route path="/docs" element={<APIDocs />} />
         <Route path="/debug" element={<Debug />} />
         <Route path="/player/:playerId" element={<PlayerPage />} />
