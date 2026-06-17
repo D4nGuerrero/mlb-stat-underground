@@ -9,6 +9,7 @@ import {
   stadiumTimeOfDay,
   batterPlateUrl,
   batterPlateFallbackUrl,
+  batterLayeredPlateUrls,
 } from '../utils/mlbHelpers';
 
 function pitchEventsSignature(playEvents) {
@@ -74,6 +75,9 @@ function latestPitchRowKey(playEvents, currentPlay) {
 
 const FIELD_ASPECT = 315 / 270;
 const STRIKE_ZONE_FIELD_WIDTH_PCT = (AT_BAT_STRIKE_ZONE_CLIP.width / 1158) * 100;
+const BATTER_FIELD_WIDTH_PCT = 17.1278;
+const BATTER_FIELD_TOP_PCT = 24.5;
+const BATTER_FIELD_SIDE_OFFSET_PCT = 26.5;
 
 const LiveAtBatVisual = memo(function LiveAtBatVisual({
   venueId,
@@ -86,6 +90,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   gamePk,
   batSide,
   batterIsAway,
+  batterTeamId = null,
+  season = null,
   onRecentRowReady,
   baseballModelUrl = null,
   strikeZoneTopImageUrl = null,
@@ -151,10 +157,52 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
 
   const exteriorTimeOfDay = stadiumTimeOfDay(gameDateTime);
   const batterSide = batterIsAway ? 'away' : 'home';
+  const batterLayerUrls = batterLayeredPlateUrls({
+    season,
+    stand: batSide,
+    teamId: batterTeamId,
+  });
+  const hasLayeredBatterArt = Boolean(batterLayerUrls.jersey && batterLayerUrls.pants);
+  const [batterArtFailed, setBatterArtFailed] = useState(false);
   const strikeZoneTopSrc =
     strikeZoneTopImageUrl ??
     (venueId && !exteriorFailed ? stadiumExteriorUrl(venueId, exteriorTimeOfDay) : null);
   const strikeZoneBottomSrc = strikeZoneBottomImageUrl ?? stadiumInfieldUrl();
+  const batterFieldSideStyle =
+    String(batSide).toUpperCase() === 'L'
+      ? { right: `${BATTER_FIELD_SIDE_OFFSET_PCT}%` }
+      : { left: `${BATTER_FIELD_SIDE_OFFSET_PCT}%` };
+  const batterArt = hasLayeredBatterArt && !batterArtFailed ? (
+    <div className="absolute inset-0">
+      {[batterLayerUrls.pants, batterLayerUrls.jersey].map((src) => (
+        <img
+          key={src}
+          src={src}
+          className="absolute inset-0 h-full w-full object-contain object-top"
+          alt=""
+          onError={() => setBatterArtFailed(true)}
+        />
+      ))}
+    </div>
+  ) : (
+    <img
+      src={batterPlateUrl(batSide, batterSide)}
+      className="h-full w-full object-contain object-top"
+      alt=""
+      onError={(e) => {
+        if (!e.target.dataset.fallback) {
+          e.target.dataset.fallback = '1';
+          e.target.src = batterPlateFallbackUrl(batSide, batterSide);
+          return;
+        }
+        e.target.style.display = 'none';
+      }}
+    />
+  );
+
+  useEffect(() => {
+    setBatterArtFailed(false);
+  }, [batterLayerUrls.jersey, batterLayerUrls.pants]);
 
   return (
     <div
@@ -175,7 +223,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
           <div
             className="absolute inset-x-0 top-0 h-auto bg-no-repeat"
             style={{
-              backgroundImage: strikeZoneTopSrc ? `url(https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/night/4705@2x.jpg)` : undefined,
+              backgroundImage: strikeZoneTopSrc ? `url(${strikeZoneTopSrc})` : undefined,
               // Preserve image ratio while the oversized field layer scales up/down.
               backgroundSize: 'calc(100% + 1px) auto',
               aspectRatio: '4 / 3',
@@ -196,6 +244,18 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
             }}
           />
         </div>
+      </div>
+
+      <div
+        className="pointer-events-none absolute z-20 hidden lg:block"
+        style={{
+          top: `${BATTER_FIELD_TOP_PCT}%`,
+          width: `${BATTER_FIELD_WIDTH_PCT}%`,
+          aspectRatio: '144 / 400',
+          ...batterFieldSideStyle,
+        }}
+      >
+        {batterArt}
       </div>
 
 
@@ -222,6 +282,18 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
           style={{ aspectRatio: `${FIELD_ASPECT}` }}
         >
           <div
+            className="absolute z-20 pointer-events-none lg:hidden"
+            style={{
+              top: `${BATTER_FIELD_TOP_PCT}%`,
+              width: `${BATTER_FIELD_WIDTH_PCT}%`,
+              aspectRatio: '144 / 400',
+              ...batterFieldSideStyle,
+            }}
+          >
+            {batterArt}
+          </div>
+
+          <div
             // Tune these percentages to move the zone within the fixed 1158x869 field coordinate space.
             className="absolute left-1/2 top-[36%] -translate-x-1/2"
             style={{ width: `${STRIKE_ZONE_FIELD_WIDTH_PCT}%` }}
@@ -243,25 +315,6 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
             <LivePitchToast item={toastItem} onComplete={clearToast} />
           </div>
         </div>
-      </div>
-
-      <div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-end justify-center"
-        style={{ height: '110px', width: '140px' }}
-      >
-        <img
-          src={batterPlateUrl(batSide, batterSide)}
-          className="max-h-full max-w-full object-contain object-bottom drop-shadow-[0_4px_12px_rgba(0,0,0,0.65)]"
-          alt=""
-          onError={(e) => {
-            if (!e.target.dataset.fallback) {
-              e.target.dataset.fallback = '1';
-              e.target.src = batterPlateFallbackUrl(batSide, batterSide);
-              return;
-            }
-            e.target.style.display = 'none';
-          }}
-        />
       </div>
     </div>
   );

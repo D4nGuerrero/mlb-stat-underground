@@ -78,7 +78,7 @@ export const teamLogoUrl = (teamId, options = {}) => {
     // Add more teams here as you find them
   ]);
 
-  const shouldUseRegular = forceRegular || regularPreferredTeams.has(Number(id));
+  const shouldUseRegular = forceRegular || !preferDark || regularPreferredTeams.has(Number(id));
 
   if (shouldUseRegular) {
     return `${BASE_URL}/${id}.svg`;
@@ -179,10 +179,29 @@ export const batterPlateUrl = (stand = 'R', homeOrAway = 'home') =>
 export const batterPlateFallbackUrl = (stand = 'R', homeOrAway = 'home') =>
   batterSilhouetteUrl(stand, homeOrAway);
 
-// Stadium exterior background (prod-gameday.mlbstatic.com)
-const getStadiumUrl = (venueId, timeOfDay = 'day') => {
-  return `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/${venueId}@2x.jpg`;
+const batterAssetSide = (stand = 'R') =>
+  String(stand).toUpperCase() === 'L' ? 'left' : 'right';
+
+export const batterLayerAssetUrl = ({
+  bodyPart,
+  season,
+  stand = 'R',
+  teamId,
+  variant = 1,
+}) => {
+  if (!bodyPart || !season || !teamId) return null;
+  return `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/batters/${season}/${batterAssetSide(stand)}/${teamId}_${bodyPart}_${variant}_${season}.png`;
 };
+
+export const batterLayeredPlateUrls = ({
+  season,
+  stand = 'R',
+  teamId,
+  variant = 1,
+} = {}) => ({
+  jersey: batterLayerAssetUrl({ bodyPart: 'jersey', season, stand, teamId, variant }),
+  pants: batterLayerAssetUrl({ bodyPart: 'pants', season, stand, teamId, variant }),
+});
 
 export const FALLBACK_HEADSHOT = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56'%3E%3Crect width='56' height='56' fill='%23334155' rx='8'/%3E%3Ccircle cx='28' cy='20' r='9' fill='%2364748b'/%3E%3Cellipse cx='28' cy='44' rx='14' ry='10' fill='%2364748b'/%3E%3C/svg%3E`;
 

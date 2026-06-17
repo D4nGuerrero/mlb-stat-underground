@@ -1057,6 +1057,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           gamePk={gamePk}
           batSide={batSide}
           batterIsAway={batterIsAway}
+          batterTeamId={batterIsAway ? away.id : home.id}
+          season={previewSeason}
           onRecentRowReady={revealLiveRecentRow}
           baseballModelUrl={assetUrl('baseball-centered.glb')}
           className="xl:h-full xl:min-h-0"
