@@ -902,6 +902,32 @@ function GamePageContent({ gamePk, navigate, location }) {
     return player?.seasonStats?.pitching || player?.stats?.pitching || null;
   };
 
+  const getLastName = (player) =>
+    player?.fullName?.split(' ').slice(-1)[0] ||
+    player?.name?.split(' ').slice(-1)[0] ||
+    '';
+
+  const formatCurrentBattingLine = (player) => {
+    if (!player?.id) return null;
+    const stat = getBatterGameStat(player.id);
+    return `${getLastName(player)}: ${stat?.hits ?? 0} - ${stat?.atBats ?? 0}`;
+  };
+
+  const vsMatchupLine =
+    visibleVsStats && visibleVsStats.atBats > 0
+      ? `vs. ${getLastName(ls?.defense?.pitcher)}: ${visibleVsStats.hits ?? 0} - ${visibleVsStats.atBats ?? 0} (${visibleVsStats.avg ?? '.000'}) ${visibleVsStats.homeRuns ?? 0} HR, ${visibleVsStats.rbi ?? 0} RBI, ${visibleVsStats.strikeOuts ?? 0}K`
+      : null;
+
+  const onDeckLine = formatCurrentBattingLine(
+    ls?.offense?.onDeck || dueUpBatters?.[1],
+  );
+  const inHoleLine = formatCurrentBattingLine(
+    ls?.offense?.inHole || ls?.offense?.inTheHole || dueUpBatters?.[2],
+  );
+  const dueUpTickerLine = [onDeckLine && `On Deck: ${onDeckLine}`, inHoleLine && `In the hole: ${inHoleLine}`]
+    .filter(Boolean)
+    .join('  |  ');
+
   const allPlays = ld.plays?.allPlays || [];
 
   const summaryLeadIn = buildSummaryLeadIn(gd);
@@ -945,8 +971,258 @@ function GamePageContent({ gamePk, navigate, location }) {
     />
   );
 
+  const liveVisualPanel = isLive && ls ? (
+    <>
+      <div className="hidden xl:block bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="text-sm font-bold text-slate-200 leading-none mb-1">
+                {away.abbreviation}
+              </div>
+              <div className="text-[12px] text-slate-500">
+                {away.record
+                  ? `${away.record.wins} - ${away.record.losses}`
+                  : ''}
+              </div>
+            </div>
+            <img
+              src={teamLogoUrl(away.id)}
+              className="w-12 h-12 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+              alt={away.abbreviation}
+              onClick={() => navigate(`/team/${away.id}`)}
+            />
+          </div>
+
+          <div className="flex items-center gap-6">
+            <span
+              className={`font-display text-5xl tabular-nums leading-none ${awayWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
+            >
+              {awayRuns}
+            </span>
+            <div className="text-center min-w-[80px]">
+              <div className="flex flex-col items-center gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 bg-red-400 rounded-full live-pulse" />
+                  <span className="text-red-400 font-bold text-sm tracking-wide">
+                    LIVE
+                  </span>
+                </div>
+                <span className="text-slate-300 text-xs font-semibold">
+                  {ls?.inningHalf === 'Top' ? '▲' : '▼'}{' '}
+                  {ls?.currentInningOrdinal}
+                </span>
+              </div>
+            </div>
+            <span
+              className={`font-display text-5xl tabular-nums leading-none ${homeWins ? 'text-white' : isFinal ? 'text-slate-400' : 'text-white'}`}
+            >
+              {homeRuns}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 justify-end">
+            <img
+              src={teamLogoUrl(home.id)}
+              className="w-12 h-12 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+              alt={home.abbreviation}
+              onClick={() => navigate(`/team/${home.id}`)}
+            />
+            <div className="text-right">
+              <div className="text-sm font-bold text-slate-200 leading-none mb-1">
+                {home.abbreviation}
+              </div>
+              <div className="text-[12px] text-slate-500">
+                {home.record
+                  ? `${home.record.wins} - ${home.record.losses}`
+                  : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-slate-700/50 xl:hidden">
+          {gameTabBar}
+        </div>
+      </div>
+
+      <div className="xl:flex-1 xl:min-h-0">
+        <LiveAtBatVisual
+          venueId={venueId}
+          exteriorFailed={exteriorFailed}
+          gameDateTime={gd.datetime?.dateTime}
+          currentPlay={currentPlay}
+          playEvents={allPitchEvents}
+          szTop={szTop}
+          szBot={szBot}
+          gamePk={gamePk}
+          batSide={batSide}
+          batterIsAway={batterIsAway}
+          onRecentRowReady={revealLiveRecentRow}
+          baseballModelUrl={assetUrl('baseball-centered.glb')}
+          className="xl:h-full xl:min-h-0"
+        />
+      </div>
+
+      <LiveMatchupStrip
+        currentPlay={currentPlay}
+        dueUpBatters={dueUpBatters}
+        dueUpHalfLabel={dueUpHalfLabel}
+        dueUpInningOrdinal={dueUpInningOrdinal}
+        getBatterGameStat={getBatterGameStat}
+        getPitcherGameStat={getPitcherGameStat}
+        linescore={ls}
+        onPlayerSelect={handlePlayDetailPlayerSelect}
+        showDueUpMatchup={showDueUpMatchup}
+      />
+
+      {(vsMatchupLine || dueUpTickerLine) && (
+        <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl px-3 py-2">
+          {vsMatchupLine && dueUpTickerLine ? (
+            <div className="live-info-swap text-center text-[11px] sm:text-xs font-semibold text-slate-300">
+              <div className="live-info-swap__line live-info-swap__line--primary">
+                {vsMatchupLine}
+              </div>
+              <div className={`live-info-swap__line live-info-swap__line--secondary text-${THEME_COLOR}-300`}>
+                {dueUpTickerLine}
+              </div>
+            </div>
+          ) : (
+            <div className={`flex h-5 items-center justify-center truncate text-center text-[11px] sm:text-xs font-semibold leading-none ${vsMatchupLine ? 'text-slate-300' : `text-${THEME_COLOR}-300`}`}>
+              {vsMatchupLine || dueUpTickerLine}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  ) : null;
+
+  const recentPlaysPanel = (
+    <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        <span className="text-[10px] text-slate-500 uppercase tracking-widest">
+          Recent Plays
+        </span>
+        <span className="text-[9px] text-slate-600">
+          {liveRecentRows.length} events
+        </span>
+      </div>
+      <div className="p-2 sm:p-4 xl:p-3 2xl:p-4">
+        <LiveRecentPlaysTimeline
+          groups={liveRecentGroups}
+          firstPitch={liveFirstPitch}
+          away={away}
+          home={home}
+          getPlayBadge={getPlayBadge}
+          highlightByItemKey={highlightByItemKey}
+          expandedVideoKey={expandedVideoKey}
+          pinnedVideo={pinnedVideo}
+          onPlayerClick={(e, batterId) => handleSummaryPlayerClick(e, batterId)}
+          onOpenPlay={openSheet}
+          onToggleVideo={handleSummaryVideoToggle}
+          ScoringPlayVideo={ScoringPlayVideo}
+        />
+      </div>
+    </div>
+  );
+
+  const boxScorePanel = ld.boxscore ? (
+    <div className="bg-slate-900 border border-slate-700/60 p-4 sm:p-5 xl:p-4 rounded-2xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <SegmentedControl
+          value={boxScoreSide}
+          onChange={setBoxScoreSide}
+          variant="pill"
+          size="md"
+          options={[
+            {
+              value: 'away',
+              label: away.teamName || away.name || away.abbreviation,
+            },
+            {
+              value: 'home',
+              label: home.teamName || home.name || home.abbreviation,
+            },
+          ]}
+        />
+        <span className="text-sm text-slate-400 tabular-nums">{gameStart.dateLine}</span>
+      </div>
+      <TeamBoxSection
+        sideKey={boxScoreSide}
+        team={boxScoreSide === 'away' ? away : home}
+        teamBox={ld.boxscore?.teams?.[boxScoreSide]}
+        decisions={decisions}
+        hideHeader
+        onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+      />
+
+      {ld.boxscore.info?.length > 0 && (
+        <div className="mt-2 pt-4 border-t border-slate-700/40 text-[11px] text-slate-500 space-y-1">
+          {ld.boxscore.info.map((item, i) => (
+            <div key={i}>
+              <span className="font-semibold text-slate-400">
+                {item.label}:
+              </span>{' '}
+              {item.value}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ld.boxscore.weather && (
+        <div className="text-[11px] text-slate-500 mt-1">
+          <span className="font-semibold text-slate-400">Weather:</span>{' '}
+          {[
+            ld.boxscore.weather.condition,
+            ld.boxscore.weather.temp && `${ld.boxscore.weather.temp}°F`,
+            ld.boxscore.weather.wind &&
+              `Wind: ${ld.boxscore.weather.wind}`,
+          ]
+            .filter(Boolean)
+            .join(', ')}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  const desktopLiveBoxScorePanel = ld.boxscore ? (
+    <div className="bg-slate-900 border border-slate-700/60 p-3 2xl:p-4 rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <span className="text-[10px] text-slate-500 uppercase tracking-widest">
+          Box Score
+        </span>
+        <span className="text-[11px] text-slate-500 tabular-nums">
+          {gameStart.dateLine}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 2xl:gap-4">
+        <TeamBoxSection
+          sideKey="away"
+          team={away}
+          teamBox={ld.boxscore?.teams?.away}
+          decisions={decisions}
+          compact
+          onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+        />
+        <TeamBoxSection
+          sideKey="home"
+          team={home}
+          teamBox={ld.boxscore?.teams?.home}
+          decisions={decisions}
+          compact
+          onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+        />
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="max-w-5xl mx-auto px-0 sm:px-6 py-0 sm:py-8">
+    <div
+      className={`max-w-5xl mx-auto px-0 sm:px-6 py-0 sm:py-8 ${
+        isLive && currentTab === 'live'
+          ? 'xl:max-w-none xl:px-3 2xl:px-5 xl:py-3'
+          : 'xl:max-w-[1500px]'
+      }`}
+    >
       {/* Mobile compact sticky header — shows instead of nav */}
       <div className="sm:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur border-b border-slate-800/60 grid grid-cols-[1fr_auto_1fr] items-center px-4 py-3">
         <button
@@ -984,7 +1260,7 @@ function GamePageContent({ gamePk, navigate, location }) {
       </div>
 
       {/* Desktop: back + ws status */}
-      <div className="hidden sm:flex items-center justify-between mb-4 px-0">
+      <div className={`hidden sm:flex items-center justify-between mb-4 px-0 ${isLive && currentTab === 'live' ? 'xl:hidden' : ''}`}>
         <button
           onClick={() =>
             navigate('/', { state: { returnDate: location.state?.returnDate } })
@@ -1018,7 +1294,7 @@ function GamePageContent({ gamePk, navigate, location }) {
 
       <div className="px-0 sm:px-3">
         {/* Scoreboard */}
-        <div className={`bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden ${isPreview ? 'mb-3' : 'mb-4'}`}>
+        <div className={`bg-[#121827] border-y border-slate-700/60  overflow-hidden ${isPreview ? 'mb-3' : ''} ${isLive && currentTab === 'live' ? 'xl:hidden' : ''}`}>
           {/* Game date / venue */}
          
 
@@ -1221,167 +1497,28 @@ function GamePageContent({ gamePk, navigate, location }) {
         {/* Tab content */}
         {isLive && ls && (
           <div
-            className={currentTab === 'live' ? 'space-y-3' : 'hidden'}
+            className={
+              currentTab === 'live'
+                ? 'relative  overflow-x-hidden xl:h-[calc(100vh-88px)] xl:min-h-0 xl:grid xl:grid-cols-[280px_minmax(460px,0.95fr)_minmax(560px,1.2fr)] 2xl:grid-cols-[320px_minmax(560px,0.9fr)_minmax(780px,1.4fr)] xl:items-start xl:gap-4 xl:space-y-0 xl:overflow-hidden'
+                : 'hidden'
+            }
             aria-hidden={currentTab !== 'live'}
           >
+            <div className="xl:order-2 xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:gap-3 xl:overflow-hidden xl:pr-1">
+              {liveVisualPanel}
+            </div>
 
-            <LiveAtBatVisual
-              venueId={venueId}
-              exteriorFailed={exteriorFailed}
-              gameDateTime={gd.datetime?.dateTime}
-              currentPlay={currentPlay}
-              playEvents={allPitchEvents}
-              szTop={szTop}
-              szBot={szBot}
-              gamePk={gamePk}
-              batSide={batSide}
-              batterIsAway={batterIsAway}
-              inningHalf={ls.inningHalf}
-              currentInningOrdinal={ls.currentInningOrdinal}
-              balls={ls.balls}
-              strikes={ls.strikes}
-              outs={ls.outs}
-              onRecentRowReady={revealLiveRecentRow}
-              baseballModelUrl={assetUrl('baseball-centered.glb')}
-            />
+            <div className="xl:order-1 xl:h-full xl:min-h-0 xl:overflow-y-auto">
+              {recentPlaysPanel}
+            </div>
 
-            {/* ── MATCHUP ROW: Pitcher | Count+Outs+Diamond | Batter ── */}
-            <LiveMatchupStrip
-              currentPlay={currentPlay}
-              dueUpBatters={dueUpBatters}
-              dueUpHalfLabel={dueUpHalfLabel}
-              dueUpInningOrdinal={dueUpInningOrdinal}
-              getBatterGameStat={getBatterGameStat}
-              getPitcherGameStat={getPitcherGameStat}
-              linescore={ls}
-              onPlayerSelect={handlePlayDetailPlayerSelect}
-              showDueUpMatchup={showDueUpMatchup}
-            />
-
-            {/* ── VS STATS: Batter career stats vs this pitcher ── */}
-            {visibleVsStats && visibleVsStats.atBats > 0 && (
-              <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-3">
-                <div className="text-[9px] text-slate-500 uppercase tracking-widest mb-2.5 text-center">
-                  {ls.offense?.batter?.fullName?.split(' ').slice(-1)[0]} vs{' '}
-                  {ls.defense?.pitcher?.fullName?.split(' ').slice(-1)[0]} — career
-                </div>
-                <div className="flex items-center justify-center gap-3 flex-wrap">
-                  {[
-                    { label: 'AB', value: visibleVsStats.atBats },
-                    { label: 'AVG', value: visibleVsStats.avg },
-                    { label: 'H', value: visibleVsStats.hits },
-                    { label: 'HR', value: visibleVsStats.homeRuns },
-                    { label: 'K', value: visibleVsStats.strikeOuts },
-                    { label: 'BB', value: visibleVsStats.baseOnBalls },
-                    visibleVsStats.ops ? { label: 'OPS', value: visibleVsStats.ops } : null,
-                  ]
-                    .filter(Boolean)
-                    .filter(
-                      (s) =>
-                        s.value != null &&
-                        s.value !== '-' &&
-                        s.value !== '-.---',
-                    )
-                    .map(({ label, value }) => (
-                      <div key={label} className="text-center min-w-[32px]">
-                        <div className="text-[8px] text-slate-500">{label}</div>
-                        <div className="text-xs font-bold font-mono text-slate-200">
-                          {value}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── RECENT PLAYS: live timeline ── */}
-            <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-                <span className="text-[10px] text-slate-500 uppercase tracking-widest">
-                  Recent Plays
-                </span>
-                <span className="text-[9px] text-slate-600">
-                  {liveRecentRows.length} events
-                </span>
-              </div>
-              <div className="p-2 sm:p-5">
-                <LiveRecentPlaysTimeline
-                  groups={liveRecentGroups}
-                  firstPitch={liveFirstPitch}
-                  away={away}
-                  home={home}
-                  getPlayBadge={getPlayBadge}
-                  highlightByItemKey={highlightByItemKey}
-                  expandedVideoKey={expandedVideoKey}
-                  pinnedVideo={pinnedVideo}
-                  onPlayerClick={(e, batterId) => handleSummaryPlayerClick(e, batterId)}
-                  onOpenPlay={openSheet}
-                  onToggleVideo={handleSummaryVideoToggle}
-                  ScoringPlayVideo={ScoringPlayVideo}
-                />
-              </div>
+            <div className="hidden xl:order-3 xl:block xl:h-full xl:min-h-0 xl:overflow-y-auto">
+              {desktopLiveBoxScorePanel}
             </div>
           </div>
         )}
 
-        {currentTab === 'boxscore' && ld.boxscore && (
-          <div className="bg-slate-900 border border-slate-700/60  p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <SegmentedControl
-                value={boxScoreSide}
-                onChange={setBoxScoreSide}
-                variant="pill"
-                size="md"
-                options={[
-                  {
-                    value: 'away',
-                    label: away.teamName || away.name || away.abbreviation,
-                  },
-                  {
-                    value: 'home',
-                    label: home.teamName || home.name || home.abbreviation,
-                  },
-                ]}
-              />
-              <span className="text-sm text-slate-400 tabular-nums">{gameStart.dateLine}</span>
-            </div>
-            <TeamBoxSection
-              sideKey={boxScoreSide}
-              team={boxScoreSide === 'away' ? away : home}
-              teamBox={ld.boxscore?.teams?.[boxScoreSide]}
-              decisions={decisions}
-              hideHeader
-              onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
-            />
-
-            {ld.boxscore.info?.length > 0 && (
-              <div className="mt-2 pt-4 border-t border-slate-700/40 text-[11px] text-slate-500 space-y-1">
-                {ld.boxscore.info.map((item, i) => (
-                  <div key={i}>
-                    <span className="font-semibold text-slate-400">
-                      {item.label}:
-                    </span>{' '}
-                    {item.value}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {ld.boxscore.weather && (
-              <div className="text-[11px] text-slate-500 mt-1">
-                <span className="font-semibold text-slate-400">Weather:</span>{' '}
-                {[
-                  ld.boxscore.weather.condition,
-                  ld.boxscore.weather.temp && `${ld.boxscore.weather.temp}°F`,
-                  ld.boxscore.weather.wind &&
-                    `Wind: ${ld.boxscore.weather.wind}`,
-                ]
-                  .filter(Boolean)
-                  .join(', ')}
-              </div>
-            )}
-          </div>
-        )}
+        {currentTab === 'boxscore' && boxScorePanel}
 
         {currentTab === 'summary' && (
           <SummarySection

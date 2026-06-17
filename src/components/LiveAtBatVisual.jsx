@@ -72,7 +72,7 @@ function latestPitchRowKey(playEvents, currentPlay) {
   return null;
 }
 
-const FIELD_ASPECT = 1158 / 869;
+const FIELD_ASPECT = 315 / 270;
 const STRIKE_ZONE_FIELD_WIDTH_PCT = (AT_BAT_STRIKE_ZONE_CLIP.width / 1158) * 100;
 
 const LiveAtBatVisual = memo(function LiveAtBatVisual({
@@ -86,15 +86,11 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   gamePk,
   batSide,
   batterIsAway,
-  inningHalf,
-  currentInningOrdinal,
-  balls,
-  strikes,
-  outs,
   onRecentRowReady,
   baseballModelUrl = null,
   strikeZoneTopImageUrl = null,
   strikeZoneBottomImageUrl = null,
+  className = '',
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
   const stablePlayEvents = playEvents;
@@ -161,37 +157,50 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   const strikeZoneBottomSrc = strikeZoneBottomImageUrl ?? stadiumInfieldUrl();
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[300px] flex flex-col">
+    <div
+      // MLB uses an invisible spacer image for this same idea: width is owned by
+      // the layout, and height follows the fixed stadium field aspect ratio.
+      className={`relative overflow-hidden sm:rounded-2xl border border-slate-700/60 flex flex-col ${className}`}
+      style={{ aspectRatio: `${FIELD_ASPECT}` }}
+    >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* MLB-style field scaling: keep a fixed-ratio field larger than the viewport, then crop it. */}
         <div
-          className="absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full"
+          className="absolute left-1/2 top-1/2 w-[280%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full"
           style={{
             aspectRatio: `${FIELD_ASPECT}`,
             backgroundColor: !strikeZoneTopSrc ? '#0f172a' : undefined,
           }}
         >
           <div
-            className="absolute inset-x-0 top-0 h-[48%] bg-no-repeat"
+            className="absolute inset-x-0 top-0 h-auto bg-no-repeat"
             style={{
-              backgroundImage: strikeZoneTopSrc ? `url(${strikeZoneTopSrc})` : undefined,
+              backgroundImage: strikeZoneTopSrc ? `url(https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/night/4705@2x.jpg)` : undefined,
               // Preserve image ratio while the oversized field layer scales up/down.
               backgroundSize: 'calc(100% + 1px) auto',
-              backgroundPosition: '50% 100%',
+              aspectRatio: '4 / 3',
+              // backgroundPosition: '50% 0%',
+              backgroundPositionX: '50%, 50%',
+              backgroundPositionY: '2%, 100%'
+            
             }}
           />
           <div
-            className="absolute inset-x-0 bottom-0 h-[52%] bg-no-repeat"
+            className="absolute inset-x-0 bottom-0  bg-no-repeat"
             style={{
               backgroundImage: strikeZoneBottomSrc ? `url(${strikeZoneBottomSrc})` : undefined,
               backgroundSize: 'calc(100% + 1px) auto',
-              backgroundPosition: '50% 0%',
+              backgroundPosition: '50% 74.1%',
+              aspectRatio: 4 /3,
+            
             }}
           />
         </div>
       </div>
 
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
+
+{/* TOP LEFT AND TOP RIGHT PILLS VISUAL AT BAT */}
+      {/* <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
         <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
           <div className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
           <span className="text-[10px] font-bold text-red-400 tracking-wide">LIVE</span>
@@ -204,7 +213,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
             {balls ?? 0}–{strikes ?? 0} · {outs ?? 0} out{outs !== 1 ? 's' : ''}
           </span>
         </div>
-      </div>
+      </div> */}
 
       <div className="absolute inset-0 z-10 overflow-hidden">
         {/* This overlay repeats the same field transform so the strike zone scales with the background. */}

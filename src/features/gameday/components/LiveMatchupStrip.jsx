@@ -22,15 +22,21 @@ function LiveMatchupPlayerCard({
 }) {
   return (
     <button
-      className="flex flex-col items-center gap-1.5 p-3 hover:bg-slate-800/40 transition-colors"
+      className="flex flex-col items-center hover:bg-slate-800/40 transition-colors p-2"
       onClick={() => onSelect(playerId)}
+      // style={{
+      //   backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
+      //   backgroundSize: 'cover',
+      //   backgroundPosition: 'top',
+      //   backgroundRepeat: 'no-repeat',
+      // }}
     >
-      <div className="text-[8px] text-slate-500 uppercase tracking-widest">{label}</div>
+      {/* <div className="text-[8px] text-slate-500 uppercase tracking-widest">{label}</div> */}
       <div
-        className={`w-14 h-14 rounded-xl overflow-hidden ${accent ? `border-2 border-${THEME_COLOR}-500/40` : 'border border-slate-700'} flex-shrink-0`}
+        className={`w-14 h-14  overflow-hidden  flex-shrink-0`}
       >
         <img
-          src={imageSrc}
+          src={playerHeadshotUrl(playerId,2)}
           className="w-full h-full object-cover object-top"
           alt=""
           onError={(e) => {
@@ -41,7 +47,7 @@ function LiveMatchupPlayerCard({
       <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
         {name || '—'}
       </div>
-      <div className="text-[9px] text-slate-500 font-mono text-center space-y-0.5">
+      <div className="text-[12px] text-red-500 font-mono text-center font-bold font-sans">
         {stat}
       </div>
     </button>
@@ -59,8 +65,51 @@ export default function LiveMatchupStrip({
   onPlayerSelect,
   showDueUpMatchup,
 }) {
+  const pitcherStatObj = getPitcherGameStat(linescore?.defense?.pitcher?.id);
+
+function formatPitcherStat(s) {
+  if (!s) return null;
+
+  const pitches = s.pitchesThrown ?? s.pitches ?? s.P;
+  const outs = s.outs ?? s.outsPitched ?? s.outs_recorded ?? s.outsRecorded;
+  const inningsRaw = s.inningsPitched ?? s.ip ?? s.innings;
+
+  let inningsStr = '';
+
+  if (outs != null) {
+    inningsStr = `${Math.floor(outs / 3)}.${outs % 3}`;
+  } else if (inningsRaw != null) {
+    inningsStr = typeof inningsRaw === 'number' ? String(inningsRaw) : inningsRaw;
+  }
+
+  const ks = s.strikeouts ?? s.k ?? s.K ?? s.Ks;
+  const er = s.earnedRuns ?? s.er ?? s.ER;
+
+  const stats = [];
+
+  if (inningsStr) stats.push(`${inningsStr} IP`);
+  if (ks != null) stats.push(`${ks}K`);
+  if (er != null) stats.push(`${er} ER`);
+
+  if (pitches == null && !stats.length) return null;
+
   return (
-    <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+    <>
+      {pitches != null && (
+        <>
+          <span>{pitches} P</span>
+          {stats.length > 0 && (
+            <span className="px-0.5 text-white/30 font-bold">|</span>
+          )}
+        </>
+      )}
+
+      {stats.length > 0 && <span>{stats.join(', ')}</span>}
+    </>
+  );
+}
+  return (
+    <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden ">
       {showDueUpMatchup ? (
         <div>
           <div className="px-4 pt-3 text-center">
@@ -97,15 +146,15 @@ export default function LiveMatchupStrip({
             onSelect={onPlayerSelect}
             playerId={linescore?.defense?.pitcher?.id}
             stat={
-              getPitcherGameStat(linescore?.defense?.pitcher?.id)?.pitchesThrown != null ? (
-                <div className="text-slate-400">
-                  {getPitcherGameStat(linescore?.defense?.pitcher?.id).pitchesThrown} pitches
+              pitcherStatObj ? (
+                <div className="text-white/50">
+                  {formatPitcherStat(pitcherStatObj)}
                 </div>
               ) : null
             }
           />
 
-          <div className="flex flex-col items-center justify-center gap-2.5 p-3">
+          <div className="flex flex-col items-center justify-center  p-3">
             <BaseDiamondIndicator {...getRunnersOnBase(linescore, currentPlay)} size="md" />
             <span className="text-sm font-bold font-mono text-slate-200 tabular-nums">
               {linescore?.balls ?? 0}-{linescore?.strikes ?? 0}
@@ -123,7 +172,7 @@ export default function LiveMatchupStrip({
             playerId={linescore?.offense?.batter?.id}
             stat={
               getBatterGameStat(linescore?.offense?.batter?.id) != null ? (
-                <div className={`text-${THEME_COLOR}-400/80 font-semibold`}>
+                <div className={`text-white/50 `}>
                   {getBatterGameStat(linescore?.offense?.batter?.id).hits ?? 0}-
                   {getBatterGameStat(linescore?.offense?.batter?.id).atBats ?? 0}
                 </div>

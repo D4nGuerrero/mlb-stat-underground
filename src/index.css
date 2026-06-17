@@ -361,6 +361,74 @@ body {
   white-space: nowrap;
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.live-info-swap {
+  height: 1.25rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.live-info-swap__line {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  inset: 0;
+  line-height: 1;
+  overflow: hidden;
+  position: absolute;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-info-swap__line--primary {
+  animation: liveInfoSwapPrimary 8s ease-in-out infinite;
+}
+
+.live-info-swap__line--secondary {
+  animation: liveInfoSwapSecondary 8s ease-in-out infinite;
+}
+
+@keyframes liveInfoSwapPrimary {
+  0%,
+  42% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  50%,
+  92% {
+    opacity: 0;
+    transform: translateY(-0.35rem);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes liveInfoSwapSecondary {
+  0%,
+  42% {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+  50%,
+  92% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+}
+
 @keyframes navTaglineScroll {
   from {
     transform: translateX(0);

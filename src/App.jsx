@@ -39,7 +39,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
       <nav id="main-nav" className="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 overflow-hidden">
           <div className="flex items-center gap-x-2 sm:gap-x-3 flex-shrink-0">
               <img src={assetUrl('logo.png')} alt="MLB Live Logo" className="w-10 h-10" />
             <div className="hidden xs:block">
@@ -56,7 +56,7 @@ function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-x-1 sm:gap-x-2">
+          <div className="flex min-w-0 items-center gap-x-1 sm:gap-x-2 overflow-x-auto scrollbar-none">
             {[
               { to: '/', icon: <Home size={15} />, label: 'Scores' },
               { to: '/stats', icon: <BarChart3 size={15} />, label: 'Stats' },
@@ -83,7 +83,7 @@ function App() {
             ))}
           </div>
 
-          <div className={`hidden sm:flex px-3 py-1.5 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-400 rounded-2xl border border-${THEME_COLOR}-500/30 text-xs items-center gap-x-1.5 flex-shrink-0`}>
+          <div className={`hidden lg:flex px-3 py-1.5 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-400 rounded-2xl border border-${THEME_COLOR}-500/30 text-xs items-center gap-x-1.5 flex-shrink-0`}>
             <div className={`w-1.5 h-1.5 bg-${THEME_COLOR}-400 rounded-full animate-pulse`} />
             LIVE DATA
           </div>

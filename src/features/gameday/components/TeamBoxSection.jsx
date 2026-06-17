@@ -4,6 +4,7 @@ import { stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } 
 import { TABLE_TEXT_CLASS } from '../../../theme/tableTheme';
 
 const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-fixed w-full`;
+const BOX_SCORE_TABLE_COMPACT = `${TABLE_BASE} text-[10px] 2xl:text-[11px] table-fixed w-full`;
 const BOX_SCORE_LABEL_COL = 'w-[24%]';
 const BOX_SCORE_STAT_COL = 'w-[9.5%]';
 
@@ -35,6 +36,7 @@ export default function TeamBoxSection({
   teamBox,
   decisions,
   hideHeader = false,
+  compact = false,
   onPlayerSelect,
 }) {
   if (!teamBox) return null;
@@ -85,9 +87,10 @@ export default function TeamBoxSection({
   const pitchingTotalsIp =
     teamBox.teamStats?.pitching?.inningsPitched ??
     sumInningsPitched(pitchers.map((player) => player.stats?.pitching?.inningsPitched));
+  const tableClassName = compact ? BOX_SCORE_TABLE_COMPACT : BOX_SCORE_TABLE;
 
   return (
-    <div className="mb-8">
+    <div className={compact ? 'mb-4 text-[10px] 2xl:text-[11px]' : 'mb-8'}>
       {!hideHeader && (
         <div className="flex items-center gap-2 mb-3">
           <img
@@ -102,7 +105,7 @@ export default function TeamBoxSection({
       )}
 
       <div className={`${TABLE_SCROLL} mb-2`}>
-        <table className={BOX_SCORE_TABLE}>
+        <table className={tableClassName}>
           <colgroup>
             <col className={BOX_SCORE_LABEL_COL} />
             {Array.from({ length: 8 }, (_, i) => (
@@ -139,8 +142,10 @@ export default function TeamBoxSection({
                     >
                       {subLetter && <span className="text-slate-500 mr-0.5">{subLetter}-</span>}
                       <span className={subLetter ? 'text-slate-400' : 'text-slate-200'}>
-                        <span className="sm:hidden">{lastName}</span>
-                        <span className="hidden sm:inline">{player.person?.fullName}</span>
+                        <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
+                        {!compact && (
+                          <span className="hidden sm:inline">{player.person?.fullName}</span>
+                        )}
                       </span>
                     </button>
                     <span className="text-slate-600 ml-1 text-[10px]">{pos}</span>
@@ -203,7 +208,7 @@ export default function TeamBoxSection({
 
       {pitchers.length > 0 && (
         <div className={`${TABLE_SCROLL} mt-4`}>
-          <table className={BOX_SCORE_TABLE}>
+          <table className={tableClassName}>
             <colgroup>
               <col className={BOX_SCORE_LABEL_COL} />
               {Array.from({ length: 8 }, (_, i) => (
@@ -245,8 +250,10 @@ export default function TeamBoxSection({
                           onClick={() => onPlayerSelect(player.person?.id)}
                           className={`hover:text-${THEME_COLOR}-400 transition-colors text-slate-200`}
                         >
-                          <span className="sm:hidden">{lastName}</span>
-                          <span className="hidden sm:inline">{player.person?.fullName}</span>
+                          <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
+                          {!compact && (
+                            <span className="hidden sm:inline">{player.person?.fullName}</span>
+                          )}
                         </button>
                         {decMark && (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-slate-700 text-slate-300 font-bold">
