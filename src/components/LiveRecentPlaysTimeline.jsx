@@ -19,7 +19,7 @@ const PITCH_SIZE = 'w-8 h-8';
 const TIMELINE_CENTER = 'left-10';
 
 const STATUS_CHANGE_BADGE = {
-  label: 'Status Change',
+  label: 'Game Advisory',
   cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
 };
 
@@ -117,6 +117,34 @@ function LiveActionAvatar({ row, onPlayerClick }) {
     >
       <img src={playerHeadshotUrl(row.batterId, 2)} className={`${PLAYER_SIZE} object-cover rounded-full`} alt="" />
     </button>
+  );
+}
+
+function AdvisoryIconAvatar({ row }) {
+  const iconKind = getSummaryPlayIconKind(row);
+  const icons = {
+    field_delay: 'fa-person-digging',
+    weather_delay: 'fa-cloud-showers-heavy',
+    postponed: 'fa-ban',
+    medical: 'fa-kit-medical',
+    warning: 'fa-triangle-exclamation',
+    delay: 'fa-clock',
+    advisory: 'fa-circle-info',
+  };
+  const colors = {
+    field_delay: 'text-lime-300',
+    weather_delay: 'text-amber-400',
+    postponed: 'text-red-400',
+    medical: 'text-rose-300',
+    warning: 'text-yellow-300',
+    delay: 'text-orange-300',
+    advisory: 'text-sky-300',
+  };
+
+  return (
+    <IconAvatar>
+      <i className={`fa-solid ${icons[iconKind] || icons.advisory} text-base ${colors[iconKind] || colors.advisory}`} />
+    </IconAvatar>
   );
 }
 
@@ -231,11 +259,7 @@ function LiveRecentPlayRow({
   if (row.kind === 'status_change') {
     return (
       <LiveTimelineRow
-        avatar={(
-          <IconAvatar>
-            <i className="fa-solid fa-cloud-showers-heavy text-base text-amber-400" />
-          </IconAvatar>
-        )}
+        avatar={<AdvisoryIconAvatar row={row} />}
       >
         <span className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${STATUS_CHANGE_BADGE.cls}`}>
           {STATUS_CHANGE_BADGE.label}

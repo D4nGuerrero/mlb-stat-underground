@@ -17,11 +17,30 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
   const iconKind = getSummaryPlayIconKind(item);
   const sizeClass = 'w-16 h-16';
   const iconSize = 'text-xl';
+  const iconShellClass = `${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`;
+  const advisoryIcons = {
+    field_delay: 'fa-person-digging',
+    weather_delay: 'fa-cloud-showers-heavy',
+    postponed: 'fa-ban',
+    medical: 'fa-kit-medical',
+    warning: 'fa-triangle-exclamation',
+    delay: 'fa-clock',
+    advisory: 'fa-circle-info',
+  };
+  const advisoryColors = {
+    field_delay: 'text-lime-300',
+    weather_delay: 'text-amber-400',
+    postponed: 'text-red-400',
+    medical: 'text-rose-300',
+    warning: 'text-yellow-300',
+    delay: 'text-orange-300',
+    advisory: 'text-sky-300',
+  };
 
   if (iconKind === 'baseball') {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        className={iconShellClass}
         aria-hidden
       >
         <i className={`fa-solid fa-baseball ${iconSize} text-orange-400`} />
@@ -29,13 +48,13 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
     );
   }
 
-  if (iconKind === 'status') {
+  if (advisoryIcons[iconKind]) {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        className={iconShellClass}
         aria-hidden
       >
-        <i className={`fa-solid fa-cloud-showers-heavy ${iconSize} text-amber-400`} />
+        <i className={`fa-solid ${advisoryIcons[iconKind]} ${iconSize} ${advisoryColors[iconKind]}`} />
       </div>
     );
   }
@@ -43,7 +62,7 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
   if (iconKind === 'pitching_sub') {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        className={iconShellClass}
         aria-hidden
       >
         <i className={`fa-solid fa-right-left ${iconSize} text-sky-400`} />
@@ -54,7 +73,7 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
   if (iconKind === 'shoe') {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        className={iconShellClass}
         aria-hidden
       >
         <i className={`fa-solid fa-shoe-prints ${iconSize} text-blue-400 -rotate-12`} />
@@ -65,7 +84,7 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
   if (iconKind === 'pitch') {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-slate-800/80 border-2 border-slate-600 flex items-center justify-center flex-shrink-0`}
+        className={iconShellClass}
         aria-hidden
       >
         <i className={`fa-solid fa-baseball ${iconSize} text-orange-400`} />

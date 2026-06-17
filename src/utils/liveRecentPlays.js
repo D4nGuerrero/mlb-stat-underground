@@ -3,6 +3,8 @@ import {
   buildPlayDescription,
   playRecordedOut,
   formatPitchingChangeDescription,
+  formatGameAdvisoryDescription,
+  isNotableGameAdvisory,
   SUMMARY_ACTION_TYPES,
 } from './gamePlaySummary';
 import {
@@ -39,8 +41,6 @@ export function getPitchResultKind(description, isInPlay = false) {
   return 'strike';
 }
 
-const ROUTINE_STATUS = new Set(['pre-game', 'warmup', 'in progress', 'game in progress']);
-
 function lastName(person) {
   return person?.fullName?.split(' ').slice(-1)[0] ?? person?.fullName ?? '—';
 }
@@ -51,17 +51,6 @@ function inningMeta(about, ordinals) {
   const halfLabel = half === 'top' ? 'Top' : 'Bottom';
   const ord = ordinals[inning] || inning;
   return { inning, half, inningKey: `${halfLabel} ${ord}` };
-}
-
-function parseStatusLabel(description) {
-  const match = (description || '').match(/^status change\s*-\s*(.+)$/i);
-  return (match?.[1] || description || '').trim();
-}
-
-function isNotableStatus(label) {
-  const n = label.toLowerCase();
-  if (!n || ROUTINE_STATUS.has(n)) return false;
-  return /delay|rain|injur|suspend|postpon|cancel|eject|review|warning|curfew|lightning|weather|emergency/i.test(n);
 }
 
 function playMovedRunners(play) {
@@ -195,14 +184,14 @@ function pushPlayEventRows(rows, play, ev, eventIdx, ordinals) {
   }
 
   if (eventType === 'game_advisory') {
-    const raw = ev.details?.description || '';
-    if (!/^status change\s*-/i.test(raw)) return;
-    const label = parseStatusLabel(raw);
-    if (!isNotableStatus(label)) return;
+    const raw = ev.details?.description || ev.details?.event || '';
+    if (!isNotableGameAdvisory(raw)) return;
     rows.push({
       kind: 'status_change',
       key: `status-${play.about?.atBatIndex}-${eventIdx}`,
-      description: label,
+      eventType,
+      title: 'Game Advisory',
+      description: formatGameAdvisoryDescription(raw),
       ...meta,
       sortTime,
     });
@@ -250,8 +239,6 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
  */
 export function buildLiveRecentPlaysRows({
   allPlays,
-  gameData,
-  linescore,
   currentPlay,
   isLive,
   ordinals,

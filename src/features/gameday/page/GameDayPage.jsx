@@ -401,7 +401,7 @@ const ORDINALS = [
 ];
 
 const STATUS_CHANGE_BADGE = {
-  label: 'Status Change',
+  label: 'Game Advisory',
   cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
 };
 

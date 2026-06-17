@@ -42,9 +42,20 @@ const PITCH_ICON_TYPES = new Set([
   'defensive_indiff',
 ]);
 
+export function getGameAdvisoryIconKind(item) {
+  const text = `${item?.description || ''} ${item?.title || ''}`.toLowerCase();
+  if (/on[-\s]?field delay|field delay/.test(text)) return 'field_delay';
+  if (/suspend|rain|weather|lightning|inclement/.test(text)) return 'weather_delay';
+  if (/postpon|cancel/.test(text)) return 'postponed';
+  if (/injur|medical|emergency/.test(text)) return 'medical';
+  if (/review|warning|eject/.test(text)) return 'warning';
+  if (/delay|delayed/.test(text)) return 'delay';
+  return 'advisory';
+}
+
 export function getSummaryPlayIconKind(item) {
   if (item?.kind === 'first_pitch') return 'baseball';
-  if (item?.kind === 'status_change') return 'status';
+  if (item?.kind === 'status_change') return getGameAdvisoryIconKind(item);
   if (item?.kind === 'pitching_change') return 'pitching_sub';
   const eventType = item?.eventType;
   if (SHOE_ICON_TYPES.has(eventType)) return 'shoe';
@@ -69,6 +80,17 @@ function isNotableStatusChange(label) {
   if (!normalized) return false;
   if (ROUTINE_STATUS_CHANGES.has(normalized)) return false;
   return /delay|rain|injur|suspend|postpon|cancel|eject|review|warning|curfew|lightning|weather|death|emergency/i.test(normalized);
+}
+
+export function formatGameAdvisoryDescription(description) {
+  const raw = (description || '').trim();
+  const label = parseStatusChangeLabel(raw);
+  if (!label) return '';
+  return /^status change\s*-/i.test(raw) ? `Status Changed - ${label}` : label;
+}
+
+export function isNotableGameAdvisory(description) {
+  return isNotableStatusChange(parseStatusChangeLabel(description));
 }
 
 function formatStatusChangeTime(iso, venue) {
@@ -112,11 +134,8 @@ function buildStatusChangeItems(allPlays, alerts, venue) {
   for (const play of allPlays) {
     for (const [eventIdx, ev] of (play.playEvents || []).entries()) {
       if (ev.details?.eventType !== 'game_advisory') continue;
-      const raw = ev.details?.description || '';
-      if (!/^status change\s*-/i.test(raw)) continue;
-
-      const label = parseStatusChangeLabel(raw);
-      if (!isNotableStatusChange(label)) continue;
+      const raw = ev.details?.description || ev.details?.event || '';
+      if (!isNotableGameAdvisory(raw)) continue;
 
       const key = `status-${ev.startTime || `${play.about?.atBatIndex}-${eventIdx}`}`;
       if (seen.has(key)) continue;
@@ -126,8 +145,8 @@ function buildStatusChangeItems(allPlays, alerts, venue) {
         kind: 'status_change',
         key,
         eventType: 'game_advisory',
-        title: 'Status Change',
-        description: label,
+        title: 'Game Advisory',
+        description: formatGameAdvisoryDescription(raw),
         timeLine: formatStatusChangeTime(ev.startTime, venue),
         about: play.about,
         sortTime: ev.startTime || play.about?.startTime || null,
@@ -145,8 +164,8 @@ function buildStatusChangeItems(allPlays, alerts, venue) {
       kind: 'status_change',
       key,
       eventType: 'alert',
-      title: 'Status Change',
-      description: message,
+      title: 'Game Advisory',
+      description: formatGameAdvisoryDescription(message),
       timeLine: formatStatusChangeTime(alert?.timestamp, venue),
       about: { inning: 1, halfInning: 'top' },
       sortTime: alert?.timestamp || null,
