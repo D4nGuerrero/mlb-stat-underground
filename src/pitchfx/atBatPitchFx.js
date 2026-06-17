@@ -49,8 +49,10 @@ export const AT_BAT_PITCH_TRAIL_COLORS = {
 /**
  * Strike-zone viewport. MLB's original crop is about 220px wide; we keep the
  * zone math the same but show more side padding so chase pitches do not clip.
+ * LiveAtBatVisual positions this viewport as a percentage of MLB's 1158px
+ * field width, so changing width here also changes the live zone's visual size.
  */
-export const AT_BAT_STRIKE_ZONE_CLIP = { width: 280, height: 270 };
+export const AT_BAT_STRIKE_ZONE_CLIP = { width: 340, height: 290 };
 
 /** Internal render width — must match MLB `fixed_width: 960` or the zone shrinks. */
 export const AT_BAT_FIXED_WIDTH = 960;

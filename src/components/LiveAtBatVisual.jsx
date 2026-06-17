@@ -1,6 +1,6 @@
 import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import PitchCanvas from './PitchCanvas';
-import { AT_BAT_BALL_COLORS, AT_BAT_STRIKE_ZONE_CLIP } from '../pitchfx/atBatPitchFx';
+import { AT_BAT_STRIKE_ZONE_CLIP } from '../pitchfx/atBatPitchFx';
 import LivePitchToast from './LivePitchToast';
 import { getPitchResultKind } from '../utils/liveRecentPlays';
 import {
@@ -72,6 +72,9 @@ function latestPitchRowKey(playEvents, currentPlay) {
   return null;
 }
 
+const FIELD_ASPECT = 1158 / 869;
+const STRIKE_ZONE_FIELD_WIDTH_PCT = (AT_BAT_STRIKE_ZONE_CLIP.width / 1158) * 100;
+
 const LiveAtBatVisual = memo(function LiveAtBatVisual({
   venueId,
   exteriorFailed,
@@ -90,9 +93,11 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   outs,
   onRecentRowReady,
   baseballModelUrl = null,
+  strikeZoneTopImageUrl = null,
+  strikeZoneBottomImageUrl = null,
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
-  const stablePlayEvents = useMemo(() => playEvents, [sig]);
+  const stablePlayEvents = playEvents;
 
   const [toastItem, setToastItem] = useState(null);
   const lastToastIdRef = useRef(null);
@@ -150,42 +155,41 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
 
   const exteriorTimeOfDay = stadiumTimeOfDay(gameDateTime);
   const batterSide = batterIsAway ? 'away' : 'home';
-
-  const pitchLegend = [
-    { color: AT_BAT_BALL_COLORS.ballColorStrike, label: 'Strike' },
-    { color: AT_BAT_BALL_COLORS.ballColorBall, label: 'Ball' },
-    { color: AT_BAT_BALL_COLORS.ballColorInPlay, label: 'In Play' },
-    { color: '#BC0021', label: 'FF trail' },
-    { color: '#980065', label: 'FC trail' },
-  ];
+  const strikeZoneTopSrc =
+    strikeZoneTopImageUrl ??
+    (venueId && !exteriorFailed ? stadiumExteriorUrl(venueId, exteriorTimeOfDay) : null);
+  const strikeZoneBottomSrc = strikeZoneBottomImageUrl ?? stadiumInfieldUrl();
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[380px] flex flex-col">
-      <div className="absolute inset-0 flex flex-col pointer-events-none">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 min-h-[300px] flex flex-col">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* MLB-style field scaling: keep a fixed-ratio field larger than the viewport, then crop it. */}
         <div
-          className="h-[48%] min-h-[130px] bg-cover bg-center bg-top"
+          className="absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full"
           style={{
-            backgroundImage:
-              venueId && !exteriorFailed
-                ? `url(${stadiumExteriorUrl(venueId, exteriorTimeOfDay)})`
-                : undefined,
-            backgroundColor: !venueId || exteriorFailed ? '#0f172a' : undefined,
+            aspectRatio: `${FIELD_ASPECT}`,
+            backgroundColor: !strikeZoneTopSrc ? '#0f172a' : undefined,
           }}
-        />
-        <div
-          className="flex-1 min-h-[130px] bg-cover"
-          style={{
-            backgroundImage: `url(${stadiumInfieldUrl()})`,
-            backgroundPosition: 'center 30%',
-          }}
-        />
+        >
+          <div
+            className="absolute inset-x-0 top-0 h-[48%] bg-no-repeat"
+            style={{
+              backgroundImage: strikeZoneTopSrc ? `url(${strikeZoneTopSrc})` : undefined,
+              // Preserve image ratio while the oversized field layer scales up/down.
+              backgroundSize: 'calc(100% + 1px) auto',
+              backgroundPosition: '50% 100%',
+            }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 h-[52%] bg-no-repeat"
+            style={{
+              backgroundImage: strikeZoneBottomSrc ? `url(${strikeZoneBottomSrc})` : undefined,
+              backgroundSize: 'calc(100% + 1px) auto',
+              backgroundPosition: '50% 0%',
+            }}
+          />
+        </div>
       </div>
-
-      <div
-        className="absolute left-0 right-0 top-[48%] h-16 -translate-y-1/2 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-black/35 to-transparent"
-        aria-hidden
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/25 to-black/80 pointer-events-none z-[2]" />
 
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
         <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
@@ -202,27 +206,34 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
         </div>
       </div>
 
-      <div className="relative z-10 flex flex-col items-stretch pt-12 pb-20 px-3 w-full">
+      <div className="absolute inset-0 z-10 overflow-hidden">
+        {/* This overlay repeats the same field transform so the strike zone scales with the background. */}
         <div
-          className="relative mx-auto"
-          style={{ width: `${AT_BAT_STRIKE_ZONE_CLIP.width}px` }}
+          className="absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full"
+          style={{ aspectRatio: `${FIELD_ASPECT}` }}
         >
-          <PitchCanvas
-            playEvents={stablePlayEvents}
-            szTop={szTop}
-            szBot={szBot}
-            gamePk={gamePk}
-            viewMode="strikeZone"
-            width={AT_BAT_STRIKE_ZONE_CLIP.width}
-            height={AT_BAT_STRIKE_ZONE_CLIP.height}
-            showPitchTrails
-            onPitchLanded={showLandedPitchToast}
-            baseballModelUrl={baseballModelUrl}
-            className="mx-auto shrink-0"
-          />
-          <LivePitchToast item={toastItem} onComplete={clearToast} />
+          <div
+            // Tune these percentages to move the zone within the fixed 1158x869 field coordinate space.
+            className="absolute left-1/2 top-[36%] -translate-x-1/2"
+            style={{ width: `${STRIKE_ZONE_FIELD_WIDTH_PCT}%` }}
+          >
+            <PitchCanvas
+              playEvents={stablePlayEvents}
+              szTop={szTop}
+              szBot={szBot}
+              gamePk={gamePk}
+              viewMode="strikeZone"
+              width={AT_BAT_STRIKE_ZONE_CLIP.width}
+              height={AT_BAT_STRIKE_ZONE_CLIP.height}
+              responsive
+              showPitchTrails
+              onPitchLanded={showLandedPitchToast}
+              baseballModelUrl={baseballModelUrl}
+              className="mx-auto shrink-0"
+            />
+            <LivePitchToast item={toastItem} onComplete={clearToast} />
+          </div>
         </div>
-     {/* TEST */}
       </div>
 
       <div

@@ -162,12 +162,12 @@ export default function PitchCanvas({
   }, [onPitchLanded]);
 
   useEffect(() => {
-    if (!responsive || strikeZoneView) return undefined;
+    if (!responsive) return undefined;
     const el = containerRef.current;
     if (!el) return undefined;
     const measure = () => {
       const w = Math.round(el.getBoundingClientRect().width);
-      setMeasuredWidth(Math.max(320, w));
+      setMeasuredWidth(Math.max(1, w));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -176,12 +176,12 @@ export default function PitchCanvas({
   }, [responsive, width, strikeZoneView]);
 
   const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-  const W = strikeZoneView
-    ? (width ?? AT_BAT_STRIKE_ZONE_CLIP.width)
-    : (responsive ? (measuredWidth ?? width) : width);
-  const H = strikeZoneView
-    ? (height ?? AT_BAT_STRIKE_ZONE_CLIP.height)
-    : (height ?? Math.round((W / 1158) * 869));
+  const baseWidth = width ?? (strikeZoneView ? AT_BAT_STRIKE_ZONE_CLIP.width : 300);
+  const baseHeight = height ?? (strikeZoneView ? AT_BAT_STRIKE_ZONE_CLIP.height : Math.round((baseWidth / 1158) * 869));
+  const W = responsive ? (measuredWidth ?? baseWidth) : baseWidth;
+  const H = responsive
+    ? Math.round((W / baseWidth) * baseHeight)
+    : baseHeight;
 
   useEffect(() => {
     if (!baseballModelUrl || !modelCanvasRef.current) return undefined;
@@ -510,9 +510,13 @@ export default function PitchCanvas({
 
   return (
     <div
-      ref={responsive && !strikeZoneView ? containerRef : undefined}
-      className={`relative overflow-hidden ${responsive && !strikeZoneView ? 'w-full aspect-[1158/869]' : ''} ${className}`}
-      style={{ width: W, height: H }}
+      ref={responsive ? containerRef : undefined}
+      className={`relative overflow-hidden ${responsive ? 'w-full' : ''} ${className}`}
+      style={
+        responsive
+          ? { width: '100%', aspectRatio: `${baseWidth} / ${baseHeight}` }
+          : { width: W, height: H }
+      }
     >
       {ready && (
         <>
