@@ -96,6 +96,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   baseballModelUrl = null,
   strikeZoneTopImageUrl = null,
   strikeZoneBottomImageUrl = null,
+  showPitchToast = true,
+  showPitchTrails = true,
   className = '',
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
@@ -112,6 +114,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   }, [toastItem]);
 
   useEffect(() => {
+    if (!showPitchToast) return;
     const item = buildLiveToastItem(playEvents, currentPlay);
     if (!item || !item.id?.startsWith('play-') || lastToastIdRef.current === item.id) return;
     lastToastIdRef.current = item.id;
@@ -126,9 +129,10 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       return;
     }
     setToastItem(nextToast);
-  }, [sig, playEvents, currentPlay]);
+  }, [sig, playEvents, currentPlay, showPitchToast]);
 
   const showLandedPitchToast = useCallback((pitch) => {
+    if (!showPitchToast) return;
     const pitchId = pitch?.event?.playId ?? pitch?.num;
     if (pitchId != null && String(lastLandedPitchIdRef.current) === String(pitchId)) return;
 
@@ -141,7 +145,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       ...item,
       rowKey: latestPitchRowKey(playEvents, currentPlay),
     });
-  }, [playEvents, currentPlay]);
+  }, [playEvents, currentPlay, showPitchToast]);
 
   const clearToast = useCallback(() => {
     setToastItem((current) => {
@@ -307,12 +311,12 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
               width={AT_BAT_STRIKE_ZONE_CLIP.width}
               height={AT_BAT_STRIKE_ZONE_CLIP.height}
               responsive
-              showPitchTrails
-              onPitchLanded={showLandedPitchToast}
+              showPitchTrails={showPitchTrails}
+              onPitchLanded={showPitchToast ? showLandedPitchToast : undefined}
               baseballModelUrl={baseballModelUrl}
               className="mx-auto shrink-0"
             />
-            <LivePitchToast item={toastItem} onComplete={clearToast} />
+            {showPitchToast && <LivePitchToast item={toastItem} onComplete={clearToast} />}
           </div>
         </div>
       </div>

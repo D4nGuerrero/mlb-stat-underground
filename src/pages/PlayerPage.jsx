@@ -1846,7 +1846,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
           <PlayerRosterStatus rosterEntries={playerInfo.rosterEntries} player={playerInfo} />
 
-          <div className=" sm:px-8 py-5 sm:py-6">
+          <div className=" sm:px-8 sm:py-5 sm:py-6">
             <TabBar variant="page" tabs={PLAYER_TABS} activeKey={activeTab} onChange={setActiveTab}>
               {(key) => {
                 if (key === 'career') {

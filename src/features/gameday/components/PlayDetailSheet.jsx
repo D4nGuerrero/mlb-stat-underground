@@ -1,7 +1,6 @@
 import { Modal } from '../../../components/ui';
-import PitchCanvas from '../../../components/PitchCanvas';
+import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
 import { playerHeadshotUrl } from '../../../utils/mlbHelpers';
-import { AT_BAT_STRIKE_ZONE_CLIP } from '../../../pitchfx/atBatPitchFx';
 import {
   BaseDiamondIndicator,
   OutsIndicator,
@@ -20,6 +19,11 @@ export default function PlayDetailSheet({
   getPlayHitData,
   renderHitDataPanel,
   showPitchTrails = false,
+  venueId,
+  exteriorFailed = false,
+  gameDateTime,
+  season,
+  baseballModelUrl,
 }) {
   if (!selectedPlay) return null;
 
@@ -37,12 +41,15 @@ export default function PlayDetailSheet({
   const pitcherId = play.matchup?.pitcher?.id;
   const batterId = play.matchup?.batter?.id;
   const situation = getPlayDetailSituation(play, allPlays);
+  const batSide = play.matchup?.batSide?.code || 'R';
+  const batterIsAway = play.about?.halfInning === 'top';
+  const batterTeamId = batterIsAway ? away.id : home.id;
 
   return (
     <Modal
       open
       onClose={closeSheet}
-      size="md"
+      size="lg"
       panelClassName="max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#0d1520] border-slate-700/70 p-0"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
@@ -51,6 +58,8 @@ export default function PlayDetailSheet({
 
       <div className="flex items-center justify-between px-5 pt-3 sm:pt-4 pb-3 border-b border-slate-700/40">
         <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-slate-100 tracking-wide">At Bat Details</span>
+          <span className="text-slate-700">.</span>
           <span className="text-xs font-bold text-slate-400 font-mono">{inningStr}</span>
           <span className="text-slate-700">.</span>
           <span className="text-xs text-slate-500 font-mono">{scoreStr}</span>
@@ -135,24 +144,30 @@ export default function PlayDetailSheet({
         </div>
 
         {pitches.length > 0 && (
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-4">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">
-              Pitch Locations
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden">
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest px-4 pt-3 pb-2">
+              At Bat View
             </div>
-            <PitchCanvas
+            <LiveAtBatVisual
+              venueId={venueId}
+              exteriorFailed={exteriorFailed}
+              gameDateTime={gameDateTime}
+              currentPlay={play}
               playEvents={play.playEvents || []}
               szTop={szT}
               szBot={szB}
               gamePk={gamePk}
-              viewMode="strikeZone"
-              width={AT_BAT_STRIKE_ZONE_CLIP.width}
-              height={AT_BAT_STRIKE_ZONE_CLIP.height}
+              batSide={batSide}
+              batterIsAway={batterIsAway}
+              batterTeamId={batterTeamId}
+              season={season}
               showPitchTrails={showPitchTrails}
-              className="mx-auto shrink-0"
+              showPitchToast={false}
+              baseballModelUrl={baseballModelUrl}
+              className="rounded-none border-x-0 border-b-0 border-t border-slate-700/50"
             />
             <div
-              className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center mx-auto"
-              style={{ width: `${AT_BAT_STRIKE_ZONE_CLIP.width}px` }}
+              className="px-4 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center"
             >
               {[
                 { color: '#c61b2b', label: 'Strike' },

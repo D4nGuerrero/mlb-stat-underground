@@ -1549,6 +1549,11 @@ function GamePageContent({ gamePk, navigate, location }) {
           home={home}
           allPlays={allPlays}
           gamePk={gamePk}
+          venueId={venueId}
+          exteriorFailed={exteriorFailed}
+          gameDateTime={gd.datetime?.dateTime}
+          season={previewSeason}
+          baseballModelUrl={assetUrl('baseball-centered.glb')}
           onPlayerSelect={handlePlayDetailPlayerSelect}
           getPlayBadge={getPlayBadge}
           getPlayHitData={getPlayHitData}
