@@ -454,6 +454,14 @@ function isActiveOnMinorsTeam(player) {
   return Boolean(player.currentTeam?.parentOrgId);
 }
 
+function hasRetiredStatusCode(player) {
+  return (player?.rosterEntries ?? []).some((entry) => entry?.status?.code === 'RET');
+}
+
+function shouldUseMostPlayedTeam(player) {
+  return player?.active === false && !hasRetiredStatusCode(player);
+}
+
 function isMinorsPlayerProfile(player) {
   // Retired/inactive profiles can still carry a MiLB currentTeam from the API.
   // For those players, MLB's regular photo archive is usually more complete.
@@ -1928,8 +1936,12 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   const careerTotalsRow = computeCareerTotalsRow(careerRows, statGroup);
   const isMinorsProfile = isMinorsPlayerProfile(playerInfo);
-  const primaryCareerTeam = playerInfo?.active === false ? getMostPlayedTeam(careerRows) : null;
-  const displayTeam = primaryCareerTeam ?? playerInfo?.currentTeam;
+  const useMostPlayedTeam = shouldUseMostPlayedTeam(playerInfo);
+  const primaryCareerTeam = useMostPlayedTeam ? getMostPlayedTeam(careerRows) : null;
+  const waitingForMostPlayedTeam = useMostPlayedTeam && !primaryCareerTeam;
+  const displayTeam = waitingForMostPlayedTeam
+    ? null
+    : primaryCareerTeam ?? playerInfo?.currentTeam;
   const playerImageOptions = isMinorsProfile ? { level: 'minors' } : undefined;
   const currentTeamLogoOptions = isMinorsProfile ? { level: 'minors' } : undefined;
 
@@ -1968,11 +1980,13 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
             <div className="relative flex items-end gap-4 sm:gap-6">
         <div className="  -mb-6 -ml-6">
   {/* BACKGROUND LOGO */}
- <img
-  src={displayTeam?.id ? teamLogoUrl(displayTeam.id, primaryCareerTeam ? undefined : currentTeamLogoOptions) : ''}
-  className="absolute top-10 left-20 w-72 h-72 -translate-x-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
-  alt=""
-/>
+ {displayTeam?.id && (
+   <img
+    src={teamLogoUrl(displayTeam.id, primaryCareerTeam ? undefined : currentTeamLogoOptions)}
+    className="absolute top-10 left-20 w-72 h-72 -translate-x-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
+    alt=""
+  />
+ )}
 
   {/* PLAYER IMG */}
   <img

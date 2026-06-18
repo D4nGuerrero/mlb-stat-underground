@@ -367,11 +367,54 @@ const FIELD_COLS = [
 
 const TEAM_STATS_GROUP_MAP = { batting: 'hitting', pitching: 'pitching', fielding: 'fielding' };
 const TEAM_STATS_COLS_MAP = { batting: BAT_COLS, pitching: PITCH_COLS, fielding: FIELD_COLS };
+const HISTORICAL_STATS_COLS_MAP = {
+  batting: [{ key: 'yrs', label: 'YRS', dec: 0 }, ...BAT_COLS],
+  pitching: [{ key: 'yrs', label: 'YRS', dec: 0 }, ...PITCH_COLS],
+  fielding: [{ key: 'yrs', label: 'YRS', dec: 0 }, ...FIELD_COLS],
+};
+
+const rangeYears = (startYear, endYear = CURRENT_YEAR) => {
+  const start = Math.max(1876, Number(startYear) || 1901);
+  const end = Number(endYear) || CURRENT_YEAR;
+  return Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => String(start + i));
+};
+
+async function mapLimit(items, limit, mapper) {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const batch = items.slice(i, i + limit);
+    const batchResults = await Promise.all(batch.map(mapper));
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+function countHistoricalPlayerSeasons(seasonSplits) {
+  const seasonsByPlayer = new Map();
+  for (const split of seasonSplits) {
+    const playerId = split.player?.id;
+    if (!playerId || !split.season) continue;
+    if ((Number(split.stat?.gamesPlayed) || 0) <= 0) continue;
+    const seasons = seasonsByPlayer.get(playerId) ?? new Set();
+    seasons.add(String(split.season));
+    seasonsByPlayer.set(playerId, seasons);
+  }
+  return seasonsByPlayer;
+}
 
 // ─── Sortable table ───────────────────────────────────────────────────────────
-function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id', onNavigateAway }) {
-  const [sortCol, setSortCol] = useState(cols[0]?.key ?? '');
-  const [sortDir, setSortDir] = useState('desc');
+function SortableTable({
+  cols,
+  rows,
+  nameKey = 'fullName',
+  idKey = 'id',
+  onNavigateAway,
+  defaultSortKey = cols[0]?.key ?? '',
+  defaultSortDir = 'desc',
+  playerColClass = null,
+}) {
+  const [sortCol, setSortCol] = useState(defaultSortKey);
+  const [sortDir, setSortDir] = useState(defaultSortDir);
 
   const handleSort = (key) => {
     if (key === sortCol) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -379,8 +422,12 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id', onNavig
   };
 
   const sorted = [...rows].sort((a, b) => {
-    const av = parseFloat(a.stat?.[sortCol] ?? a[sortCol] ?? 0);
-    const bv = parseFloat(b.stat?.[sortCol] ?? b[sortCol] ?? 0);
+    const av = sortCol === 'inningsPitched'
+      ? ipToDecimal(a.stat?.[sortCol] ?? a[sortCol])
+      : parseFloat(a.stat?.[sortCol] ?? a[sortCol] ?? 0);
+    const bv = sortCol === 'inningsPitched'
+      ? ipToDecimal(b.stat?.[sortCol] ?? b[sortCol])
+      : parseFloat(b.stat?.[sortCol] ?? b[sortCol] ?? 0);
     return sortDir === 'asc' ? av - bv : bv - av;
   });
 
@@ -389,7 +436,7 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id', onNavig
       <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.md}`}>
         <thead>
           <tr className="border-b border-slate-700/60">
-            <th className={`${stickyPlayerHead('bg-[#121827]')} text-slate-400 font-medium`}>Player</th>
+            <th className={`${playerColClass ? stickyPlayerHead('bg-[#121827]', { widthClass: playerColClass }) : stickyPlayerHead('bg-[#121827]')} text-slate-400 font-medium`}>Player</th>
             {cols.map((c) => (
               <th
                 key={c.key}
@@ -409,7 +456,7 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id', onNavig
             const pos = row.position?.abbreviation ?? row.position?.name ?? person?.primaryPosition?.abbreviation;
             return (
               <tr key={playerId ?? i} className="group border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors">
-                <td className={stickyPlayerCell('bg-[#121827]')}>
+                <td className={playerColClass ? stickyPlayerCell('bg-[#121827]', { widthClass: playerColClass }) : stickyPlayerCell('bg-[#121827]')}>
                   <div className="min-w-0">
                     <Link
                       to={`/player/${playerId}`}
@@ -439,12 +486,23 @@ function SortableTable({ cols, rows, nameKey = 'fullName', idKey = 'id', onNavig
 }
 
 // ─── Stats Tab ────────────────────────────────────────────────────────────────
-function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
+function StatsTab({
+  teamId,
+  season,
+  sub,
+  setSub,
+  mode,
+  setMode,
+  teamName,
+  firstYearOfPlay,
+  onNavigateAway,
+}) {
   const [data, setData] = useState({ batting: null, pitching: null, fielding: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (mode !== 'current') return;
     if (data[sub] != null) return;
 
     let cancelled = false;
@@ -487,7 +545,7 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
       cancelled = true;
       controller.abort();
     };
-  }, [data, season, sub, teamId]);
+  }, [data, mode, season, sub, teamId]);
 
   // top leader in each key category
   const leaderStats = sub === 'batting'
@@ -518,8 +576,8 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 my-4">
-        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 mx-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 my-4 px-2">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
           <SegmentedControl
             value={sub}
             onChange={setSub}
@@ -531,8 +589,31 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
             ]}
           />
         </div>
+        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+          <SegmentedControl
+            value={mode}
+            onChange={setMode}
+            size="sm"
+            options={[
+              { value: 'current', label: 'Current' },
+              { value: 'historical', label: 'Historical' },
+            ]}
+          />
+        </div>
       </div>
 
+      {mode === 'historical' && (
+        <HistoricalStatsPanel
+          teamId={teamId}
+          teamName={teamName}
+          firstYearOfPlay={firstYearOfPlay}
+          group={sub}
+          onNavigateAway={onNavigateAway}
+        />
+      )}
+
+      {mode === 'current' && (
+        <>
       {leaderStats.length > 0 && rows.length > 0 && (
         <TeamLeadersCarousel
           leaderStats={leaderStats}
@@ -551,6 +632,168 @@ function StatsTab({ teamId, season, sub, setSub, onNavigateAway }) {
       )}
       {!loading && !error && rows.length === 0 && data[sub] != null && (
         <div className="py-12 text-center text-slate-500 text-sm">No stats available for {season}.</div>
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Historical Stats Panel ───────────────────────────────────────────────────
+function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavigateAway }) {
+  const [query, setQuery] = useState('');
+  const [data, setData] = useState({ batting: null, pitching: null, fielding: null });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (data[group] != null) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadHistorical = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const careerJson = await fetchStatsApiJson('/api/v1/stats', {
+          query: {
+            stats: 'career',
+            group: TEAM_STATS_GROUP_MAP[group],
+            teamId,
+            playerPool: 'all',
+            sportId: 1,
+            limit: 5000,
+            hydrate: 'player,team',
+          },
+          signal: controller.signal,
+          ttl: 24 * 60 * 60_000,
+          retries: 1,
+        });
+        const careerSplits = careerJson.stats?.[0]?.splits ?? [];
+        const years = rangeYears(firstYearOfPlay);
+        const seasonSplitGroups = await mapLimit(years, 8, async (year) => {
+          try {
+            const seasonJson = await fetchStatsApiJson('/api/v1/stats', {
+              query: {
+                stats: 'season',
+                group: TEAM_STATS_GROUP_MAP[group],
+                teamId,
+                playerPool: 'all',
+                sportId: 1,
+                season: year,
+                limit: 500,
+                hydrate: 'player,team',
+              },
+              signal: controller.signal,
+              ttl: 24 * 60 * 60_000,
+              retries: 1,
+            });
+            return seasonJson.stats?.[0]?.splits ?? [];
+          } catch (e) {
+            if (e?.name === 'AbortError') throw e;
+            return [];
+          }
+        });
+        const seasonsByPlayer = countHistoricalPlayerSeasons(seasonSplitGroups.flat());
+
+        const splits = careerSplits.map((split) => ({
+          ...split,
+          yrs: seasonsByPlayer.get(split.player?.id)?.size ?? null,
+        }));
+        if (!cancelled) setData((prev) => ({ ...prev, [group]: splits }));
+      } catch (e) {
+        if (!cancelled && e?.name !== 'AbortError') setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadHistorical();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [data, firstYearOfPlay, group, teamId]);
+
+  const rows = data[group] ?? [];
+  const cols = HISTORICAL_STATS_COLS_MAP[group] ?? HISTORICAL_STATS_COLS_MAP.batting;
+  const defaultSortKey =
+    group === 'pitching' ? 'strikeOuts' : group === 'fielding' ? 'gamesPlayed' : 'homeRuns';
+  const filteredRows = rows.filter((row) => {
+    const name = row.player?.fullName ?? row.person?.fullName ?? '';
+    return name.toLowerCase().includes(query.trim().toLowerCase());
+  });
+
+  const leaderStats = group === 'pitching'
+    ? [
+        { label: 'SO', key: 'strikeOuts', dec: 0 },
+        { label: 'W', key: 'wins', dec: 0 },
+        { label: 'SV', key: 'saves', dec: 0 },
+        { label: 'IP', key: 'inningsPitched', dec: -1 },
+        { label: 'ERA', key: 'era', dec: 2 },
+        { label: 'WHIP', key: 'whip', dec: 2 },
+      ]
+    : group === 'batting' ? [
+        { label: 'HR', key: 'homeRuns', dec: 0 },
+        { label: 'RBI', key: 'rbi', dec: 0 },
+        { label: 'H', key: 'hits', dec: 0 },
+        { label: 'R', key: 'runs', dec: 0 },
+        { label: 'SB', key: 'stolenBases', dec: 0 },
+        { label: 'OPS', key: 'ops', dec: 3 },
+      ]
+    : [];
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-end gap-3 mb-4 px-2">
+        <input
+          type="search"
+          enterKeyHint="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter player..."
+          className="min-w-0 flex-1 sm:flex-none sm:w-64 bg-slate-900 border border-slate-700 rounded-2xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
+        />
+      </div>
+
+      <div className="px-2 pb-4 text-xs text-slate-500 leading-relaxed">
+        Team-only career totals for every MLB player with {teamName ?? 'this team'} in the StatsAPI era. YRS counts seasons with this team.
+      </div>
+
+      {leaderStats.length > 0 && rows.length > 0 && !query.trim() && (
+        <TeamLeadersCarousel
+          leaderStats={leaderStats}
+          rows={rows}
+          battingRateQualify={(row) => Number(row?.stat?.plateAppearances ?? row?.stat?.atBats ?? 0) >= 500}
+          pitchingRateQualify={(row) => ipToDecimal(row?.stat?.inningsPitched) >= 100}
+          onNavigateAway={onNavigateAway}
+        />
+      )}
+
+      {loading && <LoadingSpinner size="lg" py="py-16" />}
+      {error && <div className="py-8 text-center text-red-400 text-sm">{error}</div>}
+      {!loading && !error && data[group] != null && (
+        <>
+          <div className="px-2 pb-2 text-[11px] text-slate-500">
+            {filteredRows.length.toLocaleString()} of {rows.length.toLocaleString()} players
+          </div>
+          {filteredRows.length > 0 ? (
+            <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
+              <SortableTable
+                key={group}
+                cols={cols}
+                rows={filteredRows}
+                onNavigateAway={onNavigateAway}
+                defaultSortKey={defaultSortKey}
+                defaultSortDir="desc"
+                playerColClass="w-28 min-w-[7rem] sm:w-36 sm:min-w-[9rem]"
+              />
+            </div>
+          ) : (
+            <div className="py-12 text-center text-slate-500 text-sm">No historical players match that filter.</div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1318,6 +1561,7 @@ function readTeamPageDefaults(teamId) {
     activeTab: saved?.activeTab ?? 'stats',
     season: saved?.season ?? String(CURRENT_YEAR),
     statsSub: saved?.statsSub ?? 'batting',
+    statsMode: saved?.statsMode ?? 'current',
     scheduleView: saved?.scheduleView ?? 'month',
     scheduleMonth: normalizeScheduleMonth(saved?.scheduleMonth),
   };
@@ -1331,6 +1575,7 @@ function TeamPageContent({ teamId }) {
   const [season, setSeason] = useState(defaults.season);
   const [activeTab, setActiveTab] = useState(defaults.activeTab);
   const [statsSub, setStatsSub] = useState(defaults.statsSub);
+  const [statsMode, setStatsMode] = useState(defaults.statsMode);
   const [scheduleView, setScheduleView] = useState(defaults.scheduleView);
   const [scheduleMonth, setScheduleMonth] = useState(defaults.scheduleMonth);
   const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
@@ -1405,18 +1650,20 @@ function TeamPageContent({ teamId }) {
       activeTab,
       season,
       statsSub,
+      statsMode,
       scheduleView,
       scheduleMonth,
     });
-  }, [teamId, activeTab, season, statsSub, scheduleView, scheduleMonth]);
+  }, [teamId, activeTab, season, statsSub, statsMode, scheduleView, scheduleMonth]);
 
   const teamPageSnapshot = useMemo(() => ({
     activeTab,
     season,
     statsSub,
+    statsMode,
     scheduleView,
     scheduleMonth,
-  }), [activeTab, season, statsSub, scheduleView, scheduleMonth]);
+  }), [activeTab, season, statsSub, statsMode, scheduleView, scheduleMonth]);
 
   const onNavigateAway = useCallback((overrides = {}) => {
     persistTeamPageLeave(teamId, { ...teamPageSnapshot, ...overrides });
@@ -1532,6 +1779,10 @@ function TeamPageContent({ teamId }) {
                     season={season}
                     sub={statsSub}
                     setSub={setStatsSub}
+                    mode={statsMode}
+                    setMode={setStatsMode}
+                    teamName={teamInfo?.name}
+                    firstYearOfPlay={teamInfo?.firstYearOfPlay}
                     onNavigateAway={onNavigateAway}
                   />
                 );

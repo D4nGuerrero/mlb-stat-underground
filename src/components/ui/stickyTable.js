@@ -91,11 +91,11 @@ export function stickyCell(bg = 'bg-slate-900', opts = {}) {
 
 /** Sticky player column on team roster tables */
 export function stickyPlayerHead(bg = 'bg-slate-900', opts = {}) {
-  return stickyBase(bg, { ...opts, widthClass: TABLE_PLAYER_COL_CLASS, compact: false });
+  return stickyBase(bg, { ...opts, widthClass: opts.widthClass ?? TABLE_PLAYER_COL_CLASS, compact: false });
 }
 
 export function stickyPlayerCell(bg = 'bg-slate-900', opts = {}) {
-  return stickyCellBase(bg, { ...opts, widthClass: TABLE_PLAYER_COL_CLASS, compact: false });
+  return stickyCellBase(bg, { ...opts, widthClass: opts.widthClass ?? TABLE_PLAYER_COL_CLASS, compact: false });
 }
 
 /** Scroll tables — comfortable padding (player page, team stats, etc.) */

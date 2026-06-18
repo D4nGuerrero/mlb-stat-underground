@@ -110,9 +110,15 @@ const getPrimaryMlbTeamFromPersonStats = (person) => {
     })[0]?.team ?? null;
 };
 
+const hasRetiredStatusCode = (person) =>
+  (person?.rosterEntries ?? []).some((entry) => entry?.status?.code === 'RET');
+
+const shouldUseMostPlayedTeam = (person) =>
+  person?.active === false && !hasRetiredStatusCode(person);
+
 const mapSearchPerson = (person) => ({
   ...(() => {
-    const primaryMlbTeam = person.active === false ? getPrimaryMlbTeamFromPersonStats(person) : null;
+    const primaryMlbTeam = shouldUseMostPlayedTeam(person) ? getPrimaryMlbTeamFromPersonStats(person) : null;
     const displayTeam = primaryMlbTeam ?? person.currentTeam;
     return {
       id: person.id,
@@ -627,7 +633,7 @@ export default function StatsApp() {
         const saved = JSON.parse(localStorage.getItem('mlbWatchlist') ?? '[]');
         if (!saved.length || saved.every((p) => p.statsPreview)) return;
         const hydrate = encodeURIComponent(
-          `currentTeam,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
+          `currentTeam,rosterEntries,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
         );
         const updated = await Promise.all(
           saved.map(async (p) => {
@@ -657,7 +663,7 @@ export default function StatsApp() {
     setSearchResults([]);
     try {
       const hydrate = encodeURIComponent(
-        `currentTeam,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
+        `currentTeam,rosterEntries,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
       );
 
       const ALL_SPORTS = '1,11,12,13,14,16';
