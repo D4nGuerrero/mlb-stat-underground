@@ -149,13 +149,14 @@ const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
 
 function mapPlayerToWatchEntry(player) {
+  const imageOptions = isMinorsPlayerProfile(player) ? { level: 'minors' } : undefined;
   return {
     id: player.id,
     fullName: player.fullName,
     team: player.currentTeam?.name ?? '—',
     teamId: player.currentTeam?.id,
     position: player.primaryPosition?.abbreviation ?? '',
-    headshot: playerHeadshotUrl(player.id),
+    headshot: playerHeadshotUrl(player.id, imageOptions),
     active: player.active,
   };
 }
@@ -372,6 +373,10 @@ function isActiveOnMinorsTeam(player) {
   const rosterEntry = player.rosterEntries?.find((e) => e.isActive) ?? player.rosterEntries?.[0];
   if (rosterEntry?.status?.code !== 'A') return false;
   return Boolean(player.currentTeam?.parentOrgId);
+}
+
+function isMinorsPlayerProfile(player) {
+  return Boolean(player?.currentTeam?.parentOrgId);
 }
 
 function defaultStatsLevelForPlayer(player) {
@@ -1817,6 +1822,9 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   ];
 
   const careerTotalsRow = computeCareerTotalsRow(careerRows, statGroup);
+  const isMinorsProfile = isMinorsPlayerProfile(playerInfo);
+  const playerImageOptions = isMinorsProfile ? { level: 'minors' } : undefined;
+  const currentTeamLogoOptions = isMinorsProfile ? { level: 'minors' } : undefined;
 
   const PLAYER_TABS = [
     { key: 'career', label: 'Career' },
@@ -1838,7 +1846,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
           <div
             className="relative h-[200px] sm:h-[300px] bg-cover bg-center overflow-hidden px-5 sm:px-8 py-6 sm:py-8 flex flex-col justify-end"
             style={{
-              backgroundImage: `url(${playerHeroShotUrl(playerId)})`,
+              backgroundImage: `url(${playerHeroShotUrl(playerId, playerImageOptions)})`,
             
             }}
           >
@@ -1854,14 +1862,14 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
         <div className="  -mb-6 -ml-6">
   {/* BACKGROUND LOGO */}
  <img
-  src={teamLogoUrl(playerInfo.currentTeam.id)}
+  src={teamLogoUrl(playerInfo.currentTeam.id, currentTeamLogoOptions)}
   className="absolute top-10 left-20 w-72 h-72 -translate-x-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
   alt=""
 />
 
   {/* PLAYER IMG */}
   <img
-    src={playerHeadshotUrl(playerId)}
+    src={playerHeadshotUrl(playerId, playerImageOptions)}
     className="relative z-10 w-32 h-32 sm:w-40 sm:h-40  object-cover shadow-lg"
     alt={playerInfo.fullName}
   />

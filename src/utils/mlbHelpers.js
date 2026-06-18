@@ -34,6 +34,7 @@ export const mlbTeams = [
 ];
 
 const TEAM_ABBR_BY_ID = Object.fromEntries(mlbTeams.map((t) => [t.id, t.abbr]));
+const MLB_TEAM_ID_SET = new Set(mlbTeams.map((t) => t.id));
 
 /** Resolve a 3-letter team abbreviation from a team object or team id. */
 export function getTeamAbbr(teamOrId) {
@@ -63,7 +64,7 @@ const BASE_URL = 'https://www.mlbstatic.com/team-logos';
  * @param {boolean} options.forceRegular - force regular logo (overrides preferDark)
  */
 export const teamLogoUrl = (teamId, options = {}) => {
-  const { preferDark = true, forceRegular = false } = options;
+  const { preferDark = true, forceRegular = false, level, isMinors = false } = options;
   const id = String(teamId).trim();
 
   if (!id) return '';
@@ -78,7 +79,15 @@ export const teamLogoUrl = (teamId, options = {}) => {
     // Add more teams here as you find them
   ]);
 
-  const shouldUseRegular = forceRegular || !preferDark || regularPreferredTeams.has(Number(id));
+  // MiLB team logos live at /team-logos/{id}.svg; the MLB cap-on-dark paths often 404.
+  const numericId = Number(id);
+  const shouldUseRegular =
+    forceRegular ||
+    isMinors ||
+    level === 'minors' ||
+    !MLB_TEAM_ID_SET.has(numericId) ||
+    !preferDark ||
+    regularPreferredTeams.has(numericId);
 
   if (shouldUseRegular) {
     return `${BASE_URL}/${id}.svg`;
@@ -94,8 +103,25 @@ export const teamLogoUrl = (teamId, options = {}) => {
 
 
 
+function normalizePlayerImageOptions(typeOrOptions = 1) {
+  if (typeof typeOrOptions === 'object' && typeOrOptions !== null) {
+    return {
+      type: typeOrOptions.type ?? 1,
+      level: typeOrOptions.level,
+      isMinors: Boolean(typeOrOptions.isMinors),
+      width: typeOrOptions.width,
+    };
+  }
+  return { type: typeOrOptions, level: 'mlb', isMinors: false };
+}
+
 // use this instead: https://midfield.mlbstatic.com/v1/people/673962/silo/240
-export const playerHeadshotUrl = (playerId, type = 1) => {
+export const playerHeadshotUrl = (playerId, typeOrOptions = 1) => {
+  const { type, level, isMinors, width = 180 } = normalizePlayerImageOptions(typeOrOptions);
+
+  if (isMinors || level === 'minors') {
+    return `https://img.mlbstatic.com/mlb-photos/image/upload/c_fill,g_auto/w_${width}/v1/people/${playerId}/headshot/milb/current`;
+  }
 
   if(type == 1) {
     return `https://midfield.mlbstatic.com/v1/people/${playerId}/silo/240`
@@ -136,8 +162,13 @@ export function spotracPlayerUrl(player = {}) {
 }
 
 // Hero shot – batter (horizontal pose)
-export const playerHeroShotUrl = (playerId) =>
-`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:action:hero:current.jpg/q_auto:good,w_2208/v1/people/${playerId}/action/hero/current`
+export const playerHeroShotUrl = (playerId, options = {}) => {
+  const { level, isMinors = false, width = isMinors || level === 'minors' ? 1500 : 2208 } = options;
+  if (isMinors || level === 'minors') {
+    return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:action:hero:milb:current.jpg/w_${width},q_auto,f_auto/v1/people/${playerId}/action/hero/milb/current`;
+  }
+  return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:action:hero:current.jpg/q_auto:good,w_${width}/v1/people/${playerId}/action/hero/current`;
+};
 
 // Action shot – batter (vertical pose)
 export const playerActionShotUrl = (playerId) =>
