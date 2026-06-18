@@ -572,7 +572,11 @@ function ScheduleTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gamePicker, setGamePicker] = useState(null);
+  const [calendarSlideDirection, setCalendarSlideDirection] = useState('next');
+  const [calendarDragOffset, setCalendarDragOffset] = useState(0);
   const gameRefs = useRef({});
+  const calendarSwipeRef = useRef(null);
+  const calendarSuppressClickRef = useRef(false);
 
   const goToGame = (gamePk) => {
     onNavigateAway?.({ scheduleMonth: selectedMonth });
@@ -698,12 +702,102 @@ function ScheduleTab({
     setGamePicker({ dateKey, games: dayGames });
   };
 
+  const goToAdjacentMonth = (direction) => {
+    if (!selectedMonth || !monthsForYear.length) return;
+    const currentKey = `${season}-${selectedMonth}`;
+    const currentIdx = monthsForYear.indexOf(currentKey);
+    if (currentIdx < 0) return;
+    const next = monthsForYear[currentIdx + direction];
+    if (!next) return;
+    setCalendarSlideDirection(direction > 0 ? 'next' : 'prev');
+    setSelectedMonth(next.split('-')[1]);
+  };
+
+  const handleMonthSelect = (nextMonth) => {
+    if (selectedMonth && nextMonth !== selectedMonth) {
+      setCalendarSlideDirection(Number(nextMonth) > Number(selectedMonth) ? 'next' : 'prev');
+    }
+    setSelectedMonth(nextMonth);
+  };
+
+  const handleCalendarPointerDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    calendarSwipeRef.current = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      dragging: false,
+    };
+    setCalendarDragOffset(0);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const handleCalendarPointerMove = (e) => {
+    const start = calendarSwipeRef.current;
+    if (!start || start.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (!start.dragging && Math.abs(dx) < 8) return;
+    if (!start.dragging && Math.abs(dy) > Math.abs(dx)) return;
+
+    start.dragging = true;
+    // Resistance keeps the calendar feeling attached to your finger without flying off-screen.
+    const resistedOffset = Math.max(-96, Math.min(96, dx * 0.55));
+    setCalendarDragOffset(resistedOffset);
+  };
+
+  const handleCalendarPointerUp = (e) => {
+    const start = calendarSwipeRef.current;
+    calendarSwipeRef.current = null;
+    if (!start || start.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const horizontalEnough = Math.abs(dx) >= 64 && Math.abs(dx) > Math.abs(dy) * 1.35;
+    if (!horizontalEnough) {
+      setCalendarDragOffset(0);
+      return;
+    }
+
+    calendarSuppressClickRef.current = true;
+    window.setTimeout(() => {
+      calendarSuppressClickRef.current = false;
+    }, 0);
+    setCalendarDragOffset(0);
+    goToAdjacentMonth(dx < 0 ? 1 : -1);
+  };
+
+  const handleCalendarPointerCancel = () => {
+    calendarSwipeRef.current = null;
+    setCalendarDragOffset(0);
+  };
+
+  const handleCalendarClickCapture = (e) => {
+    if (!calendarSuppressClickRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const renderMonthCalendar = (monthStr) => {
     const { days, byDate, monthDate } = buildMonthGrid(monthStr);
     const monthIdx = monthDate.getMonth();
 
     return (
-      <div className="border-t border-t-slate-700/60 sm:border sm:border-slate-700/60 sm:rounded-2xl overflow-hidden">
+      <div
+        key={monthStr}
+        className={`team-schedule-calendar team-schedule-calendar--${calendarSlideDirection} ${calendarDragOffset ? 'team-schedule-calendar--dragging' : ''} border-t border-t-slate-700/60 sm:border sm:border-slate-700/60 sm:rounded-2xl overflow-hidden`}
+        onPointerDown={handleCalendarPointerDown}
+        onPointerMove={handleCalendarPointerMove}
+        onPointerUp={handleCalendarPointerUp}
+        onPointerCancel={handleCalendarPointerCancel}
+        onClickCapture={handleCalendarClickCapture}
+        style={{
+          touchAction: 'pan-y',
+          '--calendar-drag-x': `${calendarDragOffset}px`,
+          '--calendar-drag-opacity': calendarDragOffset ? 0.92 : 1,
+        }}
+      >
         <div className="min-w-0">
           <div className="grid grid-cols-7 border-b border-slate-800/60">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
@@ -827,7 +921,7 @@ function ScheduleTab({
           {monthsForYear.length > 0 && (
             <Select
               value={selectedMonth}
-              onChange={setSelectedMonth}
+              onChange={handleMonthSelect}
               options={monthsForYear.map((m) => {
                 const mm = m.split('-')[1];
                 return { value: mm, label: monthName(mm) };
