@@ -215,6 +215,19 @@ function statSummary(stat, kind, mode) {
   return pieces.join(' · ');
 }
 
+function playerAffiliationLabel(player) {
+  const sportId = player.affiliate?.sport?.id ?? player.affiliate?.sportId;
+  return LEVEL_SHORT[sportId] ?? player.affiliate?.name ?? null;
+}
+
+function seasonStatSnippet(player) {
+  if (!player?.season) return '';
+  if (player.kind === 'batting') {
+    return `AVG ${cleanNumber(player.season.avg)} · OBP ${cleanNumber(player.season.obp)} · OPS ${cleanNumber(player.season.ops)}`;
+  }
+  return `ERA ${cleanNumber(player.season.era)} · WHIP ${cleanNumber(player.season.whip)}`;
+}
+
 function buildDiscoveryTags(player) {
   const stat = player.stat ?? player.season ?? {};
   const sportId = player.affiliate?.sport?.id ?? player.affiliate?.sportId;
@@ -381,7 +394,17 @@ function TagPill({ tag }) {
   );
 }
 
-function PlayerChip({ player, onSelect, isWatched, onToggleWatch }) {
+function PlayerChip({
+  player,
+  onSelect,
+  isWatched,
+  onToggleWatch,
+  showAffiliation = false,
+  showSeasonStats = false,
+}) {
+  const affiliation = showAffiliation ? playerAffiliationLabel(player) : null;
+  const seasonStats = showSeasonStats ? seasonStatSnippet(player) : '';
+
   return (
     <button
       type="button"
@@ -396,9 +419,17 @@ function PlayerChip({ player, onSelect, isWatched, onToggleWatch }) {
       />
       <div className="min-w-0">
         <div className="text-sm font-bold text-white truncate group-hover:text-emerald-300">
-          {player.name}
+          {affiliation ? `${player.name} (${affiliation})` : player.name}
         </div>
-        <div className="text-[11px] text-slate-400 truncate">{player.summary || 'Box score line'}</div>
+        <div className="text-[11px] text-slate-400 truncate">
+          {player.summary || 'Box score line'}
+          {seasonStats ? (
+            <>
+              <span className="text-slate-600"> · </span>
+              <span className="text-slate-500">{seasonStats}</span>
+            </>
+          ) : null}
+        </div>
       </div>
       <span
         role="button"
@@ -1189,6 +1220,8 @@ export default function ProspectWatch() {
                   onSelect={setSelectedPlayer}
                   isWatched={isWatched(player.id)}
                   onToggleWatch={toggleWatch}
+                  showAffiliation
+                  showSeasonStats
                 />
               )) : (
                 <div className="text-sm text-slate-500">Top performers appear once affiliate stats load.</div>
@@ -1196,47 +1229,49 @@ export default function ProspectWatch() {
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
-            <div className="flex items-center gap-2 text-emerald-300 font-black uppercase tracking-widest text-[10px]">
-              <TrendingUp size={14} />
-              Org Leaders
+          {formMode !== 'today' && (
+            <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-emerald-300 font-black uppercase tracking-widest text-[10px]">
+                <TrendingUp size={14} />
+                Org Leaders
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <LeaderboardTile
+                  label="OPS"
+                  player={leaderboards.ops}
+                  value={cleanNumber(leaderboards.ops?.stat?.ops)}
+                />
+                <LeaderboardTile
+                  label="HR"
+                  player={leaderboards.hr}
+                  value={cleanNumber(leaderboards.hr?.stat?.homeRuns, 0)}
+                />
+                <LeaderboardTile
+                  label="SB"
+                  player={leaderboards.sb}
+                  value={cleanNumber(leaderboards.sb?.stat?.stolenBases, 0)}
+                />
+                <LeaderboardTile
+                  label="ERA"
+                  player={leaderboards.era}
+                  value={cleanNumber(leaderboards.era?.stat?.era)}
+                  accent="text-orange-300"
+                />
+                <LeaderboardTile
+                  label="K/9"
+                  player={leaderboards.k9}
+                  value={cleanNumber(leaderboards.k9?.stat?.strikeoutsPer9Inn)}
+                  accent="text-orange-300"
+                />
+                <LeaderboardTile
+                  label="WHIP"
+                  player={leaderboards.whip}
+                  value={cleanNumber(leaderboards.whip?.stat?.whip)}
+                  accent="text-orange-300"
+                />
+              </div>
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              <LeaderboardTile
-                label="OPS"
-                player={leaderboards.ops}
-                value={cleanNumber(leaderboards.ops?.stat?.ops)}
-              />
-              <LeaderboardTile
-                label="HR"
-                player={leaderboards.hr}
-                value={cleanNumber(leaderboards.hr?.stat?.homeRuns, 0)}
-              />
-              <LeaderboardTile
-                label="SB"
-                player={leaderboards.sb}
-                value={cleanNumber(leaderboards.sb?.stat?.stolenBases, 0)}
-              />
-              <LeaderboardTile
-                label="ERA"
-                player={leaderboards.era}
-                value={cleanNumber(leaderboards.era?.stat?.era)}
-                accent="text-orange-300"
-              />
-              <LeaderboardTile
-                label="K/9"
-                player={leaderboards.k9}
-                value={cleanNumber(leaderboards.k9?.stat?.strikeoutsPer9Inn)}
-                accent="text-orange-300"
-              />
-              <LeaderboardTile
-                label="WHIP"
-                player={leaderboards.whip}
-                value={cleanNumber(leaderboards.whip?.stat?.whip)}
-                accent="text-orange-300"
-              />
-            </div>
-          </div>
+          )}
         </section>
 
         {isLoading ? (

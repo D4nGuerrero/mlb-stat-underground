@@ -6,7 +6,7 @@ import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
 import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
-import { computeCareerTotalsRow } from '../utils/careerTotals';
+import { computeCareerTotalsRow, computeSeasonTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { fetchStatsApiJson } from '../lib/mlb/client';
@@ -465,7 +465,15 @@ function compareSeasonRows(a, b, sortDir) {
     if (sortDir === 'asc') return aTotal ? 1 : -1;
     return aTotal ? -1 : 1;
   }
-  if (aTotal) return 0;
+  if (aTotal) {
+    const aCombined = Boolean(a.isCombinedSeasonTotal);
+    const bCombined = Boolean(b.isCombinedSeasonTotal);
+    if (aCombined !== bCombined) {
+      if (sortDir === 'asc') return aCombined ? 1 : -1;
+      return aCombined ? -1 : 1;
+    }
+    return 0;
+  }
 
   // MLB API returns stints in chronological order within a season
   const stintCmp = (a.stintOrder ?? 0) - (b.stintOrder ?? 0);
@@ -519,6 +527,40 @@ function useTableSort(defaultCol, defaultDir = 'desc') {
   const sortMark = (key) => (sortCol === key ? (sortDir === 'asc' ? '▲' : '▼') : '');
   const sortActive = (key) => (sortCol === key ? `text-${THEME_COLOR}-400` : '');
   return { sortCol, sortDir, handleSort, sortMark, sortActive };
+}
+
+function injectMinorsSeasonTotals(rows, group, renderLabel) {
+  const stintsBySeason = new Map();
+
+  for (const row of rows) {
+    if (isSeasonTotalRow(row)) continue;
+    const season = row.season;
+    if (!stintsBySeason.has(season)) stintsBySeason.set(season, []);
+    stintsBySeason.get(season).push(row);
+  }
+
+  const extraRows = [];
+
+  for (const [season, stints] of stintsBySeason) {
+    if (stints.length < 2) continue;
+
+    const hasCombinedTotal = rows.some(
+      (row) => row.season === season && isSeasonTotalRow(row) && !row.minorsLevel,
+    );
+    if (hasCombinedTotal) continue;
+
+    const totalRow = computeSeasonTotalsRow(stints, group, season);
+    if (!totalRow) continue;
+
+    extraRows.push({
+      ...totalRow,
+      label: renderLabel(season),
+    });
+  }
+
+  if (!extraRows.length) return rows;
+
+  return [...rows, ...extraRows].sort((a, b) => compareSeasonRows(a, b, 'desc'));
 }
 
 function mergeMinorLeagueStats(responses) {
@@ -813,6 +855,16 @@ function StatsTable({
     ? computeCareerHighs(rows.filter((row) => !isSeasonTotalRow(row)), cols)
     : null;
 
+  const duplicateSeasons = useMemo(() => {
+    if (labelKey !== 'season') return null;
+    const counts = new Map();
+    for (const row of rows) {
+      if (row.season == null) continue;
+      counts.set(row.season, (counts.get(row.season) ?? 0) + 1);
+    }
+    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([season]) => season));
+  }, [rows, labelKey]);
+
   if (!rows?.length && !footerRow) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
@@ -827,7 +879,12 @@ function StatsTable({
     >
       <td
         {...stickyCol1Props()}
-        className={`${scrollStickyYearCell('bg-[#121827]', { footer: isFooter })} font-semibold text-slate-200`}
+        className={[
+          scrollStickyYearCell('bg-[#121827]', { footer: isFooter }),
+          isFooter || isSeasonTotalRow(row) || !duplicateSeasons?.has(row.season)
+            ? 'font-semibold text-slate-200'
+            : 'font-medium text-slate-500',
+        ].join(' ')}
       >
         {row.label}
       </td>
@@ -1722,24 +1779,36 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   const seasonHonors = buildSeasonHonors(playerInfo?.awards);
 
-  const careerRows = getYearByYearSplits(statGroup)
-    .filter((sp) => sp.season && sp.stat)
-    .map((sp, stintOrder) => ({
-      id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}-${stintOrder}`,
-      season: Number(sp.season),
-      stintOrder,
-      isSeasonTotal: !sp.team?.id,
-      label: (
-        <SeasonYearLabel
-          season={sp.season}
-          minorsLevel={careerLevel === 'minors' ? sp.sport?.abbreviation : null}
-          badges={careerLevel === 'mlb' ? getActiveHonorBadges(seasonHonors[sp.season]) : []}
-        />
-      ),
-      team: sp.team,
-      stat: sp.stat,
-    }))
-    .sort((a, b) => compareSeasonRows(a, b, 'desc'));
+  const careerRows = (() => {
+    const rows = getYearByYearSplits(statGroup)
+      .filter((sp) => sp.season && sp.stat)
+      .map((sp, stintOrder) => {
+        const minorsLevel = careerLevel === 'minors' ? sp.sport?.abbreviation : null;
+        return {
+          id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}-${stintOrder}`,
+          season: Number(sp.season),
+          stintOrder,
+          isSeasonTotal: !sp.team?.id,
+          minorsLevel: !sp.team?.id ? minorsLevel : null,
+          label: (
+            <SeasonYearLabel
+              season={sp.season}
+              minorsLevel={minorsLevel}
+              badges={careerLevel === 'mlb' ? getActiveHonorBadges(seasonHonors[sp.season]) : []}
+            />
+          ),
+          team: sp.team,
+          stat: sp.stat,
+        };
+      })
+      .sort((a, b) => compareSeasonRows(a, b, 'desc'));
+
+    if (careerLevel !== 'minors') return rows;
+
+    return injectMinorsSeasonTotals(rows, statGroup, (season) => (
+      <SeasonYearLabel season={season} />
+    ));
+  })();
 
   const careerGroupOptions = [
     { value: 'hitting', label: 'Batting' },

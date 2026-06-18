@@ -263,7 +263,7 @@ function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch })
   );
 }
 
-function HotColdPlayerRow({ player, team, ops, rank, accentClass }) {
+function HotColdPlayerRow({ player, team, ops, rank, accentClass, days = 10 }) {
   const playerId = player?.id;
   const className = 'flex items-center gap-3 px-4 pt-4 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer block w-full';
   const content = (
@@ -330,7 +330,7 @@ function HotColdPlayerRow({ player, team, ops, rank, accentClass }) {
       </div>
       <div className="text-right flex-shrink-0">
         <div className={`font-display text-xl tabular-nums ${accentClass}`}>{ops ?? '—'}</div>
-        <div className="text-[10px] text-slate-500">OPS (10d)</div>
+        <div className="text-[10px] text-slate-500">OPS ({days}d)</div>
       </div>
     </>
   );
@@ -1051,6 +1051,7 @@ export default function StatsApp() {
                     ops={p.value ?? p.stat?.ops}
                     rank={i + 1}
                     accentClass="text-orange-400"
+                    days={hotColdDays}
                   />
                 ))}
               </div>
@@ -1070,6 +1071,7 @@ export default function StatsApp() {
                     ops={p.value ?? p.stat?.ops}
                     rank={i + 1}
                     accentClass="text-blue-400"
+                    days={hotColdDays}
                   />
                 ))}
               </div>

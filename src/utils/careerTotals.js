@@ -37,9 +37,8 @@ function outsToIp(outs) {
   return frac === 0 ? String(whole) : `${whole}.${frac}`;
 }
 
-export function computeCareerTotalsRow(rows, group) {
-  const stintRows = rows?.filter((row) => !isSeasonTotalRow(row)) ?? [];
-  if (!stintRows.length) return null;
+function computeTotalsFromStints(stintRows, group) {
+  if (!stintRows?.length) return null;
 
   if (group === 'hitting') {
     const totals = Object.fromEntries(HITTING_SUM_KEYS.map((k) => [k, sumField(stintRows, k)]));
@@ -62,9 +61,6 @@ export function computeCareerTotalsRow(rows, group) {
     const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3).replace(/^0/, '');
 
     return {
-      id: 'career-totals',
-      label: 'Career',
-      isTotals: true,
       stat: { ...totals, avg, obp, slg, ops },
       ...totals,
       avg,
@@ -81,9 +77,6 @@ export function computeCareerTotalsRow(rows, group) {
     const er = totals.earnedRuns;
     const ipFloat = totalOuts / 3;
     return {
-      id: 'career-totals',
-      label: 'Career',
-      isTotals: true,
       stat: {
         ...totals,
         inningsPitched: ip,
@@ -101,9 +94,6 @@ export function computeCareerTotalsRow(rows, group) {
     const totals = Object.fromEntries(FIELDING_SUM_KEYS.map((k) => [k, sumField(stintRows, k)]));
     const tc = totals.chances || totals.putOuts + totals.assists + totals.errors;
     return {
-      id: 'career-totals',
-      label: 'Career',
-      isTotals: true,
       stat: {
         ...totals,
         fielding: tc > 0 ? ((tc - totals.errors) / tc).toFixed(3) : '.000',
@@ -114,4 +104,35 @@ export function computeCareerTotalsRow(rows, group) {
   }
 
   return null;
+}
+
+export function computeSeasonTotalsRow(stintRows, group, season) {
+  const computed = computeTotalsFromStints(stintRows, group);
+  if (!computed) return null;
+
+  return {
+    id: `${season}-combined-total`,
+    season: Number(season),
+    stintOrder: Number.MAX_SAFE_INTEGER,
+    isSeasonTotal: true,
+    isCombinedSeasonTotal: true,
+    team: null,
+    minorsLevel: null,
+    ...computed,
+  };
+}
+
+export function computeCareerTotalsRow(rows, group) {
+  const stintRows = rows?.filter((row) => !isSeasonTotalRow(row)) ?? [];
+  if (!stintRows.length) return null;
+
+  const computed = computeTotalsFromStints(stintRows, group);
+  if (!computed) return null;
+
+  return {
+    id: 'career-totals',
+    label: 'Career',
+    isTotals: true,
+    ...computed,
+  };
 }
