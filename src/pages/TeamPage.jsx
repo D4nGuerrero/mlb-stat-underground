@@ -412,6 +412,7 @@ function SortableTable({
   defaultSortKey = cols[0]?.key ?? '',
   defaultSortDir = 'desc',
   playerColClass = null,
+  visibleLimit = null,
 }) {
   const [sortCol, setSortCol] = useState(defaultSortKey);
   const [sortDir, setSortDir] = useState(defaultSortDir);
@@ -430,6 +431,8 @@ function SortableTable({
       : parseFloat(b.stat?.[sortCol] ?? b[sortCol] ?? 0);
     return sortDir === 'asc' ? av - bv : bv - av;
   });
+
+  const renderedRows = visibleLimit == null ? sorted : sorted.slice(0, visibleLimit);
 
   return (
     <div className={`${TABLE_SCROLL} -mx-1 px-1 scrollbar-thin`}>
@@ -450,7 +453,7 @@ function SortableTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row, i) => {
+          {renderedRows.map((row, i) => {
             const person = row.player ?? row.person ?? row;
             const playerId = person?.[idKey] ?? person?.id;
             const pos = row.position?.abbreviation ?? row.position?.name ?? person?.primaryPosition?.abbreviation;
@@ -642,6 +645,7 @@ function StatsTab({
 // ─── Historical Stats Panel ───────────────────────────────────────────────────
 function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavigateAway }) {
   const [query, setQuery] = useState('');
+  const [visibleCounts, setVisibleCounts] = useState({});
   const [data, setData] = useState({ batting: null, pitching: null, fielding: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -724,6 +728,10 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
     const name = row.player?.fullName ?? row.person?.fullName ?? '';
     return name.toLowerCase().includes(query.trim().toLowerCase());
   });
+  const visibleKey = `${group}:${query.trim().toLowerCase()}`;
+  const visibleCount = visibleCounts[visibleKey] ?? 100;
+  const renderedCount = Math.min(visibleCount, filteredRows.length);
+  const hasMoreRows = renderedCount < filteredRows.length;
 
   const leaderStats = group === 'pitching'
     ? [
@@ -776,20 +784,40 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
       {!loading && !error && data[group] != null && (
         <>
           <div className="px-2 pb-2 text-[11px] text-slate-500">
-            {filteredRows.length.toLocaleString()} of {rows.length.toLocaleString()} players
+            Showing {renderedCount.toLocaleString()} of {filteredRows.length.toLocaleString()} players
+            {filteredRows.length !== rows.length ? ` (${rows.length.toLocaleString()} total)` : ''}
           </div>
           {filteredRows.length > 0 ? (
-            <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
-              <SortableTable
-                key={group}
-                cols={cols}
-                rows={filteredRows}
-                onNavigateAway={onNavigateAway}
-                defaultSortKey={defaultSortKey}
-                defaultSortDir="desc"
-                playerColClass="w-28 min-w-[7rem] sm:w-36 sm:min-w-[9rem]"
-              />
-            </div>
+            <>
+              <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
+                <SortableTable
+                  key={group}
+                  cols={cols}
+                  rows={filteredRows}
+                  onNavigateAway={onNavigateAway}
+                  defaultSortKey={defaultSortKey}
+                  defaultSortDir="desc"
+                  playerColClass="w-28 min-w-[7rem] sm:w-36 sm:min-w-[9rem]"
+                  visibleLimit={visibleCount}
+                />
+              </div>
+              {hasMoreRows && (
+                <div className="flex justify-center pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisibleCounts((counts) => ({
+                        ...counts,
+                        [visibleKey]: (counts[visibleKey] ?? 100) + 100,
+                      }));
+                    }}
+                    className="px-4 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-semibold text-slate-200 transition-colors active:scale-[0.98]"
+                  >
+                    Show more
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="py-12 text-center text-slate-500 text-sm">No historical players match that filter.</div>
           )}
