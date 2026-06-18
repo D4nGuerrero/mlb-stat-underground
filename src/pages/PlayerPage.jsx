@@ -163,7 +163,7 @@ function mapPlayerToWatchEntry(player) {
 
 function PlayerHeroActions({ player, playerId, watchlist, onToggleWatch, watchAnimating }) {
   const isWatched = watchlist.some((p) => p.id === Number(playerId));
-  const parentOrgId = player?.currentTeam?.parentOrgId;
+  const parentOrgId = player?.active !== false ? player?.currentTeam?.parentOrgId : null;
 
   return (
     <div className="absolute bottom-4 right-5 sm:bottom-6 sm:right-8 z-30 flex items-center gap-2">
@@ -356,16 +356,95 @@ function formatBornWithAge(playerInfo) {
   return `${formatted} (${age})`;
 }
 
-function getRosterStatusStyle(code, description) {
-  const isActive = code === 'A';
-  const isInjured = /^D\d/.test(code || '') || /injur/i.test(description || '');
-  if (isActive) {
-    return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+function getRosterStatusMeta({ code, description, player } = {}) {
+  const normalizedCode = String(code || '').toUpperCase();
+  const normalizedDescription = String(description || '');
+  const isRetired = normalizedCode === 'RET' || player?.active === false;
+  const isDeceased = normalizedCode === 'D' || /deceased|death/i.test(normalizedDescription);
+  const isInjured =
+    /^D\d+/.test(normalizedCode) ||
+    ['7', '10', '15', '60', 'IL', 'INJ'].includes(normalizedCode) ||
+    /injur|disabled|il\b|day injured|60-day|10-day|7-day/i.test(normalizedDescription);
+  const isLongTermInjured = normalizedCode === 'D60' || normalizedCode === '60' || /60-day/i.test(normalizedDescription);
+
+  if (isDeceased) {
+    return {
+      label: 'Deceased',
+      className: 'bg-slate-500/15 text-slate-200 border-slate-400/30',
+      icon: 'rip',
+      showDate: false,
+    };
   }
+
+  if (isRetired) {
+    return {
+      label: 'Retired',
+      className: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+      icon: 'retired',
+      showDate: false,
+    };
+  }
+
+  if (normalizedCode === 'A') {
+    return {
+      label: normalizedDescription || 'Active',
+      className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+      icon: 'active',
+      showDate: false,
+    };
+  }
+
   if (isInjured) {
-    return 'bg-red-500/15 text-red-300 border-red-500/30';
+    return {
+      label: normalizedDescription || 'Injured List',
+      className: 'bg-red-500/15 text-red-300 border-red-500/30',
+      icon: isLongTermInjured ? 'injured' : 'injured_short',
+      showDate: true,
+    };
   }
-  return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+
+  if (/suspend|restricted|inactive/i.test(normalizedDescription)) {
+    return {
+      label: normalizedDescription || normalizedCode || 'Inactive',
+      className: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
+      icon: 'restricted',
+      showDate: true,
+    };
+  }
+
+  return {
+    label: normalizedDescription || normalizedCode || 'Status Unknown',
+    className: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    icon: 'info',
+    showDate: true,
+  };
+}
+
+function RosterStatusIcon({ type }) {
+  if (type === 'rip') {
+    return <i className="fa-solid fa-cross text-[10px]" aria-hidden />;
+  }
+
+  if (type === 'injured') {
+    return (
+      <span className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center shadow-sm" aria-hidden>
+        <i className="fa-solid fa-plus text-[8px] text-red-600" />
+      </span>
+    );
+  }
+
+  if (type === 'injured_short') {
+    return <i className="fa-solid fa-bandage text-[10px]" aria-hidden />;
+  }
+
+  const iconByType = {
+    active: 'fa-circle-check',
+    retired: 'fa-flag-checkered',
+    restricted: 'fa-ban',
+    info: 'fa-circle-info',
+  };
+
+  return <i className={`fa-solid ${iconByType[type] ?? iconByType.info} text-[10px]`} aria-hidden />;
 }
 
 function isActiveOnMinorsTeam(player) {
@@ -376,7 +455,9 @@ function isActiveOnMinorsTeam(player) {
 }
 
 function isMinorsPlayerProfile(player) {
-  return Boolean(player?.currentTeam?.parentOrgId);
+  // Retired/inactive profiles can still carry a MiLB currentTeam from the API.
+  // For those players, MLB's regular photo archive is usually more complete.
+  return player?.active !== false && Boolean(player?.currentTeam?.parentOrgId);
 }
 
 function defaultStatsLevelForPlayer(player) {
@@ -387,11 +468,15 @@ function PlayerRosterStatus({ rosterEntries, player }) {
   const entry = rosterEntries?.find((e) => e.isActive) ?? rosterEntries?.[0];
   const contractUrl = spotracPlayerUrl(player);
   const hasStatus = Boolean(entry?.status);
+  const shouldShowInactiveStatus = player?.active === false;
 
-  if (!hasStatus && !contractUrl) return null;
+  if (!hasStatus && !shouldShowInactiveStatus && !contractUrl) return null;
 
   const { code, description } = entry?.status ?? {};
-  const badgeCls = hasStatus ? getRosterStatusStyle(code, description) : '';
+  const statusMeta = hasStatus || shouldShowInactiveStatus
+    ? getRosterStatusMeta({ code, description, player })
+    : null;
+  const badgeCls = statusMeta?.className ?? '';
   const statusDate = entry?.statusDate
     ? new Date(entry.statusDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
@@ -399,14 +484,14 @@ function PlayerRosterStatus({ rosterEntries, player }) {
   return (
     <div className="px-5 sm:px-8 py-3 border-b border-slate-700/50 flex items-center gap-x-4 gap-y-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0">
-        {hasStatus ? (
+        {statusMeta ? (
           <>
             <div className="text-[10px] text-slate-500 uppercase tracking-widest">Status</div>
             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${badgeCls}`}>
-              {code !== 'A' && <i className="fa-solid fa-kit-medical text-[10px]" aria-hidden />}
-              {description || code}
+              <RosterStatusIcon type={statusMeta.icon} />
+              {statusMeta.label}
             </span>
-            {statusDate && code !== 'A' && (
+            {statusDate && statusMeta.showDate && (
               <span className="text-xs text-slate-500">since {statusDate}</span>
             )}
           </>
@@ -458,6 +543,26 @@ const LABEL_SORT_KEY = '__label__';
 
 function isSeasonTotalRow(row) {
   return Boolean(row?.isSeasonTotal) || !row?.team?.id;
+}
+
+function getMostPlayedTeam(rows) {
+  const teams = new Map();
+
+  for (const row of rows ?? []) {
+    const team = row?.team;
+    if (!team?.id || isSeasonTotalRow(row)) continue;
+    const games = Number(row.stat?.gamesPlayed ?? row.stat?.games ?? 0);
+    const prev = teams.get(team.id) ?? { team, games: 0, seasons: new Set() };
+    prev.games += Number.isFinite(games) ? games : 0;
+    if (row.season) prev.seasons.add(row.season);
+    teams.set(team.id, prev);
+  }
+
+  return [...teams.values()]
+    .sort((a, b) => {
+      if (b.games !== a.games) return b.games - a.games;
+      return b.seasons.size - a.seasons.size;
+    })[0]?.team ?? null;
 }
 
 function compareSeasonRows(a, b, sortDir) {
@@ -1823,6 +1928,8 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   const careerTotalsRow = computeCareerTotalsRow(careerRows, statGroup);
   const isMinorsProfile = isMinorsPlayerProfile(playerInfo);
+  const primaryCareerTeam = playerInfo?.active === false ? getMostPlayedTeam(careerRows) : null;
+  const displayTeam = primaryCareerTeam ?? playerInfo?.currentTeam;
   const playerImageOptions = isMinorsProfile ? { level: 'minors' } : undefined;
   const currentTeamLogoOptions = isMinorsProfile ? { level: 'minors' } : undefined;
 
@@ -1862,7 +1969,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
         <div className="  -mb-6 -ml-6">
   {/* BACKGROUND LOGO */}
  <img
-  src={teamLogoUrl(playerInfo.currentTeam.id, currentTeamLogoOptions)}
+  src={displayTeam?.id ? teamLogoUrl(displayTeam.id, primaryCareerTeam ? undefined : currentTeamLogoOptions) : ''}
   className="absolute top-10 left-20 w-72 h-72 -translate-x-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
   alt=""
 />
@@ -1891,15 +1998,15 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                   className={`text-[11px] text-${THEME_COLOR}-300 font-semibold uppercase tracking-widest truncate`}
                   style={HERO_TEXT_SHADOW}
                 >
-                  {playerInfo.currentTeam?.id ? (
+                  {displayTeam?.id ? (
                     <Link
-                      to={`/team/${playerInfo.currentTeam.id}`}
+                      to={`/team/${displayTeam.id}`}
                       className="hover:text-white transition-colors"
                     >
-                      {playerInfo.currentTeam.name}
+                      {displayTeam.name}
                     </Link>
                   ) : (
-                    playerInfo.currentTeam?.name || '—'
+                    displayTeam?.name || '—'
                   )}
                   {playerInfo.primaryNumber ? ` · #${playerInfo.primaryNumber}` : ''}
                 </div>

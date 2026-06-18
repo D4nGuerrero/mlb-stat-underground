@@ -19,6 +19,7 @@ const TEAM_OPTIONS = mlbTeams.map((t) => ({
   value: t.id,
   label: `${t.name} (${t.abbr})`,
 }));
+const MLB_TEAM_ID_SET = new Set(mlbTeams.map((t) => t.id));
 
 const HOT_COLD_DAY_OPTIONS = [
   { value: 10, label: 'Last 10 Days' },
@@ -86,15 +87,44 @@ const extractStatPreview = (person) => {
   };
 };
 
+const getPrimaryMlbTeamFromPersonStats = (person) => {
+  const teams = new Map();
+
+  for (const block of person.stats ?? []) {
+    const splits = block.splits ?? [];
+    for (const split of splits) {
+      const team = split.team;
+      if (!team?.id || !MLB_TEAM_ID_SET.has(Number(team.id))) continue;
+      const games = Number(split.stat?.gamesPlayed ?? split.stat?.games ?? 0);
+      const prev = teams.get(team.id) ?? { team, games: 0, seasons: new Set() };
+      prev.games += Number.isFinite(games) ? games : 0;
+      if (split.season) prev.seasons.add(split.season);
+      teams.set(team.id, prev);
+    }
+  }
+
+  return [...teams.values()]
+    .sort((a, b) => {
+      if (b.games !== a.games) return b.games - a.games;
+      return b.seasons.size - a.seasons.size;
+    })[0]?.team ?? null;
+};
+
 const mapSearchPerson = (person) => ({
-  id: person.id,
-  fullName: person.fullName,
-  team: person.currentTeam?.name ?? '—',
-  teamId: person.currentTeam?.id,
-  position: person.primaryPosition?.abbreviation ?? '',
-  headshot: playerHeadshotUrl(person.id),
-  active: person.active,
-  statsPreview: extractStatPreview(person),
+  ...(() => {
+    const primaryMlbTeam = person.active === false ? getPrimaryMlbTeamFromPersonStats(person) : null;
+    const displayTeam = primaryMlbTeam ?? person.currentTeam;
+    return {
+      id: person.id,
+      fullName: person.fullName,
+      team: displayTeam?.name ?? '—',
+      teamId: displayTeam?.id,
+      position: person.primaryPosition?.abbreviation ?? '',
+      headshot: playerHeadshotUrl(person.id),
+      active: person.active,
+      statsPreview: extractStatPreview(person),
+    };
+  })(),
 });
 
 const STAT_PREVIEW_COLS = [
@@ -597,7 +627,7 @@ export default function StatsApp() {
         const saved = JSON.parse(localStorage.getItem('mlbWatchlist') ?? '[]');
         if (!saved.length || saved.every((p) => p.statsPreview)) return;
         const hydrate = encodeURIComponent(
-          `currentTeam,stats(group=[hitting,pitching],type=[season,career],season=${CURRENT_SEASON})`,
+          `currentTeam,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
         );
         const updated = await Promise.all(
           saved.map(async (p) => {
@@ -627,7 +657,7 @@ export default function StatsApp() {
     setSearchResults([]);
     try {
       const hydrate = encodeURIComponent(
-        `currentTeam,stats(group=[hitting,pitching],type=[season,career],season=${CURRENT_SEASON})`,
+        `currentTeam,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
       );
 
       const ALL_SPORTS = '1,11,12,13,14,16';
