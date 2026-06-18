@@ -123,6 +123,41 @@ const SEASON_OPTIONS = Array.from({ length: 8 }, (_, i) => {
   return { value: y, label: String(y) };
 });
 
+function seasonOptionValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : value;
+}
+
+function seasonOptionsFromYearByYear(stats, group) {
+  const seasons = new Set();
+  const block = stats?.find(
+    (s) => s.type?.displayName === 'yearByYear' && s.group?.displayName === group,
+  );
+
+  for (const split of block?.splits ?? []) {
+    if (!split.season) continue;
+    if ((Number(split.stat?.gamesPlayed) || 0) <= 0) continue;
+    seasons.add(Number(split.season));
+  }
+
+  return [...seasons]
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)
+    .map((season) => ({ value: season, label: String(season) }));
+}
+
+function fallbackSeasonOptionsForPlayer(player) {
+  const lastYear = Number(player?.lastPlayedDate?.slice(0, 4));
+  const year = Number.isFinite(lastYear) && lastYear > 0 ? lastYear : CURRENT_YEAR;
+  return [{ value: year, label: String(year) }];
+}
+
+function resolveSeasonValue(value, options) {
+  const normalized = seasonOptionValue(value);
+  if (options.some((option) => option.value === normalized)) return normalized;
+  return options[0]?.value ?? normalized;
+}
+
 const PERIOD_OPTIONS = [
   { value: 'regular', label: 'Regular Season', gameType: 'R', statsType: 'season' },
   { value: 'last10', label: 'Last 10 Games', gameType: 'R', statsType: 'lastXGames', limit: 10 },
@@ -354,6 +389,111 @@ function formatBornWithAge(playerInfo) {
   const monthDiff = today.getMonth() - born.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) age -= 1;
   return `${formatted} (${age})`;
+}
+
+function joinEducation(entries) {
+  return (entries ?? [])
+    .map((entry) => [entry.name, entry.city, entry.state].filter(Boolean).join(', '))
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function formatDraftPick(draftPick, draftYear) {
+  if (!draftYear && !draftPick) return null;
+  if (!draftPick) return `${draftYear} MLB Draft`;
+
+  const round = draftPick.pickRound ?? draftPick.round;
+  const overall = draftPick.displayPickNumber ?? draftPick.pickNumber;
+  const team = draftPick.team?.name;
+  const parts = [
+    draftYear ? `${draftYear} MLB Draft` : null,
+    round ? `Round ${round}` : null,
+    overall ? `Pick ${overall} overall` : null,
+    team ? `by ${team}` : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+function buildPlayerBioRows(playerInfo, draftPick) {
+  if (!playerInfo) return { base: [], expanded: [] };
+
+  const base = [
+    { label: 'Bats / Throws', value: `${playerInfo.batSide?.code || '—'} / ${playerInfo.pitchHand?.code || '—'}` },
+    { label: 'Height / Weight', value: `${playerInfo.height || '—'} / ${playerInfo.weight ? `${playerInfo.weight} lb` : '—'}` },
+    { label: 'Born', value: formatBornWithAge(playerInfo) },
+    { label: 'Birthplace', value: [playerInfo.birthCity, playerInfo.birthStateProvince, playerInfo.birthCountry].filter(Boolean).join(', ') || '—' },
+  ];
+
+  const college = joinEducation(playerInfo.education?.colleges);
+  const highSchool = joinEducation(playerInfo.education?.highschools);
+  const draftText = formatDraftPick(draftPick, playerInfo.draftYear);
+  const relationships = (playerInfo.relatives ?? []).filter((relative) => relative?.id && relative?.hasStats !== false);
+
+  const expanded = [
+    playerInfo.fullFMLName && playerInfo.fullFMLName !== playerInfo.fullName
+      ? { label: 'Full Name', value: playerInfo.fullFMLName }
+      : null,
+    playerInfo.nickName ? { label: 'Nickname', value: playerInfo.nickName } : null,
+    draftText ? { label: 'Drafted', value: draftText } : null,
+    playerInfo.mlbDebutDate ? { label: 'MLB Debut', value: fmtDate(playerInfo.mlbDebutDate) } : null,
+    relationships.length ? { label: 'Relationships', value: relationships, format: 'relationships' } : null,
+    college ? { label: 'College', value: college } : null,
+    highSchool ? { label: 'High School', value: highSchool } : null,
+  ].filter((row) => row?.value && row.value !== '—');
+
+  return { base, expanded };
+}
+
+function PlayerBioInfo({ playerInfo, draftPick }) {
+  const [expanded, setExpanded] = useState(false);
+  const { base, expanded: expandedRows } = buildPlayerBioRows(playerInfo, draftPick);
+  const visibleRows = expanded ? [...base, ...expandedRows] : base;
+  const hasExpandedRows = expandedRows.length > 0;
+
+  return (
+    <section className="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-700/50">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">Bio</div>
+          <div className="text-xs text-slate-400">Player information</div>
+        </div>
+        {hasExpandedRows && (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className={`inline-flex items-center gap-2 rounded-full border border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10 px-3 py-1.5 text-xs font-semibold text-${THEME_COLOR}-200 hover:bg-${THEME_COLOR}-500/20 transition-colors`}
+            aria-expanded={expanded}
+          >
+            {expanded ? 'Show Less' : 'Show More'}
+            <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'} text-[10px]`} aria-hidden />
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+        {visibleRows.map(({ label, value, format }) => (
+          <div key={label} className={label === 'Drafted' || label === 'Relationships' ? 'col-span-2 sm:col-span-4' : ''}>
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
+            {format === 'relationships' ? (
+              <div className="flex flex-wrap gap-2">
+                {value.map((relative) => (
+                  <Link
+                    key={relative.id}
+                    to={`/player/${relative.id}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:border-${THEME_COLOR}-500/50 hover:text-${THEME_COLOR}-300 transition-colors`}
+                  >
+                    {relative.fullName ?? relative.nameFirstLast}
+                    {relative.relation && <span className="text-slate-500 font-medium">({relative.relation})</span>}
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm font-semibold text-slate-200 leading-snug">{value}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function getRosterStatusMeta({ code, description, player } = {}) {
@@ -906,6 +1046,22 @@ async function fetchPlayerStats(playerId, params, level = 'mlb') {
   return mergeMinorLeagueStats(responses);
 }
 
+async function fetchPlayerDraftPick(playerId, draftYear, signal) {
+  if (!playerId || !draftYear) return null;
+  const data = await fetchStatsApiJson(`/api/v1/draft/${draftYear}`, {
+    query: { playerId, hydrate: 'team,person' },
+    signal,
+    ttl: 24 * 60 * 60_000,
+    retries: 1,
+  });
+  const rounds = data.drafts?.rounds ?? [];
+  for (const round of rounds) {
+    const pick = (round.picks ?? []).find((item) => Number(item.person?.id) === Number(playerId));
+    if (pick) return pick;
+  }
+  return null;
+}
+
 function FilterBar({
   level,
   onLevelChange,
@@ -1202,11 +1358,15 @@ async function fetchPlayerTransactions(playerId, yearsBack) {
   const start = new Date(today);
   start.setFullYear(today.getFullYear() - yearsBack);
   const res = await fetch(
-    `https://statsapi.mlb.com/api/v1/transactions?playerId=${playerId}&startDate=${formatTxnApiDate(start)}&endDate=${formatTxnApiDate(today)}&sportId=1`,
+    `https://statsapi.mlb.com/api/v1/transactions?playerId=${playerId}&startDate=${formatTxnApiDate(start)}&endDate=${formatTxnApiDate(today)}`,
   );
   if (!res.ok) return [];
   const json = await res.json();
-  return [...(json.transactions ?? [])].sort(
+  return sortTransactions(json.transactions);
+}
+
+function sortTransactions(transactions = []) {
+  return [...transactions].sort(
     (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
   );
 }
@@ -1349,11 +1509,12 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
   );
 }
 
-function PlayerTransactionsTab({ playerId }) {
+function PlayerTransactionsTab({ playerId, playerInfo }) {
   const navigate = useNavigate();
   const restoredTxnRef = useRef(null);
   const savedTxnReturn = useMemo(() => readTxnSheetReturn(playerId), [playerId]);
   const [txns, setTxns] = useState([]);
+  const [usingProfileTransactions, setUsingProfileTransactions] = useState(false);
   const [yearsBack, setYearsBack] = useState(() => Math.max(
     TXN_INITIAL_YEARS,
     Number(savedTxnReturn?.yearsBack) || TXN_INITIAL_YEARS,
@@ -1387,10 +1548,14 @@ function PlayerTransactionsTab({ playerId }) {
         const sorted = await fetchPlayerTransactions(playerId, yearsBack);
         if (cancelled) return;
 
-        setTxns(sorted);
+        const fallbackTxns = sortTransactions(playerInfo?.transactions ?? []);
+        const usingFallback = !sorted.length && fallbackTxns.length > 0;
+        const displayTxns = sorted.length ? sorted : fallbackTxns;
+        setTxns(displayTxns);
+        setUsingProfileTransactions(usingFallback);
 
         if (!savedTxnReturn?.txnKey || restoredTxnRef.current === savedTxnReturn.txnKey) return;
-        const txn = sorted.find((item) => transactionRestoreKey(item) === savedTxnReturn.txnKey) ?? savedTxnReturn.txn;
+        const txn = displayTxns.find((item) => transactionRestoreKey(item) === savedTxnReturn.txnKey) ?? savedTxnReturn.txn;
         if (!txn) return;
 
         restoredTxnRef.current = savedTxnReturn.txnKey;
@@ -1415,9 +1580,9 @@ function PlayerTransactionsTab({ playerId }) {
     return () => {
       cancelled = true;
     };
-  }, [openTransaction, playerId, savedTxnReturn, yearsBack]);
+  }, [openTransaction, playerId, playerInfo, savedTxnReturn, yearsBack]);
 
-  const canLoadMore = yearsBack < TXN_MAX_YEARS;
+  const canLoadMore = !usingProfileTransactions && yearsBack < TXN_MAX_YEARS;
   const oldestYear = txns.length
     ? new Date(txns[txns.length - 1].date + 'T12:00:00').getFullYear()
     : null;
@@ -1535,6 +1700,7 @@ function GameLogGlossary({ items }) {
 }
 
 function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs available' }) {
+  const navigate = useNavigate();
   const oppMeasureRef = useRef(null);
   const [oppColWidth, setOppColWidth] = useState(null);
   const monthSections = useMemo(() => buildGameLogMonthSections(rows, logGroup), [rows, logGroup]);
@@ -1602,7 +1768,24 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
             {monthSections.map((section, sectionIdx) => (
               <Fragment key={section.key}>
                 {section.rows.map((row, i) => (
-                  <tr key={row.id ?? `${section.key}-${i}`} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
+                  <tr
+                    key={row.id ?? `${section.key}-${i}`}
+                    tabIndex={row.gamePk ? 0 : undefined}
+                    role={row.gamePk ? 'button' : undefined}
+                    onClick={row.gamePk ? () => navigate(`/game/${row.gamePk}`) : undefined}
+                    onKeyDown={row.gamePk
+                      ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            navigate(`/game/${row.gamePk}`);
+                          }
+                        }
+                      : undefined}
+                    className={[
+                      'group border-b border-slate-800/60 hover:bg-slate-800/20',
+                      row.gamePk ? 'cursor-pointer focus:outline-none focus:bg-slate-800/30' : '',
+                    ].join(' ')}
+                  >
                     {cols.map((c, j) => {
                       const value = row[c.key] ?? row.stat?.[c.key];
                       const measureOpp = sectionIdx === 0 && i === 0 && j === 1;
@@ -1660,7 +1843,14 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
   );
 }
 
-function PlayerGameLogsPanel({ playerId, playerInfo, logLevel, logGroup, logSeason, gameLogCols }) {
+function PlayerGameLogsPanel({
+  playerId,
+  playerInfo,
+  logLevel,
+  logGroup,
+  logSeason,
+  gameLogCols,
+}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1673,7 +1863,7 @@ function PlayerGameLogsPanel({ playerId, playerInfo, logLevel, logGroup, logSeas
         stats: 'gameLog',
         season: String(logSeason),
         group: logGroup,
-        gameType: 'R',
+        gameType: 'R,P',
       });
 
       try {
@@ -1685,6 +1875,7 @@ function PlayerGameLogsPanel({ playerId, playerInfo, logLevel, logGroup, logSeas
           setRows(
             splits.map((sp, i) => ({
               id: `${sp.date}-${sp.game?.gamePk ?? i}`,
+              gamePk: sp.game?.gamePk,
               date: sp.date,
               team: sp.team,
               opponent: sp.opponent,
@@ -1716,7 +1907,7 @@ function PlayerGameLogsPanel({ playerId, playerInfo, logLevel, logGroup, logSeas
       cols={gameLogCols}
       rows={rows}
       logGroup={logGroup}
-      emptyMessage={`No game logs for ${logSeason} regular season.`}
+      emptyMessage={`No game logs for ${logSeason}.`}
     />
   );
 }
@@ -1769,7 +1960,9 @@ function PlayerSplitsPanel({ playerId, playerInfo, isPitcher, splitLevel, splitS
 function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFromHistory }) {
   const restoredFromHistoryRef = useRef(restoredFromHistory);
   const [playerInfo, setPlayerInfo] = useState(null);
+  const [draftPick, setDraftPick] = useState(null);
   const [yearByYear, setYearByYear] = useState(null);
+  const [yearByYearByLevel, setYearByYearByLevel] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -1819,6 +2012,17 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const displayCols =
     careerGroup === 'pitching' ? pitchCols : careerGroup === 'fielding' ? fieldCols : hitCols;
   const gameLogCols = logGroup === 'pitching' ? gameLogPitchCols : gameLogHitCols;
+  const fallbackSeasonOptions = fallbackSeasonOptionsForPlayer(playerInfo);
+  const logSeasonOptions =
+    seasonOptionsFromYearByYear(yearByYearByLevel[logLevel], logGroup).length
+      ? seasonOptionsFromYearByYear(yearByYearByLevel[logLevel], logGroup)
+      : fallbackSeasonOptions;
+  const splitSeasonOptions =
+    seasonOptionsFromYearByYear(yearByYearByLevel[splitLevel], 'hitting').length
+      ? seasonOptionsFromYearByYear(yearByYearByLevel[splitLevel], 'hitting')
+      : fallbackSeasonOptions;
+  const resolvedLogSeason = resolveSeasonValue(logSeason, logSeasonOptions);
+  const resolvedSplitSeason = resolveSeasonValue(splitSeason, splitSeasonOptions);
 
   useEffect(() => {
     if (!playerId) return;
@@ -1829,7 +2033,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
     const loadPlayer = async () => {
       try {
         const bioData = await fetchStatsApiJson(`/api/v1/people/${playerId}`, {
-          query: { hydrate: 'currentTeam(team),awards,rosterEntries' },
+          query: { hydrate: 'currentTeam(team),awards,rosterEntries,education,transactions,relatives(person)' },
           signal: controller.signal,
           ttl: 5 * 60_000,
           retries: 1,
@@ -1838,6 +2042,16 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
         const player = bioData.people?.[0] || null;
         setPlayerInfo(player);
+        setDraftPick(null);
+        if (player?.draftYear) {
+          fetchPlayerDraftPick(playerId, player.draftYear, controller.signal)
+            .then((pick) => {
+              if (!cancelled) setDraftPick(pick);
+            })
+            .catch(() => {
+              if (!cancelled) setDraftPick(null);
+            });
+        }
         if (restoredFromHistoryRef.current) return;
         const defaultLevel = defaultStatsLevelForPlayer(player);
         setCareerLevel(defaultLevel);
@@ -1866,9 +2080,41 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
     if (!playerId || !playerInfo) return;
     const params = `stats=yearByYear&group=hitting,pitching,fielding&hydrate=team&gameType=${careerGameType}`;
     fetchPlayerStats(playerId, params, careerLevel).then((data) => {
-      setYearByYear(data.stats || []);
+      const stats = data.stats || [];
+      setYearByYear(stats);
     });
   }, [playerId, playerInfo, careerLevel, careerGameType]);
+
+  useEffect(() => {
+    if (!playerId || !playerInfo) return;
+    const neededLevels = [...new Set([logLevel, splitLevel])].filter(
+      (level) => level && !yearByYearByLevel[level],
+    );
+    if (!neededLevels.length) return;
+
+    let cancelled = false;
+    const params = 'stats=yearByYear&group=hitting,pitching,fielding&hydrate=team&gameType=R';
+
+    Promise.all(
+      neededLevels.map(async (level) => {
+        const data = await fetchPlayerStats(playerId, params, level);
+        return [level, data.stats || []];
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setYearByYearByLevel((prev) => {
+        const next = { ...prev };
+        for (const [level, stats] of entries) next[level] = stats;
+        return next;
+      });
+    }).catch(() => {
+      // Season options are a convenience; panels still show their own empty/error states.
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [logLevel, playerId, playerInfo, splitLevel, yearByYearByLevel]);
 
   const toggleWatchlist = useCallback(() => {
     if (!playerInfo) return;
@@ -1884,12 +2130,10 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   const handleLogLevelChange = useCallback((nextLevel) => {
     setLogLevel(nextLevel);
-    setLogSeason(CURRENT_YEAR);
   }, []);
 
   const handleLogGroupChange = useCallback((nextGroup) => {
     setLogGroup(nextGroup);
-    setLogSeason(CURRENT_YEAR);
   }, []);
 
   const getYearByYearSplits = (group) =>
@@ -2028,19 +2272,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
             </div>
           </div>
 
-          <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-700/50 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-            {[
-              { label: 'Bats / Throws', value: `${playerInfo.batSide?.code || '—'} / ${playerInfo.pitchHand?.code || '—'}` },
-              { label: 'Height / Weight', value: `${playerInfo.height || '—'} / ${playerInfo.weight ? `${playerInfo.weight} lb` : '—'}` },
-              { label: 'Born', value: formatBornWithAge(playerInfo) },
-              { label: 'Birthplace', value: [playerInfo.birthCity, playerInfo.birthStateProvince, playerInfo.birthCountry].filter(Boolean).join(', ') || '—' },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
-                <div className="text-sm font-semibold text-slate-200">{value}</div>
-              </div>
-            ))}
-          </div>
+          <PlayerBioInfo playerInfo={playerInfo} draftPick={draftPick} />
 
           <PlayerRosterStatus rosterEntries={playerInfo.rosterEntries} player={playerInfo} />
 
@@ -2094,20 +2326,20 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                       <FilterBar
                         level={logLevel}
                         onLevelChange={handleLogLevelChange}
-                        season={logSeason}
+                        season={resolvedLogSeason}
                         onSeasonChange={setLogSeason}
-                        seasonOptions={SEASON_OPTIONS}
+                        seasonOptions={logSeasonOptions}
                         group={logGroup}
                         onGroupChange={handleLogGroupChange}
                         hidePeriod
                       />
                       <PlayerGameLogsPanel
-                        key={`${playerId}:${logLevel}:${logGroup}:${logSeason}`}
+                        key={`${playerId}:${logLevel}:${logGroup}:${resolvedLogSeason}`}
                         playerId={playerId}
                         playerInfo={playerInfo}
                         logLevel={logLevel}
                         logGroup={logGroup}
-                        logSeason={logSeason}
+                        logSeason={resolvedLogSeason}
                         gameLogCols={gameLogCols}
                       />
                     </>
@@ -2119,23 +2351,24 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                       <FilterBar
                         level={splitLevel}
                         onLevelChange={setSplitLevel}
-                        season={splitSeason}
+                        season={resolvedSplitSeason}
                         onSeasonChange={setSplitSeason}
+                        seasonOptions={splitSeasonOptions}
                         hidePeriod
                       />
                       <PlayerSplitsPanel
-                        key={`${playerId}:${splitLevel}:${splitSeason}:${isPitcher ? 'pitcher' : 'hitter'}`}
+                        key={`${playerId}:${splitLevel}:${resolvedSplitSeason}:${isPitcher ? 'pitcher' : 'hitter'}`}
                         playerId={playerId}
                         playerInfo={playerInfo}
                         isPitcher={isPitcher}
                         splitLevel={splitLevel}
-                        splitSeason={splitSeason}
+                        splitSeason={resolvedSplitSeason}
                       />
                     </>
                   );
                 }
                 if (key === 'transactions') {
-                  return <PlayerTransactionsTab key={playerId} playerId={playerId} />;
+                  return <PlayerTransactionsTab key={playerId} playerId={playerId} playerInfo={playerInfo} />;
                 }
                 return (
                   <div className="text-slate-500 text-sm text-center py-12 border border-dashed border-slate-700 rounded-2xl">

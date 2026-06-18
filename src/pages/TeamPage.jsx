@@ -164,6 +164,31 @@ function qualifiesPitchingRate(row, teamGames) {
   return ipToDecimal(row?.stat?.inningsPitched) >= minIP;
 }
 
+function qualifiesHistoricalBattingRate(row) {
+  return Number(row?.stat?.plateAppearances ?? row?.stat?.atBats ?? 0) >= 500;
+}
+
+function qualifiesHistoricalPitchingRate(row) {
+  return ipToDecimal(row?.stat?.inningsPitched) >= 100;
+}
+
+function historicalSortQualifier(group, key) {
+  if (group === 'batting' && BATTING_RATE_KEYS.has(key)) return qualifiesHistoricalBattingRate;
+  if (group === 'pitching' && PITCHING_RATE_KEYS.has(key)) return qualifiesHistoricalPitchingRate;
+  return null;
+}
+
+function historicalSortNote(group, key, cols) {
+  const label = cols.find((col) => col.key === key)?.label ?? key;
+  if (group === 'batting' && BATTING_RATE_KEYS.has(key)) {
+    return `Sorting by ${label}: qualified hitters first, minimum 500 PA.`;
+  }
+  if (group === 'pitching' && PITCHING_RATE_KEYS.has(key)) {
+    return `Sorting by ${label}: qualified pitchers first, minimum 100 IP.`;
+  }
+  return `Sorting by ${label}: all players included.`;
+}
+
 function getTopLeaders(rows, statKey, { asc = false, qualify } = {}) {
   const eligible = rows.filter((row) => {
     const val = row?.stat?.[statKey];
@@ -225,7 +250,7 @@ function TeamLeaderCard({ label, statKey, dec, leaders, onNavigateAway }) {
             <img
               src={playerHeadshotUrl(topPerson?.id, 1)}
               alt=""
-              className="w-24 h-24 object-cover"
+              className="w-32 h-32 object-cover"
               onError={(e) => { e.target.src = FALLBACK_HEADSHOT; }}
             />
           </Link>
@@ -413,16 +438,33 @@ function SortableTable({
   defaultSortDir = 'desc',
   playerColClass = null,
   visibleLimit = null,
+  sortQualifier = null,
+  onSortChange = null,
 }) {
   const [sortCol, setSortCol] = useState(defaultSortKey);
   const [sortDir, setSortDir] = useState(defaultSortDir);
 
   const handleSort = (key) => {
-    if (key === sortCol) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortCol(key); setSortDir('desc'); }
+    if (key === sortCol) {
+      setSortDir((d) => {
+        const next = d === 'asc' ? 'desc' : 'asc';
+        onSortChange?.({ key, dir: next });
+        return next;
+      });
+    } else {
+      setSortCol(key);
+      setSortDir('desc');
+      onSortChange?.({ key, dir: 'desc' });
+    }
   };
 
   const sorted = [...rows].sort((a, b) => {
+    const qualifier = sortQualifier?.(sortCol);
+    if (qualifier) {
+      const aq = qualifier(a);
+      const bq = qualifier(b);
+      if (aq !== bq) return aq ? -1 : 1;
+    }
     const av = sortCol === 'inningsPitched'
       ? ipToDecimal(a.stat?.[sortCol] ?? a[sortCol])
       : parseFloat(a.stat?.[sortCol] ?? a[sortCol] ?? 0);
@@ -646,6 +688,7 @@ function StatsTab({
 function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavigateAway }) {
   const [query, setQuery] = useState('');
   const [visibleCounts, setVisibleCounts] = useState({});
+  const [sortByGroup, setSortByGroup] = useState({});
   const [data, setData] = useState({ batting: null, pitching: null, fielding: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -724,6 +767,8 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
   const cols = HISTORICAL_STATS_COLS_MAP[group] ?? HISTORICAL_STATS_COLS_MAP.batting;
   const defaultSortKey =
     group === 'pitching' ? 'strikeOuts' : group === 'fielding' ? 'gamesPlayed' : 'homeRuns';
+  const activeSort = sortByGroup[group] ?? { key: defaultSortKey, dir: 'desc' };
+  const sortNote = historicalSortNote(group, activeSort.key, cols);
   const filteredRows = rows.filter((row) => {
     const name = row.player?.fullName ?? row.person?.fullName ?? '';
     return name.toLowerCase().includes(query.trim().toLowerCase());
@@ -786,6 +831,7 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
           <div className="px-2 pb-2 text-[11px] text-slate-500">
             Showing {renderedCount.toLocaleString()} of {filteredRows.length.toLocaleString()} players
             {filteredRows.length !== rows.length ? ` (${rows.length.toLocaleString()} total)` : ''}
+            <span className="block sm:inline sm:ml-2 text-slate-400">{sortNote}</span>
           </div>
           {filteredRows.length > 0 ? (
             <>
@@ -799,6 +845,10 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
                   defaultSortDir="desc"
                   playerColClass="w-28 min-w-[7rem] sm:w-36 sm:min-w-[9rem]"
                   visibleLimit={visibleCount}
+                  sortQualifier={(key) => historicalSortQualifier(group, key)}
+                  onSortChange={(sort) => {
+                    setSortByGroup((prev) => ({ ...prev, [group]: sort }));
+                  }}
                 />
               </div>
               {hasMoreRows && (
