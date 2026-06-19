@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, useLocation, useNavigationType, Link } from 'react-router-dom';
-import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr, spotracPlayerUrl } from '../utils/mlbHelpers';
+import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackgroundClass, getTeamAbbr, spotracPlayerUrl, retiredPlayerTeamOverride } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
@@ -2157,13 +2157,15 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const careerTotalsRow = computeCareerTotalsRow(careerRows, statGroup);
   const isMinorsProfile = isMinorsPlayerProfile(playerInfo);
   const useMostPlayedTeam = shouldUseMostPlayedTeam(playerInfo);
-  const primaryCareerTeam = useMostPlayedTeam ? getMostPlayedTeam(careerRows) : null;
+  const retiredTeamOverride = retiredPlayerTeamOverride(playerInfo?.id);
+  const primaryCareerTeam = retiredTeamOverride ?? (useMostPlayedTeam ? getMostPlayedTeam(careerRows) : null);
   const waitingForMostPlayedTeam = useMostPlayedTeam && !primaryCareerTeam;
   const displayTeam = waitingForMostPlayedTeam
     ? null
     : primaryCareerTeam ?? playerInfo?.currentTeam;
   const playerImageOptions = isMinorsProfile ? { level: 'minors' } : undefined;
   const currentTeamLogoOptions = isMinorsProfile ? { level: 'minors' } : undefined;
+  const heroBgClass = playerHeroBackgroundClass(playerInfo?.id);
 
   const PLAYER_TABS = [
     { key: 'career', label: 'Career' },
@@ -2181,9 +2183,12 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
       {error && <div className="text-center py-20 text-slate-500">{error}</div>}
 
       {!isLoading && !error && playerInfo && (
+
+        // PLAYER HERO
+        //fun bg: bg-[length:auto_1%]
         <div className="bg-[#121827] border border-slate-700/60 sm:rounded-2xl overflow-hidden">
           <div
-            className="relative h-[200px] sm:h-[300px] bg-cover bg-center overflow-hidden px-5 sm:px-8 py-6 sm:py-8 flex flex-col justify-end"
+            className={`relative h-[200px] sm:h-[300px] bg-cover  ${heroBgClass} overflow-hidden px-5 sm:px-8 py-6 sm:py-8 flex flex-col justify-end`}
             style={{
               backgroundImage: `url(${playerHeroShotUrl(playerId, playerImageOptions)})`,
             

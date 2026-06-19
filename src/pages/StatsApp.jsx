@@ -6,6 +6,7 @@ import {
   teamLogoUrl,
   playerHeadshotUrl,
   FALLBACK_HEADSHOT,
+  retiredPlayerTeamOverride,
 } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl, BaseballSpinner, LoadingSpinner, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
@@ -118,7 +119,8 @@ const shouldUseMostPlayedTeam = (person) =>
 
 const mapSearchPerson = (person) => ({
   ...(() => {
-    const primaryMlbTeam = shouldUseMostPlayedTeam(person) ? getPrimaryMlbTeamFromPersonStats(person) : null;
+    const retiredTeamOverride = retiredPlayerTeamOverride(person?.id);
+    const primaryMlbTeam = retiredTeamOverride ?? (shouldUseMostPlayedTeam(person) ? getPrimaryMlbTeamFromPersonStats(person) : null);
     const displayTeam = primaryMlbTeam ?? person.currentTeam;
     return {
       id: person.id,

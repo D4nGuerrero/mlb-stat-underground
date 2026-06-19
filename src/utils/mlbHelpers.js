@@ -34,7 +34,51 @@ export const mlbTeams = [
 ];
 
 const TEAM_ABBR_BY_ID = Object.fromEntries(mlbTeams.map((t) => [t.id, t.abbr]));
+const MLB_TEAM_BY_ID = Object.fromEntries(mlbTeams.map((t) => [t.id, t]));
 const MLB_TEAM_ID_SET = new Set(mlbTeams.map((t) => t.id));
+
+const PIDS = {
+  IAN_KINSLER: 435079,
+  ADRIAN_BELTRE: 134181,
+};
+
+const TEAM_IDS = {
+  TEXAS_RANGERS: 140,
+};
+
+// MLB's people endpoint occasionally has stale/generic media or leaves retired
+// players attached to a non-MLB currentTeam. Keep those hand-tuned profile
+// overrides together so future exceptions are easy to add and review.
+const PLAYER_PROFILE_OVERRIDES = {
+  [PIDS.IAN_KINSLER]: {
+    retiredTeamId: TEAM_IDS.TEXAS_RANGERS,
+    images: {
+      hero: 'https://images2.minutemediacdn.com/image/upload/c_crop,x_794,y_88,w_2663,h_1497/c_fill,w_1080,ar_16:9,f_auto,q_auto,g_auto/images%2FImagnImages%2Fmmsport%2Finside_the_rangers%2F01jj0x9s9y4b5zmnhymy.jpg',
+      headshot: 'https://i.postimg.cc/sxG5tB6w/ik.png',
+    },
+    heroBgClass: 'bg-[right_-5rem_top_0rem]',
+  },
+  [PIDS.ADRIAN_BELTRE]: {
+    images: {
+      hero: 'https://sportshub.cbsistatic.com/i/r/2024/01/21/955fe6dd-1174-4237-9a36-9ebc7493f327/thumbnail/770x433/b90407d4e13c1330e3d4ea3e036e1d33/beltre-getty-1.png',
+        
+    },
+    heroBgClass: 'bg-[right_-0rem_top_0rem] bg-contain  bg-[length:auto_100%]',
+  },
+};
+
+export function retiredPlayerTeamOverride(playerId) {
+  const teamId = PLAYER_PROFILE_OVERRIDES[Number(playerId)]?.retiredTeamId;
+  return teamId ? MLB_TEAM_BY_ID[teamId] ?? null : null;
+}
+
+export function playerImageOverride(playerId, type) {
+  return PLAYER_PROFILE_OVERRIDES[Number(playerId)]?.images?.[type] ?? null;
+}
+
+export function playerHeroBackgroundClass(playerId) {
+  return PLAYER_PROFILE_OVERRIDES[Number(playerId)]?.heroBgClass ?? 'bg-[right_-8rem_top_0rem]';
+}
 
 /** Resolve a 3-letter team abbreviation from a team object or team id. */
 export function getTeamAbbr(teamOrId) {
@@ -117,6 +161,9 @@ function normalizePlayerImageOptions(typeOrOptions = 1) {
 
 // use this instead: https://midfield.mlbstatic.com/v1/people/673962/silo/240
 export const playerHeadshotUrl = (playerId, typeOrOptions = 1) => {
+  const override = playerImageOverride(playerId, 'headshot');
+  if (override) return override;
+
   const { type, level, isMinors, width = 180 } = normalizePlayerImageOptions(typeOrOptions);
 
   if (isMinors || level === 'minors') {
@@ -163,6 +210,9 @@ export function spotracPlayerUrl(player = {}) {
 
 // Hero shot – batter (horizontal pose)
 export const playerHeroShotUrl = (playerId, options = {}) => {
+  const override = playerImageOverride(playerId, 'hero');
+  if (override) return override;
+
   const { level, isMinors = false, width = isMinors || level === 'minors' ? 1500 : 2208 } = options;
   if (isMinors || level === 'minors') {
     return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:action:hero:milb:current.jpg/w_${width},q_auto,f_auto/v1/people/${playerId}/action/hero/milb/current`;
