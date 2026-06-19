@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
+import { Menu, MenuButton, MenuItems } from '@headlessui/react';
 import { THEME_COLOR } from '../../../theme/theme.js';
 import { BaseballSpinner } from '../../../components/ui';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -30,7 +30,12 @@ import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../../../utils
 import { assetUrl } from '../../../utils/baseUrl.js';
 import LiveRecentPlaysTimeline from '../../../components/LiveRecentPlaysTimeline';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
-import ScoresListGameRow from '../../../components/ScoresListGameRow';
+import {
+  BaseDiamondIndicator,
+  OutsIndicator,
+  formatLiveInningLabel,
+  getRunnersOnBase,
+} from '../../../components/LiveGameIndicators';
 import LiveMatchupStrip from '../components/LiveMatchupStrip';
 import PlayDetailSheet from '../components/PlayDetailSheet';
 import SummarySection, { ScoringPlayVideo } from '../components/SummarySection';
@@ -639,6 +644,100 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
   );
 }
 
+function FinalHeaderDecisionLine({ label, player, stats, onPlayerSelect }) {
+  if (!player) return null;
+  const name = player.fullName?.split(' ').slice(-1)[0] ?? player.fullName;
+  const statLine = label === 'S'
+    ? stats?.saves != null
+      ? `${stats.saves}${fmtEra(stats.era) ? ` | ${fmtEra(stats.era)} ERA` : ''}`
+      : fmtEra(stats?.era)
+        ? `${fmtEra(stats.era)} ERA`
+        : ''
+    : stats
+      ? `${stats.wins ?? 0}-${stats.losses ?? 0}${fmtEra(stats.era) ? ` | ${fmtEra(stats.era)} ERA` : ''}`
+      : '';
+
+  return (
+    <div className="text-[11px] 2xl:text-xs text-slate-300">
+      <span className="font-extrabold text-white">{label}: </span>
+      <button
+        type="button"
+        onClick={() => onPlayerSelect(player.id)}
+        className={`font-bold hover:text-${THEME_COLOR}-400 transition-colors`}
+      >
+        {name}
+      </button>
+      {statLine && <span className="ml-1 text-slate-400">{statLine}</span>}
+    </div>
+  );
+}
+
+function FinalHeaderTeamBlock({ team, align = 'left', onTeamSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onTeamSelect(team.id)}
+      className={`flex items-center gap-3 min-w-0 ${align === 'right' ? 'flex-row-reverse text-right' : 'text-left'}`}
+    >
+      <img src={teamLogoUrl(team.id)} alt={team.abbreviation} className="h-12 w-12 2xl:h-14 2xl:w-14 object-contain" />
+      <div className="min-w-0">
+        <div className="truncate text-sm font-extrabold text-white">
+          {team.teamName || team.abbreviation}
+        </div>
+        <div className="text-[11px] font-mono text-slate-400">
+          {team.record ? `${team.record.wins} - ${team.record.losses}` : ''}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function FinalGameHeader({
+  away,
+  home,
+  awayRuns,
+  homeRuns,
+  ls,
+  decisions,
+  getPitcherStats,
+  onTeamSelect,
+  onPlayerSelect,
+}) {
+  return (
+    <div className="bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden">
+      <div className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_4rem_minmax(0,1fr)] items-center gap-4 px-5 py-4">
+        <FinalHeaderTeamBlock team={away} onTeamSelect={onTeamSelect} />
+        <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${awayRuns > homeRuns ? 'text-white' : 'text-slate-300'}`}>
+          {awayRuns}
+        </div>
+        <div className="justify-self-center text-center text-base font-extrabold text-white tracking-wide">
+          FINAL
+        </div>
+        <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${homeRuns > awayRuns ? 'text-white' : 'text-slate-300'}`}>
+          {homeRuns}
+        </div>
+        <FinalHeaderTeamBlock team={home} align="right" onTeamSelect={onTeamSelect} />
+      </div>
+
+      <div className="border-t border-slate-700/60 grid grid-cols-[minmax(0,1fr)_18rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <LinescoreBoard
+          key="final-header-line"
+          ls={ls}
+          away={away}
+          home={home}
+          awayRuns={awayRuns}
+          homeRuns={homeRuns}
+        />
+        <div className="border-l border-slate-700/60 px-4 py-3 space-y-1.5">
+          <FinalHeaderDecisionLine label="W" player={decisions?.winner} stats={getPitcherStats(decisions?.winner?.id)} onPlayerSelect={onPlayerSelect} />
+          <FinalHeaderDecisionLine label="L" player={decisions?.loser} stats={getPitcherStats(decisions?.loser?.id)} onPlayerSelect={onPlayerSelect} />
+          <FinalHeaderDecisionLine label="S" player={decisions?.save} stats={getPitcherStats(decisions?.save?.id)} onPlayerSelect={onPlayerSelect} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function dedupeDaySchedule(games) {
   const byPk = new Map();
   for (const g of games) {
@@ -668,53 +767,329 @@ function dedupeDaySchedule(games) {
   });
 }
 
-function GamedayDayPicker({ games, currentGamePk, loading, onSelect }) {
-  const count = games.length;
+function formatDesktopStripDate(dateStr) {
+  if (!dateStr) return 'Calendar';
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return 'Calendar';
+  const month = date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+  return { month, day: String(date.getDate()) };
+}
+
+function toLocalDate(dateStr) {
+  if (!dateStr) return new Date();
+  const date = new Date(`${dateStr}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function toDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToDateString(dateStr, days) {
+  const date = toLocalDate(dateStr);
+  date.setDate(date.getDate() + days);
+  return toDateInputValue(date);
+}
+
+function addMonths(date, months) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months, 1);
+  return next;
+}
+
+function isSameDate(a, b) {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function buildCalendarWeeks(monthDate) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(start.getDate() - start.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+async function fetchGamesForDate(dateStr) {
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return dedupeDaySchedule((json.dates ?? []).flatMap((d) => d.games ?? []));
+}
+
+function GamedayDayPicker({
+  onDateSelect,
+  dateValue,
+  label = { month: 'GAME', day: 'DAY' },
+  icon = null,
+}) {
+  const selectedDate = toLocalDate(dateValue);
+  const [viewMonth, setViewMonth] = useState(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  const calendarDays = buildCalendarWeeks(viewMonth);
+  const monthLabel = viewMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
   return (
     <Menu as="div" className="relative justify-self-center">
       <MenuButton
         type="button"
-        className="flex items-center gap-1.5 font-bold text-sm text-slate-100 active:text-white"
+        className="flex min-w-0 flex-col items-center justify-center rounded-lg px-1 py-1 text-center font-black text-slate-100 transition-colors hover:bg-slate-800/70 active:text-white"
       >
-        <span>Gameday</span>
-        <i className="fa-solid fa-chevron-down text-[10px] text-slate-400" aria-hidden />
+        {icon && <i className={`fa-solid ${icon} text-xs text-slate-400`} aria-hidden />}
+        <span className="text-[10px] leading-none tracking-wide">
+          {typeof label === 'string' ? label : label.month}
+        </span>
+        {typeof label === 'string' ? null : (
+          <span className="mt-0.5 text-sm leading-none tabular-nums">{label.day}</span>
+        )}
       </MenuButton>
       <MenuItems
         anchor="bottom"
         transition
-        className="z-50 mt-2 w-[min(100vw-1rem,20rem)] max-h-[min(70vh,22rem)] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+        className="z-50 mt-2 w-[min(100vw-1rem,22rem)] rounded-2xl bg-[#0f1722] border border-slate-700/80 shadow-2xl shadow-black/40 focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
       >
-        {loading && (
-          <div className="px-4 py-3 text-xs text-slate-500">Loading games…</div>
-        )}
-        {!loading && count === 0 && (
-          <div className="px-4 py-3 text-xs text-slate-500">No other games today</div>
-        )}
-        {!loading && count > 0 && (
-          <div className="divide-y divide-slate-800/60">
-            {games.map((game) => {
-              const isCurrent = String(game.gamePk) === String(currentGamePk);
+        <div className="p-3">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setViewMonth((prev) => addMonths(prev, -1))}
+              className="grid h-9 w-9 place-items-center rounded-xl border border-slate-700/70 bg-slate-900/80 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+              aria-label="Previous month"
+            >
+              <i className="fa-solid fa-chevron-left text-xs" aria-hidden />
+            </button>
+            <div className="text-center">
+              <div className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-500">
+                Calendar
+              </div>
+              <div className="mt-0.5 font-display text-lg text-white">
+                {monthLabel}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewMonth((prev) => addMonths(prev, 1))}
+              className="grid h-9 w-9 place-items-center rounded-xl border border-slate-700/70 bg-slate-900/80 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+              aria-label="Next month"
+            >
+              <i className="fa-solid fa-chevron-right text-xs" aria-hidden />
+            </button>
+          </div>
+
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase tracking-wide text-slate-500">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <div key={`${day}-${index}`}>{day}</div>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {calendarDays.map((day) => {
+              const isSelected = isSameDate(day, selectedDate);
+              const isOutsideMonth = day.getMonth() !== viewMonth.getMonth();
+              const isToday = isSameDate(day, new Date());
               return (
-                <MenuItem key={game.gamePk} disabled={isCurrent} as="div">
-                  {({ focus, close }) => (
-                    <ScoresListGameRow
-                      game={game}
-                      compact
-                      isSelected={isCurrent}
-                      className={focus && !isCurrent ? 'bg-slate-800/60' : ''}
-                      onClick={isCurrent ? undefined : () => {
-                        close();
-                        onSelect(game.gamePk);
-                      }}
-                    />
+                <button
+                  key={day.toISOString()}
+                  type="button"
+                  onClick={() => {
+                    const nextDate = toDateInputValue(day);
+                    setViewMonth(new Date(day.getFullYear(), day.getMonth(), 1));
+                    onDateSelect?.(nextDate);
+                  }}
+                  className={[
+                    'relative h-8 rounded-lg text-xs font-bold transition-colors',
+                    isSelected
+                      ? `bg-${THEME_COLOR}-400 text-slate-950 shadow-lg shadow-${THEME_COLOR}-950/30`
+                      : 'text-slate-200 hover:bg-slate-800 hover:text-white',
+                    isOutsideMonth ? 'opacity-35' : '',
+                  ].filter(Boolean).join(' ')}
+                >
+                  {day.getDate()}
+                  {isToday && !isSelected && (
+                    <span className={`absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-${THEME_COLOR}-300`} />
                   )}
-                </MenuItem>
+                </button>
               );
             })}
           </div>
-        )}
+        </div>
       </MenuItems>
     </Menu>
+  );
+}
+
+function DesktopMiniTeamRow({ team, score, record }) {
+  return (
+    <div className="grid grid-cols-[1rem_2.4rem_1fr_1.1rem] items-center gap-1 leading-none">
+      <img src={teamLogoUrl(team.id)} alt={team.abbreviation} className="h-3.5 w-3.5 object-contain" />
+      <span className="truncate text-[12px] font-extrabold text-white">
+        {team.abbreviation}
+      </span>
+      <span className="truncate text-right text-[10px] font-mono text-slate-400">
+        {record ? `${record.wins} - ${record.losses}` : ''}
+      </span>
+      <span className="text-right font-display text-[15px] leading-none text-white tabular-nums">
+        {score}
+      </span>
+    </div>
+  );
+}
+
+function DesktopMiniGameCard({ game, isSelected, onClick }) {
+  const state = game.status?.abstractGameState ?? '';
+  const detailed = game.status?.detailedState ?? '';
+  const isLiveGame = state === 'Live';
+  const isFinalGame = state === 'Final';
+  const isPostponed = /postponed/i.test(detailed);
+  const away = game.teams?.away;
+  const home = game.teams?.home;
+  const awayTeam = away?.team ?? {};
+  const homeTeam = home?.team ?? {};
+  const awayScore = away?.score ?? 0;
+  const homeScore = home?.score ?? 0;
+  const awayRecord = away?.leagueRecord;
+  const homeRecord = home?.leagueRecord;
+  const statusLabel = isLiveGame
+    ? formatLiveInningLabel(game.linescore)
+    : isPostponed
+      ? 'POSTPONED'
+      : isFinalGame
+        ? formatFinalStatus(game.linescore)
+        : game.gameDate
+          ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+          : detailed || '—';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isSelected}
+      className={[
+        'h-full w-full rounded-lg border bg-[#111a24] px-2 py-1.5 text-left transition-colors',
+        isSelected
+          ? 'border-slate-300/80 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.45)]'
+          : 'border-slate-700/70 hover:border-slate-500/80 hover:bg-slate-800/60',
+        isPostponed ? 'opacity-55' : '',
+      ].filter(Boolean).join(' ')}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <div className="truncate text-[9px] font-extrabold uppercase tracking-wide text-slate-200">
+          {statusLabel}
+        </div>
+        {isLiveGame && game.linescore && (
+          <div className="flex items-center gap-1">
+            <BaseDiamondIndicator {...getRunnersOnBase(game.linescore)} size="xs" />
+            <OutsIndicator outs={game.linescore.outs ?? 0} size="xs" />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-1.5 space-y-1.5">
+        <DesktopMiniTeamRow team={awayTeam} score={awayScore} record={awayRecord} />
+        <DesktopMiniTeamRow team={homeTeam} score={homeScore} record={homeRecord} />
+      </div>
+    </button>
+  );
+}
+
+function DesktopGameStrip({
+  games,
+  currentGamePk,
+  loading,
+  onSelect,
+  onDateSelect,
+  onDateShift,
+  dateValue,
+  dateLabel,
+}) {
+  const gamesScrollerRef = useRef(null);
+
+  useEffect(() => {
+    const el = gamesScrollerRef.current;
+    if (!el) return undefined;
+
+    const handleGamesWheel = (event) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+
+      const horizontalDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
+      if (!horizontalDelta) return;
+
+      event.preventDefault();
+      el.scrollLeft += horizontalDelta;
+    };
+
+    el.addEventListener('wheel', handleGamesWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleGamesWheel);
+  }, []);
+
+  return (
+    <div className="hidden xl:grid xl:grid-cols-[7.25rem_minmax(0,1fr)] xl:gap-2 xl:min-h-[5.25rem] xl:max-h-[5.25rem]">
+      <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-stretch rounded-xl border border-slate-700/60 bg-[#121827] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => onDateShift?.(-1)}
+          className="grid h-full min-h-[4.75rem] place-items-center border-r border-slate-700/60 text-slate-200 transition-colors hover:bg-slate-800/70 hover:text-white"
+          aria-label="Previous day"
+        >
+          <i className="fa-solid fa-chevron-left text-base" aria-hidden />
+        </button>
+        <div className="flex min-w-0 items-center justify-center px-1">
+          <GamedayDayPicker
+            label={dateLabel || { month: 'CAL', day: '' }}
+            onDateSelect={onDateSelect}
+            dateValue={dateValue}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => onDateShift?.(1)}
+          className="grid h-full min-h-[4.75rem] place-items-center border-l border-slate-700/60 text-slate-200 transition-colors hover:bg-slate-800/70 hover:text-white"
+          aria-label="Next day"
+        >
+          <i className="fa-solid fa-chevron-right text-base" aria-hidden />
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-slate-700/60 bg-[#121827] overflow-hidden">
+        {loading ? (
+          <div className="h-full flex items-center justify-center text-xs text-slate-500">
+            Loading today's games...
+          </div>
+        ) : games.length ? (
+          <div
+            ref={gamesScrollerRef}
+            className="h-full overflow-x-auto overflow-y-hidden overscroll-x-contain px-1.5 py-1 scrollbar-thin"
+          >
+            <div className="flex h-full min-w-max gap-2">
+              {games.map((game) => {
+                const isSelected = String(game.gamePk) === String(currentGamePk);
+                return (
+                  <div key={game.gamePk} className="w-[9.75rem] shrink-0">
+                    <DesktopMiniGameCard
+                      game={game}
+                      isSelected={isSelected}
+                      onClick={isSelected ? undefined : () => onSelect(game.gamePk)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-slate-500">
+            No games today
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -766,6 +1141,24 @@ function GamePageContent({ gamePk, navigate, location }) {
     isLive: feed?.gameData?.status?.abstractGameState === 'Live',
     linescore: feed?.liveData?.linescore,
   });
+
+  const goToGamedayDate = useCallback(async (dateStr) => {
+    try {
+      const gamesForDate = await fetchGamesForDate(dateStr);
+      const nextGamePk = gamesForDate[0]?.gamePk;
+      if (nextGamePk) {
+        navigate(`/game/${nextGamePk}`, { state: { returnDate: dateStr } });
+      } else {
+        navigate('/', { state: { returnDate: dateStr } });
+      }
+    } catch {
+      navigate('/', { state: { returnDate: dateStr } });
+    }
+  }, [navigate]);
+
+  const shiftGamedayDate = useCallback((days) => {
+    void goToGamedayDate(addDaysToDateString(officialDate, days));
+  }, [goToGamedayDate, officialDate]);
 
   useEffect(() => {
     if (!gamePk) return undefined;
@@ -890,6 +1283,18 @@ function GamePageContent({ gamePk, navigate, location }) {
     document.body.classList.add('game-page-open');
     return () => document.body.classList.remove('game-page-open');
   }, []);
+
+  useEffect(() => {
+    const liveClass = 'game-page-live-fullscreen';
+    const finalClass = 'game-page-final-fullscreen';
+    const gameState = feed?.gameData?.status?.abstractGameState;
+    document.body.classList.toggle(liveClass, gameState === 'Live' && activeTab === 'live');
+    document.body.classList.toggle(finalClass, gameState === 'Final');
+    return () => {
+      document.body.classList.remove(liveClass);
+      document.body.classList.remove(finalClass);
+    };
+  }, [feed?.gameData?.status?.abstractGameState, activeTab]);
 
   const isLiveForBackdrop = feed?.gameData?.status?.abstractGameState === 'Live';
   const [backdropClock, setBackdropClock] = useState(() => Date.now());
@@ -1202,7 +1607,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         </div>
       </div>
 
-      <div className="xl:flex-1 xl:min-h-0">
+      <div className="xl:flex-1 xl:min-h-0 xl:overflow-hidden xl:flex xl:items-center xl:justify-center">
         <LiveAtBatVisual
           venueId={venueId}
           exteriorFailed={exteriorFailed}
@@ -1220,7 +1625,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           baseballModelUrl={assetUrl('baseball-centered.glb')}
           showHotZones
           usePurpleInPlayOuts={usePurpleInPlayOuts}
-          className="xl:h-full xl:min-h-0"
+          immersiveField
+          className="xl:h-full xl:min-h-0 xl:w-[calc(100%+10rem)] xl:max-w-none xl:scale-[1.1] xl:origin-center 2xl:w-[calc(100%+14rem)] 2xl:scale-[1.13]"
         />
       </div>
 
@@ -1347,8 +1753,8 @@ function GamePageContent({ gamePk, navigate, location }) {
   ) : null;
 
   const desktopLiveBoxScorePanel = ld.boxscore ? (
-    <div className="bg-slate-900 border border-slate-700/60 p-3 2xl:p-4 rounded-2xl overflow-hidden">
-      <div className="flex items-center justify-between gap-3 mb-3">
+    <div className="bg-slate-900 border border-slate-700/60 p-2.5 2xl:p-3 rounded-2xl h-full min-h-0 overflow-y-auto">
+      <div className="flex items-center justify-between gap-3 mb-2 shrink-0">
         <span className="text-[10px] text-slate-500 uppercase tracking-widest">
           Box Score
         </span>
@@ -1356,7 +1762,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           {gameStart.dateLine}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-3 2xl:gap-4">
+      <div className="grid grid-cols-2 items-start gap-2 2xl:gap-3">
         <TeamBoxSection
           sideKey="away"
           team={away}
@@ -1377,11 +1783,58 @@ function GamePageContent({ gamePk, navigate, location }) {
     </div>
   ) : null;
 
+  const summaryPanel = (
+    <SummarySection
+      awayAbbr={away.abbreviation}
+      expandedVideoKey={expandedVideoKey}
+      getPlayBadge={getPlayBadge}
+      highlightByItemKey={highlightByItemKey}
+      homeAbbr={home.abbreviation}
+      onOpenPlay={openSheet}
+      onPlayerClick={handleSummaryPlayerClick}
+      onToggleVideo={handleSummaryVideoToggle}
+      pinnedVideo={pinnedVideo}
+      pitchingChangeBadge={PITCHING_CHANGE_BADGE}
+      statusChangeBadge={STATUS_CHANGE_BADGE}
+      summaryFilter={summaryFilter}
+      summaryItemGroups={summaryItemGroups}
+      summaryLeadIn={summaryLeadIn}
+      onSummaryFilterChange={setSummaryFilter}
+    />
+  );
+
+  const finalDesktopLayout = isFinal ? (
+    <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_480px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:gap-8 xl:overflow-hidden">
+      <section className="min-w-0 min-h-0 flex flex-col gap-6 overflow-hidden">
+        <FinalGameHeader
+          away={away}
+          home={home}
+          awayRuns={awayRuns}
+          homeRuns={homeRuns}
+          ls={ls}
+          decisions={decisions}
+          getPitcherStats={getPitcherStats}
+          onTeamSelect={(teamId) => navigate(`/team/${teamId}`)}
+          onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+        />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {desktopLiveBoxScorePanel}
+        </div>
+      </section>
+
+      <aside className="min-w-0 min-h-0 overflow-y-auto">
+        {summaryPanel}
+      </aside>
+    </div>
+  ) : null;
+
   return (
     <div
       className={`max-w-5xl mx-auto px-0 sm:px-6 py-0 sm:py-8 ${
         isLive && currentTab === 'live'
-          ? 'xl:max-w-none xl:px-3 2xl:px-5 xl:py-3'
+          ? 'xl:h-screen xl:max-h-screen xl:max-w-none xl:overflow-hidden xl:px-3 xl:py-3 2xl:px-5'
+          : isFinal
+            ? 'xl:h-[calc(100vh-4rem)] xl:max-h-[calc(100vh-4rem)] xl:max-w-none xl:overflow-hidden xl:px-3 xl:py-3 2xl:px-5'
           : 'xl:max-w-[1500px]'
       }`}
     >
@@ -1401,6 +1854,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           currentGamePk={gamePk}
           loading={dayScheduleLoading}
           onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
+          onDateSelect={goToGamedayDate}
+          dateValue={officialDate}
         />
         <div className="justify-self-end flex items-center justify-end min-w-[4.5rem]">
           {isLive ? (
@@ -1422,7 +1877,7 @@ function GamePageContent({ gamePk, navigate, location }) {
       </div>
 
       {/* Desktop: back + ws status */}
-      <div className={`hidden sm:flex items-center justify-between mb-4 px-0 ${isLive && currentTab === 'live' ? 'xl:hidden' : ''}`}>
+      <div className={`hidden sm:flex items-center justify-between mb-4 px-0 ${(isLive && currentTab === 'live') || isFinal ? 'xl:hidden' : ''}`}>
         <button
           onClick={() =>
             navigate('/', { state: { returnDate: location.state?.returnDate } })
@@ -1454,9 +1909,24 @@ function GamePageContent({ gamePk, navigate, location }) {
         )}
       </div>
 
-      <div className="px-0 sm:px-3">
+      <div className={`px-0 sm:px-3 ${(isLive && currentTab === 'live') ? 'xl:h-full xl:min-h-0 xl:overflow-hidden' : ''} ${isFinal ? 'xl:h-full xl:min-h-0 xl:overflow-hidden xl:flex xl:flex-col' : ''}`}>
+        {!isPreview && !(isLive && currentTab === 'live') && (
+          <div className="mb-5">
+            <DesktopGameStrip
+              games={daySchedule}
+              currentGamePk={gamePk}
+              loading={dayScheduleLoading}
+              dateValue={officialDate}
+              dateLabel={formatDesktopStripDate(officialDate)}
+              onDateSelect={goToGamedayDate}
+              onDateShift={shiftGamedayDate}
+              onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
+            />
+          </div>
+        )}
+
         {/* Scoreboard */}
-        <div className={`bg-[#121827] border-y border-slate-700/60  overflow-hidden ${isPreview ? 'mb-3' : ''} ${isLive && currentTab === 'live' ? 'xl:hidden' : ''}`}>
+        <div className={`bg-[#121827] border-y border-slate-700/60  overflow-hidden ${isPreview ? 'mb-3' : ''} ${isLive && currentTab === 'live' ? 'xl:hidden' : ''} ${isFinal ? 'xl:hidden' : ''}`}>
           {/* Game date / venue */}
          
 
@@ -1654,52 +2124,61 @@ function GamePageContent({ gamePk, navigate, location }) {
           </>
         ) : (
           <>
-        {!isLive && gameTabBar}
+        {!isLive && (
+          <div className={isFinal ? 'xl:hidden' : ''}>
+            {gameTabBar}
+          </div>
+        )}
+
+        {finalDesktopLayout}
 
         {/* Tab content */}
         {isLive && ls && (
           <div
             className={
               currentTab === 'live'
-                ? 'relative  overflow-x-hidden xl:h-[calc(100vh-88px)] xl:min-h-0 xl:grid xl:grid-cols-[280px_minmax(460px,0.95fr)_minmax(560px,1.2fr)] 2xl:grid-cols-[320px_minmax(560px,0.9fr)_minmax(780px,1.4fr)] xl:items-start xl:gap-4 xl:space-y-0 xl:overflow-hidden'
+                ? 'relative overflow-x-hidden xl:h-full xl:min-h-0 xl:flex xl:flex-col xl:gap-5 xl:overflow-hidden'
                 : 'hidden'
             }
             aria-hidden={currentTab !== 'live'}
           >
-            <div className="xl:order-2 xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:gap-3 xl:overflow-hidden xl:pr-1">
-              {liveVisualPanel}
-            </div>
+            <DesktopGameStrip
+              games={daySchedule}
+              currentGamePk={gamePk}
+              loading={dayScheduleLoading}
+              dateValue={officialDate}
+              dateLabel={formatDesktopStripDate(officialDate)}
+              onDateSelect={goToGamedayDate}
+              onDateShift={shiftGamedayDate}
+              onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
+            />
 
-            <div className="xl:order-1 xl:h-full xl:min-h-0 xl:overflow-y-auto">
-              {recentPlaysPanel}
-            </div>
+            <div className="xl:min-h-0 xl:flex-1 xl:grid xl:grid-cols-[280px_minmax(500px,1fr)_minmax(560px,1.15fr)] 2xl:grid-cols-[320px_minmax(620px,1fr)_minmax(760px,1.35fr)] xl:items-stretch xl:gap-4 xl:overflow-hidden">
+              <div className="xl:order-2 xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:gap-3 xl:overflow-hidden">
+                {liveVisualPanel}
+              </div>
 
-            <div className="hidden xl:order-3 xl:block xl:h-full xl:min-h-0 xl:overflow-y-auto">
-              {desktopLiveBoxScorePanel}
+              <div className="xl:order-1 xl:h-full xl:min-h-0 xl:overflow-y-auto">
+                {recentPlaysPanel}
+              </div>
+
+              <div className="hidden xl:order-3 xl:block xl:h-full xl:min-h-0 xl:overflow-hidden">
+                {desktopLiveBoxScorePanel}
+              </div>
             </div>
           </div>
         )}
 
-        {currentTab === 'boxscore' && boxScorePanel}
+        {currentTab === 'boxscore' && (
+          <div className={isFinal ? 'xl:hidden' : ''}>
+            {boxScorePanel}
+          </div>
+        )}
 
         {currentTab === 'summary' && (
-          <SummarySection
-            awayAbbr={away.abbreviation}
-            expandedVideoKey={expandedVideoKey}
-            getPlayBadge={getPlayBadge}
-            highlightByItemKey={highlightByItemKey}
-            homeAbbr={home.abbreviation}
-            onOpenPlay={openSheet}
-            onPlayerClick={handleSummaryPlayerClick}
-            onToggleVideo={handleSummaryVideoToggle}
-            pinnedVideo={pinnedVideo}
-            pitchingChangeBadge={PITCHING_CHANGE_BADGE}
-            statusChangeBadge={STATUS_CHANGE_BADGE}
-            summaryFilter={summaryFilter}
-            summaryItemGroups={summaryItemGroups}
-            summaryLeadIn={summaryLeadIn}
-            onSummaryFilterChange={setSummaryFilter}
-          />
+          <div className={isFinal ? 'xl:hidden' : ''}>
+            {summaryPanel}
+          </div>
         )}
 
         <PlayDetailSheet

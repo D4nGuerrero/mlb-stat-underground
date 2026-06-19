@@ -36,13 +36,13 @@ export default function LivePitchToast({ item, pitch, onComplete }) {
 
   return (
     <div
-      className={`absolute left-1/2 bottom-4 z-30 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border bg-slate-900/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur-md ${style}`}
+      className={`absolute left-1/2 bottom-4 z-30 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border bg-slate-900/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur-md xl:w-[260px] xl:px-3 xl:py-2 ${style}`}
       role="status"
       aria-live="polite"
     >
-      <p className="text-base font-extrabold leading-tight text-center">{toast.title}</p>
+      <p className="text-base font-extrabold leading-tight text-center xl:text-sm">{toast.title}</p>
       {toast.subtitle && (
-        <p className="text-xs text-center text-slate-300 mt-1 font-mono">
+        <p className="text-xs text-center text-slate-300 mt-1 font-mono xl:text-[10px]">
           {toast.subtitle}
         </p>
       )}

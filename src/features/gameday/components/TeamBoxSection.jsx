@@ -5,6 +5,7 @@ import { TABLE_TEXT_CLASS } from '../../../theme/tableTheme';
 
 const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-fixed w-full`;
 const BOX_SCORE_TABLE_COMPACT = `${TABLE_BASE} text-[10px] 2xl:text-[11px] table-fixed w-full`;
+const BOX_SCORE_TABLE_FULLSCREEN = `${TABLE_BASE} table-fixed w-full text-[9px] 2xl:text-[10px] [&_th]:!px-0.5 [&_td]:!px-0.5 [&_th]:!py-0.5 [&_td]:!py-0.5 [&_th]:!text-[9px] [&_td]:!text-[9px] 2xl:[&_th]:!text-[10px] 2xl:[&_td]:!text-[10px]`;
 const BOX_SCORE_LABEL_COL = 'w-[24%]';
 const BOX_SCORE_STAT_COL = 'w-[9.5%]';
 
@@ -37,6 +38,7 @@ export default function TeamBoxSection({
   decisions,
   hideHeader = false,
   compact = false,
+  fullscreenFit = false,
   onPlayerSelect,
 }) {
   if (!teamBox) return null;
@@ -87,24 +89,36 @@ export default function TeamBoxSection({
   const pitchingTotalsIp =
     teamBox.teamStats?.pitching?.inningsPitched ??
     sumInningsPitched(pitchers.map((player) => player.stats?.pitching?.inningsPitched));
-  const tableClassName = compact ? BOX_SCORE_TABLE_COMPACT : BOX_SCORE_TABLE;
+  const tableClassName = fullscreenFit
+    ? BOX_SCORE_TABLE_FULLSCREEN
+    : compact
+      ? BOX_SCORE_TABLE_COMPACT
+      : BOX_SCORE_TABLE;
 
   return (
-    <div className={compact ? 'mb-4 text-[10px] 2xl:text-[11px]' : 'mb-8'}>
+    <div
+      className={
+        fullscreenFit
+          ? 'h-full min-h-0 overflow-hidden text-[9px] 2xl:text-[10px] flex flex-col'
+          : compact
+            ? 'mb-4 text-[10px] 2xl:text-[11px]'
+            : 'mb-8'
+      }
+    >
       {!hideHeader && (
-        <div className="flex items-center gap-2 mb-3">
+        <div className={`flex items-center gap-2 shrink-0 ${fullscreenFit ? 'mb-1' : 'mb-3'}`}>
           <img
             src={teamLogoUrl(team.id)}
-            className="w-5 h-5 object-contain"
+            className={`${fullscreenFit ? 'w-4 h-4' : 'w-5 h-5'} object-contain`}
             alt={team.abbreviation}
           />
-          <span className="font-bold text-sm text-slate-100">
+          <span className={`${fullscreenFit ? 'text-[10px]' : 'text-sm'} font-bold text-slate-100 truncate`}>
             {team.teamName || team.abbreviation}
           </span>
         </div>
       )}
 
-      <div className={`${TABLE_SCROLL} mb-2`}>
+      <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mb-1 shrink-0' : 'mb-2'}`}>
         <table className={tableClassName}>
           <colgroup>
             <col className={BOX_SCORE_LABEL_COL} />
@@ -182,7 +196,7 @@ export default function TeamBoxSection({
         </table>
       </div>
 
-      {subNotes.length > 0 && (
+      {!fullscreenFit && subNotes.length > 0 && (
         <div className="mb-3 text-[11px] text-slate-500 space-y-0.5 italic">
           {subNotes.map((note, i) => (
             <div key={i}>{note}</div>
@@ -190,7 +204,7 @@ export default function TeamBoxSection({
         </div>
       )}
 
-      {(teamBox.info || []).map((section) => (
+      {!fullscreenFit && (teamBox.info || []).map((section) => (
         <div key={section.title} className="mb-2">
           <div className="text-[11px] font-bold text-slate-400 mb-0.5">
             {section.title}
@@ -207,7 +221,7 @@ export default function TeamBoxSection({
       ))}
 
       {pitchers.length > 0 && (
-        <div className={`${TABLE_SCROLL} mt-4`}>
+        <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mt-1 shrink-0' : 'mt-4'}`}>
           <table className={tableClassName}>
             <colgroup>
               <col className={BOX_SCORE_LABEL_COL} />

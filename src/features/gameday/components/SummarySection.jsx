@@ -385,7 +385,7 @@ export default function SummarySection({
   onSummaryFilterChange,
 }) {
   return (
-    <div className="bg-slate-900 border border-slate-700/60 p-2 sm:p-5">
+    <div className="bg-slate-900 border border-slate-700/60 p-2 sm:p-5 lg:rounded-xl">
       <SegmentedControl
         value={summaryFilter}
         onChange={onSummaryFilterChange}

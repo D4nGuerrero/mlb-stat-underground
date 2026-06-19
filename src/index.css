@@ -537,6 +537,21 @@ body {
   }
 }
 
+/* Desktop Gameday fullscreen modes own the viewport; only their inner rails scroll. */
+@media (min-width: 1280px) {
+  body.game-page-live-fullscreen {
+    overflow: hidden;
+  }
+
+  body.game-page-final-fullscreen {
+    overflow: hidden;
+  }
+
+  body.game-page-live-fullscreen nav#main-nav {
+    display: none !important;
+  }
+}
+
 /* Today button styling */
 .react-datepicker__today-button {
   background-color: #1e2937 !important;

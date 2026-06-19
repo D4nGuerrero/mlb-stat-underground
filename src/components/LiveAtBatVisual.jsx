@@ -102,6 +102,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   showPitchTrails = true,
   showHotZones = false,
   usePurpleInPlayOuts = false,
+  immersiveField = false,
   className = '',
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
@@ -222,6 +223,16 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     setBatterArtFailed(false);
   }, [batterLayerUrls.jersey, batterLayerUrls.pants]);
 
+  const fieldLayerClass = immersiveField
+    ? 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-[155%] 2xl:w-[145%]'
+    : 'absolute left-1/2 top-1/2 w-[280%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
+  const pitchOverlayFieldClass = immersiveField
+    ? 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-[155%] 2xl:w-[145%]'
+    : 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
+  const fieldAnchoredBatterClass = immersiveField
+    ? 'absolute z-20 pointer-events-none'
+    : 'absolute z-20 pointer-events-none lg:hidden';
+
   return (
     <div
       // MLB uses an invisible spacer image for this same idea: width is owned by
@@ -232,7 +243,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* MLB-style field scaling: keep a fixed-ratio field larger than the viewport, then crop it. */}
         <div
-          className="absolute left-1/2 top-1/2 w-[280%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full"
+          className={fieldLayerClass}
           style={{
             aspectRatio: `${FIELD_ASPECT}`,
             backgroundColor: !strikeZoneTopSrc ? '#0f172a' : undefined,
@@ -265,7 +276,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       </div>
 
       <div
-        className="pointer-events-none absolute z-20 hidden lg:block"
+        className={`pointer-events-none absolute z-20 ${immersiveField ? 'hidden' : 'hidden lg:block'}`}
         style={{
           top: `${BATTER_FIELD_TOP_PCT}%`,
           width: `${BATTER_FIELD_WIDTH_PCT}%`,
@@ -296,11 +307,11 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       <div className="absolute inset-0 z-10 overflow-hidden">
         {/* This overlay repeats the same field transform so the strike zone scales with the background. */}
         <div
-          className="absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full"
+          className={pitchOverlayFieldClass}
           style={{ aspectRatio: `${FIELD_ASPECT}` }}
         >
           <div
-            className="absolute z-20 pointer-events-none lg:hidden"
+            className={fieldAnchoredBatterClass}
             style={{
               top: `${BATTER_FIELD_TOP_PCT}%`,
               width: `${BATTER_FIELD_WIDTH_PCT}%`,
