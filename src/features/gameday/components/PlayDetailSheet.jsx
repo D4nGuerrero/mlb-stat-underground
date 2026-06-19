@@ -30,7 +30,7 @@ export default function PlayDetailSheet({
   const play = selectedPlay;
   const pitches = (play.playEvents || []).filter((event) => event.isPitch);
   const hitData = getPlayHitData(play);
-  const badge = getPlayBadge(play.result?.eventType);
+  const badge = getPlayBadge(play.result?.eventType, play);
   const szT = pitches[pitches.length - 1]?.pitchData?.strikeZoneTop || 3.55;
   const szB = pitches[pitches.length - 1]?.pitchData?.strikeZoneBottom || 1.47;
   const inningStr = `${play.about?.halfInning === 'top' ? 'TOP' : 'BOT'} ${play.about?.inning}`;
@@ -50,32 +50,32 @@ export default function PlayDetailSheet({
       open
       onClose={closeSheet}
       size="lg"
-      panelClassName="max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#0d1520] border-slate-700/70 p-0"
+      panelClassName="max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#101827] border-slate-700/70 p-0"
     >
-      <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
+      <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#101827] z-10">
         <div className="w-10 h-1 rounded-full bg-slate-600" />
       </div>
 
-      <div className="flex items-center justify-between px-5 pt-3 sm:pt-4 pb-3 border-b border-slate-700/40">
-        <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-[#101827]/95 backdrop-blur px-4 sm:px-5 pt-3 pb-3 border-b border-slate-700/40">
+        <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-bold text-slate-100 tracking-wide">At Bat Details</span>
-          <span className="text-slate-700">.</span>
+          <span className="text-slate-700">/</span>
           <span className="text-xs font-bold text-slate-400 font-mono">{inningStr}</span>
-          <span className="text-slate-700">.</span>
+          <span className="text-slate-700">/</span>
           <span className="text-xs text-slate-500 font-mono">{scoreStr}</span>
         </div>
         <button
           onClick={closeSheet}
-          className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-sm"
+          className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-sm"
         >
           x
         </button>
       </div>
 
-      <div className="p-5 space-y-5">
-        <div className="flex items-start gap-3">
+      <div className="p-3 sm:p-4 space-y-3">
+        <div className="flex items-start gap-2 rounded-2xl border border-slate-700/50 bg-slate-900/60 px-3 py-2.5">
           <span
-            className={`inline-flex items-center text-xs px-3 py-1.5 rounded-full border font-bold flex-shrink-0 ${badge.cls}`}
+            className={`inline-flex items-center text-[11px] px-2.5 py-1 rounded-full border font-bold flex-shrink-0 ${badge.cls}`}
           >
             {badge.label}
           </span>
@@ -86,18 +86,18 @@ export default function PlayDetailSheet({
 
         {renderHitDataPanel(hitData)}
 
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden">
-          <div className="text-[10px] text-slate-500 uppercase tracking-widest px-4 pt-3 pb-1">
+        <div className="bg-slate-900/70 border border-slate-700/50 rounded-2xl overflow-hidden">
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest px-3 pt-2.5 pb-1">
             At Bat Matchup
           </div>
           <div className="flex items-stretch">
             <button
-              className="flex-1 flex flex-col items-center gap-2 p-4 hover:bg-slate-700/30 transition-colors border-r border-slate-700/40"
+              className="flex-1 flex flex-col items-center gap-1.5 p-3 hover:bg-slate-700/30 transition-colors border-r border-slate-700/40"
               onClick={() => onPlayerSelect(pitcherId)}
             >
               <img
                 src={playerHeadshotUrl(pitcherId)}
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-700"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-700"
                 alt=""
               />
               <div className="text-center">
@@ -112,21 +112,21 @@ export default function PlayDetailSheet({
               </div>
             </button>
 
-            <div className="flex flex-col items-center justify-center px-4 gap-2.5">
+            <div className="flex flex-col items-center justify-center px-3 gap-2">
               <BaseDiamondIndicator {...situation.bases} size="md" />
-              <span className="text-lg font-bold font-mono text-slate-200 tabular-nums leading-none">
+              <span className="text-base font-bold font-mono text-slate-200 tabular-nums leading-none">
                 {situation.balls}-{situation.strikes}
               </span>
               <OutsIndicator outs={situation.outs} size="md" />
             </div>
 
             <button
-              className="flex-1 flex flex-col items-center gap-2 p-4 hover:bg-slate-700/30 transition-colors border-l border-slate-700/40"
+              className="flex-1 flex flex-col items-center gap-1.5 p-3 hover:bg-slate-700/30 transition-colors border-l border-slate-700/40"
               onClick={() => onPlayerSelect(batterId)}
             >
               <img
                 src={playerHeadshotUrl(batterId)}
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-700"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-700"
                 alt=""
               />
               <div className="text-center">
@@ -144,8 +144,8 @@ export default function PlayDetailSheet({
         </div>
 
         {pitches.length > 0 && (
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest px-4 pt-3 pb-2">
+          <div className="bg-slate-900/70 border border-slate-700/50 rounded-2xl overflow-hidden">
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest px-3 pt-2.5 pb-2">
               At Bat View
             </div>
             <LiveAtBatVisual
@@ -167,7 +167,7 @@ export default function PlayDetailSheet({
               className="rounded-none border-x-0 border-b-0 border-t border-slate-700/50"
             />
             <div
-              className="px-4 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center"
+              className="px-3 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center"
             >
               {[
                 { color: '#c61b2b', label: 'Strike' },
@@ -192,10 +192,10 @@ export default function PlayDetailSheet({
 
         {pitches.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">
-              Pitch Sequence . {pitches.length} pitch{pitches.length !== 1 ? 'es' : ''}
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 px-1">
+              Pitch Sequence / {pitches.length} pitch{pitches.length !== 1 ? 'es' : ''}
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {pitches.map((pitch, index) => {
                 const desc = pitch.details?.description || '';
                 const type = pitch.details?.type?.description || '';
@@ -226,32 +226,37 @@ export default function PlayDetailSheet({
                 const rowBg = isInPlay
                   ? 'bg-blue-500/5 border-blue-500/10'
                   : 'border-transparent';
+                const countLabel = countAfter
+                  ? `${countAfter.balls ?? 0} - ${countAfter.strikes ?? 0}`
+                  : '';
 
                 return (
                   <div
                     key={index}
-                    className={`flex items-start gap-3 text-xs rounded-xl px-2.5 py-2.5 border ${rowBg}`}
+                    className={`flex items-center gap-3 rounded-2xl px-3 py-3 border bg-[#0f1a23] ${rowBg}`}
                   >
                     <div
-                      className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white mt-0.5 ${dotColor}`}
+                      className={`w-7 h-7 sm:w-12 sm:h-12 rounded-full flex-shrink-0 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white ring-2 ring-white/70 shadow-sm ${dotColor}`}
                     >
                       {index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-slate-200 leading-tight">{desc || '-'}</div>
-                      {type && (
-                        <div className="text-slate-600 text-[10px] mt-0.5">{type}</div>
-                      )}
+                      <div className="text-md sm:text-2xl font-extrabold text-white leading-tight">{desc || '-'}</div>
+                      <div className="mt-0.5 text-sm sm:text-xl text-white leading-tight">
+                        {mph && <span className="font-extrabold">{mph} mph</span>}
+                        {mph && type && <span className="text-white/80"> </span>}
+                        {type && <span className="font-normal text-white/90">{type}</span>}
+                      </div>
                       {(spinRate || breakIn) && (
-                        <div className="flex gap-3 mt-1">
+                        <div className="flex gap-3 mt-1 text-[10px]">
                           {spinRate && (
-                            <span className="text-[10px] text-slate-500">
+                            <span className="text-slate-500">
                               <span className="text-slate-400">{Math.round(spinRate)}</span>{' '}
                               rpm
                             </span>
                           )}
                           {breakIn && (
-                            <span className="text-[10px] text-slate-500">
+                            <span className="text-slate-500">
                               <span className="text-slate-400">
                                 {parseFloat(breakIn).toFixed(1)}
                               </span>
@@ -261,22 +266,12 @@ export default function PlayDetailSheet({
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      {mph && (
-                        <div>
-                          <span className="font-bold text-slate-300 font-mono">{mph}</span>
-                          <span className="text-slate-600 text-[9px] ml-0.5">mph</span>
-                          {effMph && mph !== effMph && (
-                            <span className="text-slate-600 text-[9px] ml-1">
-                              ({effMph} eff)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {countAfter && (
-                        <div className="font-mono text-[10px] text-slate-500">
-                          {countAfter.balls}-{countAfter.strikes}
-                        </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0 min-w-[3.5rem]">
+                      <div className="text-xl sm:text-2xl font-extrabold text-white tabular-nums">
+                        {countLabel}
+                      </div>
+                      {effMph && mph !== effMph && (
+                        <div className="text-[10px] text-slate-500 font-mono">{effMph} eff</div>
                       )}
                     </div>
                   </div>

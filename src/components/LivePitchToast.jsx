@@ -2,13 +2,13 @@ import { useEffect } from 'react';
 import { getPitchResultKind } from '../utils/liveRecentPlays';
 
 const RESULT_STYLES = {
-  strike: 'border-red-500/50 bg-red-500/15 text-red-200',
-  ball: 'border-green-500/50 bg-green-500/15 text-green-200',
-  in_play: 'border-blue-500/50 bg-blue-500/15 text-blue-200',
-  play: 'border-yellow-500/50 bg-yellow-500/15 text-yellow-100',
-  out: 'border-slate-400/50 bg-slate-500/15 text-slate-100',
-  runner: 'border-sky-500/50 bg-sky-500/15 text-sky-100',
-  misc: 'border-orange-500/50 bg-orange-500/15 text-orange-100',
+  strike: 'border-red-500/45 text-red-100',
+  ball: 'border-green-500/45 text-green-100',
+  in_play: 'border-blue-500/45 text-blue-100',
+  play: 'border-yellow-500/45 text-yellow-100',
+  out: 'border-slate-400/45 text-slate-100',
+  runner: 'border-sky-500/45 text-sky-100',
+  misc: 'border-orange-500/45 text-orange-100',
 };
 
 function toastFromPitch(pitch) {
@@ -36,13 +36,13 @@ export default function LivePitchToast({ item, pitch, onComplete }) {
 
   return (
     <div
-      className={`absolute left-1/2 -bottom-6 z-30 pointer-events-none pitch-toast-float w-[min(100vw,300px)] max-w-[calc(100vw-2rem)] rounded-xl border px-3 py-2 shadow-lg backdrop-blur-md ${style}`}
+      className={`absolute left-1/2 bottom-4 z-30 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border bg-slate-900/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur-md ${style}`}
       role="status"
       aria-live="polite"
     >
-      <p className="text-sm font-semibold leading-snug text-center">{toast.title}</p>
+      <p className="text-base font-extrabold leading-tight text-center">{toast.title}</p>
       {toast.subtitle && (
-        <p className="text-[11px] text-center opacity-80 mt-0.5 font-mono">
+        <p className="text-xs text-center text-slate-300 mt-1 font-mono">
           {toast.subtitle}
         </p>
       )}

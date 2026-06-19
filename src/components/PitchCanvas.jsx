@@ -9,6 +9,7 @@ import {
   buildPitchTrajectory,
   getPitchShader,
   drawAtBatStrikeZone,
+  drawAtBatHotZones,
   drawAtBatTrail,
   drawAtBatBall,
   drawAtBatSpinningBaseball,
@@ -132,6 +133,8 @@ export default function PitchCanvas({
   responsive = false,
   viewMode = 'full',
   showPitchTrails = false,
+  showHotZones = false,
+  usePurpleInPlayOuts = false,
   onPitchLanded,
   baseballModelUrl = null,
 }) {
@@ -243,11 +246,12 @@ export default function PitchCanvas({
   }, [baseballModelUrl, W, H, DPR]);
 
   const scaler = useMemo(() => {
+    const overrides = { usePurpleInPlayOuts };
     if (strikeZoneView) {
-      return createScaler(AT_BAT_FIXED_WIDTH, AT_BAT_STRIKE_ZONE_VIEW);
+      return createScaler(AT_BAT_FIXED_WIDTH, { ...AT_BAT_STRIKE_ZONE_VIEW, ...overrides });
     }
-    return createScaler(W);
-  }, [W, strikeZoneView]);
+    return createScaler(W, overrides);
+  }, [W, strikeZoneView, usePurpleInPlayOuts]);
 
   const pitches = useMemo(() => {
     const list = [];
@@ -271,7 +275,33 @@ export default function PitchCanvas({
     const ref = pitches.length
       ? pitches[pitches.length - 1]
       : refPitchForCrop;
-    return computeAtBatStrikeZoneCrop(scaler, ref);
+    const baseCrop = computeAtBatStrikeZoneCrop(scaler, ref);
+    const pitchPoints = pitches
+      .map((pitch) => {
+        const traj = buildPitchTrajectory(pitch, scaler);
+        return traj?.[traj.length - 1] ?? null;
+      })
+      .filter(Boolean);
+    if (!pitchPoints.length) return baseCrop;
+
+    const pad = 28;
+    let left = baseCrop.x;
+    let top = baseCrop.y;
+    let right = baseCrop.x + baseCrop.w;
+    let bottom = baseCrop.y + baseCrop.h;
+    for (const point of pitchPoints) {
+      const r = point[4] || scaler.ballRadius || 8;
+      left = Math.min(left, point[0] - r - pad);
+      right = Math.max(right, point[0] + r + pad);
+      top = Math.min(top, point[1] - r - pad);
+      bottom = Math.max(bottom, point[1] + r + pad);
+    }
+    return {
+      x: left,
+      y: top,
+      w: right - left,
+      h: bottom - top,
+    };
   }, [strikeZoneView, scaler, pitches, refPitchForCrop]);
 
   const trajectories = useMemo(
@@ -375,6 +405,7 @@ export default function PitchCanvas({
 
       const refPitch = pitchList[pitchList.length - 1] || refPitchForCrop;
       drawAtBatStrikeZone(ctx, refPitch, scaler);
+      if (showHotZones) drawAtBatHotZones(ctx, refPitch, scaler);
 
       for (let i = 0; i < pitchList.length - 1; i += 1) {
         const traj = trajList[i];
@@ -402,7 +433,7 @@ export default function PitchCanvas({
       }
       drawAtBatSpinningBaseball(ctx, animatedPoint, progress, scaler, pitch, 1);
     },
-    [W, H, scaler, setupCanvas, refPitchForCrop, crop, baseballModelUrl, renderModelBaseball],
+    [W, H, scaler, setupCanvas, refPitchForCrop, crop, baseballModelUrl, renderModelBaseball, showHotZones],
   );
 
   const animate = useCallback(

@@ -323,7 +323,7 @@ function LiveRecentPlayRow({
   }
 
   if (row.kind === 'action') {
-    const b = getPlayBadge(row.eventType);
+    const b = getPlayBadge(row.eventType, row);
     return (
       <LiveTimelineRow
         avatarScale={row.batterId ? 'player' : 'icon'}
@@ -347,7 +347,7 @@ function LiveRecentPlayRow({
   }
 
   if (row.kind === 'play') {
-    const b = getPlayBadge(row.eventType);
+    const b = getPlayBadge(row.eventType, row);
     const video =
       expandedVideoKey === row.key && pinnedVideo
         ? pinnedVideo

@@ -324,7 +324,7 @@ function SummaryPlayItemRow({
     return <SummaryPitchingChangeRow item={item} badge={pitchingChangeBadge} />;
   }
 
-  const badge = getPlayBadge(item.eventType);
+  const badge = getPlayBadge(item.eventType, item);
   const scoreLine = item.isScoring
     ? formatUpdatedScore(awayAbbr, homeAbbr, item.awayScore, item.homeScore)
     : null;

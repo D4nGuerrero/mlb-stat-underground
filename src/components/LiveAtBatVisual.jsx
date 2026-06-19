@@ -75,6 +75,8 @@ function latestPitchRowKey(playEvents, currentPlay) {
 
 const FIELD_ASPECT = 315 / 270;
 const STRIKE_ZONE_FIELD_WIDTH_PCT = (AT_BAT_STRIKE_ZONE_CLIP.width / 1158) * 100;
+// Raise/lower the strike-zone canvas within the stadium field. Smaller = higher, larger = lower.
+const STRIKE_ZONE_FIELD_TOP_PCT = 34.2;
 const BATTER_FIELD_WIDTH_PCT = 17.1278;
 const BATTER_FIELD_TOP_PCT = 24.5;
 const BATTER_FIELD_SIDE_OFFSET_PCT = 26.5;
@@ -98,6 +100,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   strikeZoneBottomImageUrl = null,
   showPitchToast = true,
   showPitchTrails = true,
+  showHotZones = false,
+  usePurpleInPlayOuts = false,
   className = '',
 }) {
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
@@ -117,6 +121,16 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     if (!showPitchToast) return;
     const item = buildLiveToastItem(playEvents, currentPlay);
     if (!item || !item.id?.startsWith('play-') || lastToastIdRef.current === item.id) return;
+
+    const lastPitch = [...(playEvents ?? [])].reverse().find((event) => event?.isPitch);
+    const lastPitchId = lastPitch?.playId ?? lastPitch?.pitchNumber;
+    if (
+      lastPitchId != null &&
+      String(lastLandedPitchIdRef.current) !== String(lastPitchId)
+    ) {
+      return;
+    }
+
     lastToastIdRef.current = item.id;
     const nextToast = {
       ...item,
@@ -299,8 +313,11 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
 
           <div
             // Tune these percentages to move the zone within the fixed 1158x869 field coordinate space.
-            className="absolute left-1/2 top-[36%] -translate-x-1/2"
-            style={{ width: `${STRIKE_ZONE_FIELD_WIDTH_PCT}%` }}
+            className="absolute left-1/2 -translate-x-1/2"
+            style={{
+              top: `${STRIKE_ZONE_FIELD_TOP_PCT}%`,
+              width: `${STRIKE_ZONE_FIELD_WIDTH_PCT}%`,
+            }}
           >
             <PitchCanvas
               playEvents={stablePlayEvents}
@@ -312,6 +329,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
               height={AT_BAT_STRIKE_ZONE_CLIP.height}
               responsive
               showPitchTrails={showPitchTrails}
+              showHotZones={showHotZones}
+              usePurpleInPlayOuts={usePurpleInPlayOuts}
               onPitchLanded={showPitchToast ? showLandedPitchToast : undefined}
               baseballModelUrl={baseballModelUrl}
               className="mx-auto shrink-0"

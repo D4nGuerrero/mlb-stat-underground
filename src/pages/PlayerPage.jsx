@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, useLocation, useNavigationType, Link } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, getTeamAbbr, spotracPlayerUrl } from '../utils/mlbHelpers';
@@ -21,6 +21,10 @@ import {
   scrollStickyTeamAbbrCell,
   scrollStickyHead,
   scrollStickyCell,
+  scrollStickyDateHead,
+  scrollStickyDateCell,
+  scrollStickyTeamAfterDateHead,
+  scrollStickyTeamAfterDateCell,
   scrollStatHead,
   scrollStatCell,
   TABLE_SCROLL_BODY,
@@ -29,7 +33,7 @@ import {
   stickyCol1Props,
   LoadingSpinner,
 } from '../components/ui';
-import { TABLE_TEXT_CLASS, TABLE_MIN_W, TABLE_YEAR_COL_CLASS } from '../theme/tableTheme';
+import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -1701,50 +1705,24 @@ function GameLogGlossary({ items }) {
 
 function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs available' }) {
   const navigate = useNavigate();
-  const oppMeasureRef = useRef(null);
-  const [oppColWidth, setOppColWidth] = useState(null);
   const monthSections = useMemo(() => buildGameLogMonthSections(rows, logGroup), [rows, logGroup]);
   const glossary = logGroup === 'pitching' ? GAME_LOG_PITCH_GLOSSARY : GAME_LOG_HIT_GLOSSARY;
-
-  useLayoutEffect(() => {
-    const oppCell = oppMeasureRef.current;
-    if (!oppCell) return;
-
-    const syncOppWidth = () => {
-      const w = Math.ceil(oppCell.getBoundingClientRect().width);
-      if (w > 0) setOppColWidth(w);
-    };
-
-    syncOppWidth();
-    const ro = new ResizeObserver(syncOppWidth);
-    ro.observe(oppCell);
-    return () => ro.disconnect();
-  }, [rows, cols, logGroup]);
 
   if (!rows?.length) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
 
-  const oppStickyHead = scrollStickyHead('bg-[#121827]', {
-    stickTop: true,
-    widthClass: `${TABLE_YEAR_COL_CLASS} w-full box-border`,
-  });
-  const oppStickyCell = scrollStickyCell('bg-[#121827]', {
-    widthClass: `${TABLE_YEAR_COL_CLASS} w-full box-border`,
-  });
-  const monthStickyCell = scrollStickyCell('bg-[#182030]', {
-    widthClass: `${TABLE_YEAR_COL_CLASS} w-full box-border`,
-    footer: true,
-  });
+  const dateStickyHead = scrollStickyDateHead('bg-[#121827]', { stickTop: true });
+  const dateStickyCell = scrollStickyDateCell('bg-[#121827]');
+  const oppStickyHead = scrollStickyTeamAfterDateHead('bg-[#121827]', { stickTop: true });
+  const oppStickyCell = scrollStickyTeamAfterDateCell('bg-[#121827]');
+  const monthStickyDateCell = scrollStickyDateCell('bg-[#182030]', { footer: true });
+  const monthStickyOppCell = scrollStickyTeamAfterDateCell('bg-[#182030]', { footer: true });
 
   return (
     <div>
       <div className={TABLE_SCROLL_BODY}>
         <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS}`}>
-          <colgroup>
-            <col />
-            <col style={oppColWidth ? { width: oppColWidth } : undefined} />
-          </colgroup>
           <thead>
             <tr className="text-slate-500 border-b border-slate-700/60">
               {cols.map((c, i) => (
@@ -1753,7 +1731,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                   className={[
                     'font-normal whitespace-nowrap bg-[#121827]',
                     i === 0
-                      ? `${TABLE_YEAR_COL_CLASS} px-3 py-2 text-left`
+                      ? dateStickyHead
                       : i === 1
                         ? oppStickyHead
                         : scrollStatHead('text-center', { align: 'text-center', stickTop: true }),
@@ -1765,7 +1743,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
             </tr>
           </thead>
           <tbody>
-            {monthSections.map((section, sectionIdx) => (
+            {monthSections.map((section) => (
               <Fragment key={section.key}>
                 {section.rows.map((row, i) => (
                   <tr
@@ -1788,14 +1766,12 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                   >
                     {cols.map((c, j) => {
                       const value = row[c.key] ?? row.stat?.[c.key];
-                      const measureOpp = sectionIdx === 0 && i === 0 && j === 1;
                       return (
                         <td
                           key={c.key}
-                          ref={measureOpp ? oppMeasureRef : undefined}
                           className={[
                             j === 0
-                              ? `${TABLE_YEAR_COL_CLASS} px-3 py-2 font-semibold text-slate-200`
+                              ? `${dateStickyCell} font-semibold text-slate-200`
                               : j === 1
                                 ? oppStickyCell
                                 : scrollStatCell('', { align: 'text-center' }),
@@ -1817,9 +1793,9 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                           key={c.key}
                           className={[
                             j === 0
-                              ? `${TABLE_YEAR_COL_CLASS} px-3 py-2 bg-[#182030]`
+                              ? monthStickyDateCell
                               : j === 1
-                                ? `${monthStickyCell} text-[10px] font-bold text-slate-300 uppercase tracking-widest`
+                                ? `${monthStickyOppCell} text-[10px] font-bold text-slate-300 uppercase tracking-widest`
                                 : scrollStatCell('text-slate-400 font-semibold', { align: 'text-center' }),
                           ].join(' ')}
                         >

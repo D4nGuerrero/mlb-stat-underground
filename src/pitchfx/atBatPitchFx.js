@@ -24,6 +24,7 @@ export const AT_BAT_BALL_COLORS = {
   ballColorBall: 'rgba(9, 131, 20, 1)',
   ballColorInPlay: 'rgba(0, 98, 227, 1)',
   ballColorInPlayOuts: 'rgba(119, 86, 179, 1)',
+  ballColorInPlayOutsDefault: 'rgba(0, 98, 227, 1)',
   ballStrokeColor: 'rgba(255, 255, 255, 0.8)',
   ballTextColor: 'rgba(255, 255, 255, 1)',
 };
@@ -52,7 +53,7 @@ export const AT_BAT_PITCH_TRAIL_COLORS = {
  * LiveAtBatVisual positions this viewport as a percentage of MLB's 1158px
  * field width, so changing width here also changes the live zone's visual size.
  */
-export const AT_BAT_STRIKE_ZONE_CLIP = { width: 340, height: 290 };
+export const AT_BAT_STRIKE_ZONE_CLIP = { width: 390, height: 320 };
 
 /** Internal render width — must match MLB `fixed_width: 960` or the zone shrinks. */
 export const AT_BAT_FIXED_WIDTH = 960;
@@ -65,6 +66,39 @@ export const AT_BAT_STRIKE_ZONE_VIEW = {
   fontSize: 92,
   ballSize: AT_BAT_STRIKE_ZONE_BALL_SIZE,
   canvasDensity: 1,
+};
+
+/**
+ * Easy strike-zone visual tuning.
+ *
+ * `outer*` controls the large chase/outlier rectangle around the rulebook zone.
+ * `inner*` controls the actual strike zone and 3x3 grid.
+ */
+export const AT_BAT_STRIKE_ZONE_STYLE = {
+  outerFillColor: 'rgba(255, 255, 255, 1)',
+  outerFillOpacity: 0.20,
+  outerBorderColor: 'rgba(255, 255, 255, 0.42)',
+  outerBorderOpacity: 0,
+  innerFillColor: 'rgba(255, 255, 255, 1)',
+  innerFillOpacity: 0.5,
+  innerGridColor: 'rgba(0, 0, 0, 1)',
+  innerGridOpacity: 0.7,
+  gridStroke: 1,
+};
+
+export const AT_BAT_HOT_ZONE_STYLE = {
+  opacity: 0.22,
+  colors: [
+    'rgba(239, 68, 68, 1)',
+    'rgba(245, 158, 11, 1)',
+    'rgba(239, 68, 68, 1)',
+    'rgba(245, 158, 11, 1)',
+    'rgba(15, 23, 42, 1)',
+    'rgba(245, 158, 11, 1)',
+    'rgba(59, 130, 246, 1)',
+    'rgba(59, 130, 246, 1)',
+    'rgba(59, 130, 246, 1)',
+  ],
 };
 
 const DEFAULT_CONFIG = {
@@ -93,12 +127,15 @@ const DEFAULT_CONFIG = {
   strikeZone: { szBot: 1.47, szTop: 3.55 },
   defaultStrikeZone: false,
   szBorder: 8,
-  hotColdZoneGridStroke: 1,
-  hotColdZoneColorOpacity: 0.5,
-  hotColdZoneGridOpacity: 1,
-  hotColdZoneDefaultColor: 'rgba(255, 255, 255, 1)',
-  hotColdZoneGridColor: 'rgba(0, 0, 0, 1)',
-  hotColdZoneBorderColor: 'rgba(0, 0, 0, 1)',
+  hotColdZoneGridStroke: AT_BAT_STRIKE_ZONE_STYLE.gridStroke,
+  hotColdZoneColorOpacity: AT_BAT_STRIKE_ZONE_STYLE.innerFillOpacity,
+  hotColdZoneGridOpacity: AT_BAT_STRIKE_ZONE_STYLE.innerGridOpacity,
+  hotColdZoneDefaultColor: AT_BAT_STRIKE_ZONE_STYLE.innerFillColor,
+  hotColdZoneGridColor: AT_BAT_STRIKE_ZONE_STYLE.innerGridColor,
+  hotColdZoneBorderColor: AT_BAT_STRIKE_ZONE_STYLE.outerBorderColor,
+  hotColdZoneOuterColorOpacity: AT_BAT_STRIKE_ZONE_STYLE.outerFillOpacity,
+  hotColdZoneOuterGridOpacity: AT_BAT_STRIKE_ZONE_STYLE.outerBorderOpacity,
+  hotColdZoneOuterDefaultColor: AT_BAT_STRIKE_ZONE_STYLE.outerFillColor,
   numberOfAnimationPoints: 1000 / 40,
   timing: 1000 / 36,
   perspective: 'catcher',
@@ -429,13 +466,15 @@ export function getPitchShader(pitch, scalers) {
   else if (pitch.isInPlay) {
     ballKey = 'ballColorInPlay';
     if ((pitch.code === 'X' || pitch.code === 'Y') && scalers.ballColorInPlayOuts) {
-      ballKey = 'ballColorInPlayOuts';
+      ballKey = scalers.usePurpleInPlayOuts ? 'ballColorInPlayOuts' : 'ballColorInPlayOutsDefault';
     }
   }
 
   const fill = getPitchTrailColor(pitch);
-  const ball = pitch.ballColor || pitch.details?.ballColor
-    || (ballKey ? scalers[ballKey] : fill);
+  const isInPlayOut = pitch.isInPlay && (pitch.code === 'X' || pitch.code === 'Y');
+  const ball = isInPlayOut && ballKey
+    ? scalers[ballKey]
+    : pitch.ballColor || pitch.details?.ballColor || (ballKey ? scalers[ballKey] : fill);
 
   return {
     fill,
@@ -460,11 +499,11 @@ export function drawAtBatStrikeZone(ctx, pitch, scalers) {
 
   ctx.save();
   ctx.shadowColor = 'transparent';
-  ctx.globalAlpha = scalers.hotColdZoneColorOpacity;
+  ctx.globalAlpha = scalers.hotColdZoneOuterColorOpacity ?? scalers.hotColdZoneColorOpacity;
   ctx.lineWidth = strokeWidth;
-  ctx.fillStyle = scalers.hotColdZoneDefaultColor;
+  ctx.fillStyle = scalers.hotColdZoneOuterDefaultColor ?? scalers.hotColdZoneDefaultColor;
   ctx.fillRect(x, y, boundX, boundY);
-  ctx.globalAlpha = scalers.hotColdZoneGridOpacity;
+  ctx.globalAlpha = scalers.hotColdZoneOuterGridOpacity ?? scalers.hotColdZoneGridOpacity;
   ctx.strokeStyle = scalers.hotColdZoneBorderColor;
   ctx.strokeRect(x, y, boundX, boundY);
 
@@ -493,6 +532,25 @@ export function drawAtBatStrikeZone(ctx, pitch, scalers) {
   ctx.restore();
 
   return { topLeft, bottomRight };
+}
+
+export function drawAtBatHotZones(ctx, pitch, scalers, style = AT_BAT_HOT_ZONE_STYLE) {
+  const { topLeft, bottomRight } = strikeZoneCorners(pitch, scalers);
+  const zoneW = bottomRight[0] - topLeft[0];
+  const zoneH = bottomRight[1] - topLeft[1];
+  const cellW = zoneW / 3;
+  const cellH = zoneH / 3;
+
+  ctx.save();
+  ctx.globalAlpha = style.opacity ?? AT_BAT_HOT_ZONE_STYLE.opacity;
+  for (let row = 0; row < 3; row += 1) {
+    for (let col = 0; col < 3; col += 1) {
+      const idx = row * 3 + col;
+      ctx.fillStyle = style.colors?.[idx] ?? AT_BAT_HOT_ZONE_STYLE.colors[idx];
+      ctx.fillRect(topLeft[0] + col * cellW, topLeft[1] + row * cellH, cellW, cellH);
+    }
+  }
+  ctx.restore();
 }
 
 export function drawAtBatTrail(ctx, points, shader, fromIdx, toIdx) {

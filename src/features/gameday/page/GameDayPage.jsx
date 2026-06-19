@@ -40,12 +40,14 @@ import { useGameContent } from '../hooks/useGameContent';
 import { useLiveRecentPlays } from '../hooks/useLiveRecentPlays';
 import { usePreviewLineups } from '../hooks/usePreviewLineups';
 import { useVsStats } from '../hooks/useVsStats';
+import { useLocalStorageState } from '../../../hooks/useStorageState';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const LIVE_DIFF_POLL_MS = 2_500;
 const LIVE_FULL_FEED_REFRESH_MS = 4_000;
 const SHOW_PLAY_DETAIL_PITCH_TRAILS = false;
+const GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY = 'gameday:inPlayOutsPurple';
 
 async function fetchLiveGameFeed(gamePk) {
   const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
@@ -108,6 +110,10 @@ const PLAY_BADGE = {
   pop_out: {
     label: 'Pop Out',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
+  },
+    strikeout_double_play: {
+    label: 'Striekout Double Play',
+     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   grounded_into_double_play: {
     label: 'Grounded Into DP',
@@ -180,9 +186,38 @@ const PLAY_BADGE = {
  
 };
 
-const getPlayBadge = (et) =>
-  PLAY_BADGE[et] || {
-    label: et?.replace(/_/g, ' ') || '—',
+function inferFieldOutBadge(context) {
+  const play = context?.play ?? context;
+  let trajectory = '';
+  const events = play?.playEvents ?? [];
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    if (events[i]?.hitData?.trajectory) {
+      trajectory = events[i].hitData.trajectory;
+      break;
+    }
+  }
+  const text = [
+    play?.result?.event,
+    play?.result?.description,
+    context?.description,
+    trajectory,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (/ground|grounds|grounder|bunt_grounder/.test(text)) return PLAY_BADGE.groundout;
+  if (/fly|flies|flied|fly_ball/.test(text)) return PLAY_BADGE.flyout;
+  if (/line|lines|lined|line_drive/.test(text)) return PLAY_BADGE.lineout;
+  if (/pop|pops|popped|popup/.test(text)) return PLAY_BADGE.pop_out;
+  return PLAY_BADGE.field_out;
+}
+
+const getPlayBadge = (et, context = null) =>
+  et === 'field_out'
+    ? inferFieldOutBadge(context)
+    : PLAY_BADGE[et] || {
+    label: et || '—',
     cls: 'bg-slate-700/40 text-slate-400 border-slate-700/40',
   };
 
@@ -211,6 +246,85 @@ const HIT_TRAJECTORY_LABELS = {
   bunt_line_drive: 'Bunt LD',
   bunt_popup: 'Bunt Popup',
 };
+
+function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange }) {
+  const buttonRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 8 });
+
+  const toggleMenu = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPos({
+        top: rect.bottom + 6,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    setOpen((value) => !value);
+  };
+
+  const choose = (value) => {
+    onUsePurpleInPlayOutsChange(value);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative flex flex-shrink-0 border-b border-slate-700/60">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={toggleMenu}
+        className="flex w-11 items-center justify-center text-slate-400 hover:bg-slate-800/50 hover:text-white transition-colors focus:outline-none"
+        aria-label="Gameday display options"
+        aria-expanded={open}
+        title="Gameday display options"
+      >
+        <i className="fa-solid fa-ellipsis-h text-sm" aria-hidden />
+      </button>
+
+      {open && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[90] cursor-default"
+            aria-label="Close Gameday display options"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="fixed z-[91] w-56 rounded-2xl border border-slate-700 bg-slate-950/95 p-1 shadow-2xl shadow-black/40 backdrop-blur"
+            style={{ top: menuPos.top, right: menuPos.right }}
+          >
+            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              Live View
+            </div>
+            <button
+              type="button"
+              onClick={() => choose(false)}
+              className={[
+                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
+                !usePurpleInPlayOuts ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
+              ].join(' ')}
+            >
+              <span>In-play outs blue</span>
+              {!usePurpleInPlayOuts && <i className={`fa-solid fa-check text-${THEME_COLOR}-300`} aria-hidden />}
+            </button>
+            <button
+              type="button"
+              onClick={() => choose(true)}
+              className={[
+                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
+                usePurpleInPlayOuts ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
+              ].join(' ')}
+            >
+              <span>In-play outs purple</span>
+              {usePurpleInPlayOuts && <i className="fa-solid fa-check text-purple-300" aria-hidden />}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const exitVeloTone = (mph) => {
   if (mph == null || Number.isNaN(mph)) return 'text-slate-400';
@@ -615,6 +729,10 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('live');
   const [boxScoreSide, setBoxScoreSide] = useState('away');
+  const [usePurpleInPlayOuts, setUsePurpleInPlayOuts] = useLocalStorageState(
+    GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY,
+    false,
+  );
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
   const summaryScrollYRef = useRef(0);
@@ -773,8 +891,17 @@ function GamePageContent({ gamePk, navigate, location }) {
     return () => document.body.classList.remove('game-page-open');
   }, []);
 
+  const isLiveForBackdrop = feed?.gameData?.status?.abstractGameState === 'Live';
+  const [backdropClock, setBackdropClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isLiveForBackdrop) return undefined;
+    const id = setInterval(() => setBackdropClock(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [isLiveForBackdrop]);
+
   const venueId = feed?.gameData?.venue?.id;
-  const exteriorTimeOfDay = stadiumTimeOfDay(feed?.gameData?.gameDate);
+  const exteriorTimeOfDay = stadiumTimeOfDay(isLiveForBackdrop ? backdropClock : feed?.gameData?.gameDate);
   const exteriorSrc = venueId ? stadiumExteriorUrl(venueId, exteriorTimeOfDay) : null;
   const [exteriorFailed, setExteriorFailed] = useState(() => !exteriorSrc);
 
@@ -887,6 +1014,13 @@ function GamePageContent({ gamePk, navigate, location }) {
   const homeRuns = ls?.teams?.home?.runs ?? 0;
   const awayWins = isFinal && awayRuns > homeRuns;
   const homeWins = isFinal && homeRuns > awayRuns;
+  const finalMessage = isFinal
+    ? awayRuns === homeRuns
+      ? `${away.abbreviation} tied ${home.abbreviation}`
+      : awayRuns > homeRuns
+        ? `${away.abbreviation} defeated ${home.abbreviation}, ${awayRuns}-${homeRuns}`
+        : `${home.abbreviation} defeated ${away.abbreviation}, ${homeRuns}-${awayRuns}`
+    : null;
   const gamePlayers = {
     ...(ld.boxscore?.teams?.away?.players || {}),
     ...(ld.boxscore?.teams?.home?.players || {}),
@@ -907,10 +1041,23 @@ function GamePageContent({ gamePk, navigate, location }) {
     player?.name?.split(' ').slice(-1)[0] ||
     '';
 
+  const formatBatterContribution = (stat) => {
+    const parts = [];
+    if (Number(stat?.rbi) > 0) parts.push(`${stat.rbi} RBI`);
+    if (Number(stat?.runs) > 0) parts.push(`${stat.runs} R`);
+    if (Number(stat?.homeRuns) > 0) parts.push(`${stat.homeRuns} HR`);
+    if (Number(stat?.doubles) > 0) parts.push(`${stat.doubles} 2B`);
+    if (Number(stat?.triples) > 0) parts.push(`${stat.triples} 3B`);
+    if (Number(stat?.baseOnBalls) > 0) parts.push(`${stat.baseOnBalls} BB`);
+    if (Number(stat?.stolenBases) > 0) parts.push(`${stat.stolenBases} SB`);
+    return parts.join(', ');
+  };
+
   const formatCurrentBattingLine = (player) => {
     if (!player?.id) return null;
     const stat = getBatterGameStat(player.id);
-    return `${getLastName(player)}: ${stat?.hits ?? 0} - ${stat?.atBats ?? 0}`;
+    const extras = formatBatterContribution(stat);
+    return `${getLastName(player)}: ${stat?.hits ?? 0}-${stat?.atBats ?? 0}${extras ? ` | ${extras}` : ''}`;
   };
 
   const vsMatchupLine =
@@ -963,12 +1110,22 @@ function GamePageContent({ gamePk, navigate, location }) {
   const currentTab = !isLive && activeTab === 'live' ? 'boxscore' : activeTab;
 
   const gameTabBar = (
-    <TabBar
-      variant="page"
-      tabs={tabList}
-      activeKey={currentTab}
-      onChange={setActiveTab}
-    />
+    <div className="flex items-stretch">
+      <TabBar
+        variant="page"
+        tabs={tabList}
+        activeKey={currentTab}
+        onChange={setActiveTab}
+        className="min-w-0 flex-1"
+        listClassName="border-b-0"
+      />
+      {isLive && (
+        <GamedayOptionsMenu
+          usePurpleInPlayOuts={usePurpleInPlayOuts}
+          onUsePurpleInPlayOutsChange={setUsePurpleInPlayOuts}
+        />
+      )}
+    </div>
   );
 
   const liveVisualPanel = isLive && ls ? (
@@ -1049,7 +1206,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         <LiveAtBatVisual
           venueId={venueId}
           exteriorFailed={exteriorFailed}
-          gameDateTime={gd.datetime?.dateTime}
+          gameDateTime={isLiveForBackdrop ? backdropClock : gd.datetime?.dateTime}
           currentPlay={currentPlay}
           playEvents={allPitchEvents}
           szTop={szTop}
@@ -1061,6 +1218,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           season={previewSeason}
           onRecentRowReady={revealLiveRecentRow}
           baseballModelUrl={assetUrl('baseball-centered.glb')}
+          showHotZones
+          usePurpleInPlayOuts={usePurpleInPlayOuts}
           className="xl:h-full xl:min-h-0"
         />
       </div>
@@ -1070,6 +1229,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         dueUpBatters={dueUpBatters}
         dueUpHalfLabel={dueUpHalfLabel}
         dueUpInningOrdinal={dueUpInningOrdinal}
+        finalMessage={finalMessage}
         getBatterGameStat={getBatterGameStat}
         getPitcherGameStat={getPitcherGameStat}
         linescore={ls}

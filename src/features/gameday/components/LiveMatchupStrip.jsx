@@ -11,10 +11,7 @@ import {
 } from '../../../components/LiveGameIndicators';
 
 function LiveMatchupPlayerCard({
-  accent = false,
   fallbackSrc,
-  imageSrc,
-  label,
   name,
   onSelect,
   playerId,
@@ -54,11 +51,26 @@ function LiveMatchupPlayerCard({
   );
 }
 
+function formatBatterContribution(stat) {
+  if (!stat) return '0-0';
+  const parts = [];
+  const line = `${stat.hits ?? 0}-${stat.atBats ?? 0}`;
+  if (Number(stat.rbi) > 0) parts.push(`${stat.rbi} RBI`);
+  if (Number(stat.runs) > 0) parts.push(`${stat.runs} R`);
+  if (Number(stat.homeRuns) > 0) parts.push(`${stat.homeRuns} HR`);
+  if (Number(stat.doubles) > 0) parts.push(`${stat.doubles} 2B`);
+  if (Number(stat.triples) > 0) parts.push(`${stat.triples} 3B`);
+  if (Number(stat.baseOnBalls) > 0) parts.push(`${stat.baseOnBalls} BB`);
+  if (Number(stat.stolenBases) > 0) parts.push(`${stat.stolenBases} SB`);
+  return parts.length ? `${line} | ${parts.join(', ')}` : line;
+}
+
 export default function LiveMatchupStrip({
   currentPlay,
   dueUpBatters,
   dueUpHalfLabel,
   dueUpInningOrdinal,
+  finalMessage = null,
   getBatterGameStat,
   getPitcherGameStat,
   linescore,
@@ -110,7 +122,16 @@ function formatPitcherStat(s) {
 }
   return (
     <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden ">
-      {showDueUpMatchup ? (
+      {finalMessage ? (
+        <div className="px-4 py-5 text-center">
+          <div className="text-[9px] text-slate-500 uppercase tracking-[0.22em] font-semibold">
+            Final
+          </div>
+          <div className={`mt-1 text-sm font-bold text-${THEME_COLOR}-300`}>
+            {finalMessage}
+          </div>
+        </div>
+      ) : showDueUpMatchup ? (
         <div>
           <div className="px-4 pt-3 text-center">
             <div className={`text-[9px] text-${THEME_COLOR}-300 uppercase tracking-[0.22em] font-semibold`}>
@@ -131,7 +152,7 @@ function formatPitcherStat(s) {
                 name={batter.name || batter.fullName}
                 onSelect={onPlayerSelect}
                 playerId={batter.id}
-                stat={null}
+                stat={formatBatterContribution(getBatterGameStat(batter.id))}
               />
             ))}
           </div>
