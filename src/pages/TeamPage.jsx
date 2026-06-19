@@ -1766,6 +1766,7 @@ function TeamPageContent({ teamId }) {
   const recordText = teamRecord
     ? `${teamRecord.wins ?? 0}–${teamRecord.losses ?? 0}`
     : null;
+  const heroBackgroundTeamId = teamInfo?.parentOrgId ?? teamId;
 
   return (
     <div className="max-w-4xl mx-auto sm:px-6 sm:py-8">
@@ -1776,9 +1777,9 @@ function TeamPageContent({ teamId }) {
           {/* TEAM BANNER */}
           <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-[#121827]" />
           <img
-            src={teamLogoUrl(teamId)}
+            src={teamLogoUrl(heroBackgroundTeamId)}
             alt=""
-            className="absolute -right-4 sm:right-6 top-1/2 -translate-y-1/2 w-36 sm:w-52 h-36 sm:h-52 object-contain opacity-[0.12] pointer-events-none"
+            className="absolute -right-4 sm:right-6 top-1/2 -translate-y-1/2 w-36 sm:w-52 h-36 sm:h-52 object-contain opacity-[.75] pointer-events-none"
             onError={(e) => (e.target.style.display = 'none')}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/80 pointer-events-none" />

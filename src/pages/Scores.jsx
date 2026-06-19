@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
@@ -11,7 +12,7 @@ import {
   OutsIndicator,
 } from '../components/LiveGameIndicators';
 import ScoresListGameRow from '../components/ScoresListGameRow';
-import { SegmentedControl, SwipeableCarousel, BaseballSpinner, LoadingSpinner } from '../components/ui';
+import { SegmentedControl, SwipeableCarousel, LoadingSpinner } from '../components/ui';
 
 const MIN_DATE = new Date('2024-03-01');
 const WINDOW_PAST = 60;
@@ -47,8 +48,19 @@ const buildDateRange = (min, max) => {
 const getMaxDate = () => addDays(new Date(), FUTURE_DAYS);
 
 const VIEW_MODE_KEY = 'mlbScoresViewMode';
+const SCOREBOARD_LEAGUE_KEY = 'mlbScoresLeagueMode';
 const SCORES_DATE_KEY = 'mlbScoresSelectedDate';
 const VIEW_MODES = new Set(['card', 'list', 'grid']);
+const LEAGUE_OPTIONS = [
+  { value: 'mlb', label: 'MLB', shortLabel: 'MLB', sportQuery: 'sportId=1', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg' },
+  { value: 'aaa', label: 'Triple-A', shortLabel: 'AAA', sportQuery: 'sportId=11', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
+  { value: 'aa', label: 'Double-A', shortLabel: 'AA', sportQuery: 'sportId=12', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
+  { value: 'high-a', label: 'High-A', shortLabel: 'A+', sportQuery: 'sportId=13', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
+  { value: 'single-a', label: 'Single-A', shortLabel: 'A', sportQuery: 'sportId=14', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
+  { value: 'rookie', label: 'Rookie', shortLabel: 'Rookie', sportQuery: 'sportId=16', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
+];
+const LEAGUE_CONFIG_BY_VALUE = Object.fromEntries(LEAGUE_OPTIONS.map((option) => [option.value, option]));
+const LEAGUE_MODES = new Set(LEAGUE_OPTIONS.map((option) => option.value));
 
 const resolveScoresCenterDate = (returnDate) => {
   if (returnDate) return startOfDay(new Date(returnDate));
@@ -69,6 +81,62 @@ const loadViewMode = () => {
     return 'card';
   }
 };
+
+const loadScoreboardLeague = () => {
+  try {
+    const saved = localStorage.getItem(SCOREBOARD_LEAGUE_KEY);
+    return LEAGUE_MODES.has(saved) ? saved : 'mlb';
+  } catch {
+    return 'mlb';
+  }
+};
+
+function ScoreboardLeagueBadge({ league, value, onChange }) {
+  return (
+    <Menu as="div" className="relative">
+      <MenuButton
+        type="button"
+        className="group flex items-center gap-2 text-right outline-none transition-opacity hover:opacity-90 active:scale-[0.985]"
+        aria-label="Change scoreboard league level"
+      >
+        <span className="font-sans font-bold text-2xl sm:text-3xl tracking-tight text-white">
+          {league.shortLabel}
+        </span>
+        <img src={league.logo} alt="" className="h-20 w-20 sm:h-9 sm:w-9 object-contain" draggable={false} />
+      </MenuButton>
+      <MenuItems
+        anchor="bottom end"
+        transition
+        className="z-50 mt-2 w-52 rounded-2xl border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-black/40 backdrop-blur focus:outline-none transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+      >
+        {LEAGUE_OPTIONS.map((option) => {
+          const selected = option.value === value;
+          return (
+            <MenuItem key={option.value}>
+              {({ focus, close }) => (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    close();
+                  }}
+                  className={[
+                    'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
+                    focus ? 'bg-slate-800 text-white' : 'text-slate-300',
+                    selected ? `text-${THEME_COLOR}-300` : '',
+                  ].join(' ')}
+                >
+                  <span className="font-bold">{option.label}</span>
+                  {selected && <i className={`fa-solid fa-check text-xs text-${THEME_COLOR}-300`} aria-hidden />}
+                </button>
+              )}
+            </MenuItem>
+          );
+        })}
+      </MenuItems>
+    </Menu>
+  );
+}
 
 const computeDateWindow = (center, maxDate) => {
   const start = addDays(center, -WINDOW_PAST);
@@ -110,14 +178,15 @@ export default function Scores() {
   const selectedIndexRef = useRef(initialIndex);
   const lastIndexRef = useRef(initialIndex);
   const scrollPrefetchIndexRef = useRef(initialIndex);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialReady, setIsInitialReady] = useState(false);
   const [viewMode, setViewMode] = useState(loadViewMode);
+  const [scoreboardLeague, setScoreboardLeague] = useState(loadScoreboardLeague);
   const carouselRef = useRef(null);
   const [carouselStartIndex, setCarouselStartIndex] = useState(selectedIndex);
   const returnDateAppliedRef = useRef(false);
 
   const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
+  const selectedLeague = LEAGUE_CONFIG_BY_VALUE[scoreboardLeague] ?? LEAGUE_CONFIG_BY_VALUE.mlb;
 
   useEffect(() => {
     selectedIndexRef.current = selectedIndex;
@@ -138,6 +207,10 @@ export default function Scores() {
     });
   };
 
+  const getLeagueDateKey = useCallback((date) => (
+    `${scoreboardLeague}:${getDateStr(date)}`
+  ), [scoreboardLeague]);
+
   const isToday = (date) => isSameDay(date, new Date());
   const isAtMinDate = isSameDay(selectedDate, MIN_DATE);
   const isAtMaxDate = isSameDay(selectedDate, maxDate);
@@ -145,24 +218,25 @@ export default function Scores() {
   const fetchGamesForDate = useCallback(async (date, { force = false } = {}) => {
     if (!date) return;
     const dateStr = getDateStr(date);
+    const cacheKey = getLeagueDateKey(date);
 
-    if (!force && Object.prototype.hasOwnProperty.call(gamesCacheRef.current, dateStr)) {
-      return gamesCacheRef.current[dateStr];
+    if (!force && Object.prototype.hasOwnProperty.call(gamesCacheRef.current, cacheKey)) {
+      return gamesCacheRef.current[cacheKey];
     }
 
-    const inflight = fetchInflightRef.current.get(dateStr);
+    const inflight = fetchInflightRef.current.get(cacheKey);
     if (!force && inflight) return inflight;
 
-    setLoadingDates((prev) => new Set(prev).add(dateStr));
+    setLoadingDates((prev) => new Set(prev).add(cacheKey));
     const request = (async () => {
       try {
         const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
+          `https://statsapi.mlb.com/api/v1/schedule?${selectedLeague.sportQuery}&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
         );
         const data = await res.json();
         const dayGames = data.dates?.[0]?.games || [];
-        gamesCacheRef.current[dateStr] = dayGames;
-        setGamesMap((prev) => ({ ...prev, [dateStr]: dayGames }));
+        gamesCacheRef.current[cacheKey] = dayGames;
+        setGamesMap((prev) => ({ ...prev, [cacheKey]: dayGames }));
         const currentDate = dates[selectedIndexRef.current];
         if (currentDate && isSameDay(date, currentDate)) {
           setLiveCount(dayGames.filter((g) => g.status.abstractGameState === 'Live').length);
@@ -170,22 +244,22 @@ export default function Scores() {
         return dayGames;
       } catch (err) {
         console.error(err);
-        gamesCacheRef.current[dateStr] = [];
-        setGamesMap((prev) => ({ ...prev, [dateStr]: [] }));
+        gamesCacheRef.current[cacheKey] = [];
+        setGamesMap((prev) => ({ ...prev, [cacheKey]: [] }));
         return [];
       } finally {
-        fetchInflightRef.current.delete(dateStr);
+        fetchInflightRef.current.delete(cacheKey);
         setLoadingDates((prev) => {
           const next = new Set(prev);
-          next.delete(dateStr);
+          next.delete(cacheKey);
           return next;
         });
       }
     })();
 
-    fetchInflightRef.current.set(dateStr, request);
+    fetchInflightRef.current.set(cacheKey, request);
     return request;
-  }, [dates]);
+  }, [dates, getLeagueDateKey, selectedLeague.sportQuery]);
 
   const prefetchAroundIndex = useCallback((index, { ahead = 0, behind = 0 } = {}) => {
     const span = 4;
@@ -217,8 +291,8 @@ export default function Scores() {
 
     const date = dates[index];
     if (date) {
-      const dateStr = getDateStr(date);
-      const cached = gamesCacheRef.current[dateStr];
+      const cacheKey = getLeagueDateKey(date);
+      const cached = gamesCacheRef.current[cacheKey];
       if (cached) {
         setLiveCount(cached.filter((g) => g.status.abstractGameState === 'Live').length);
       } else {
@@ -230,7 +304,7 @@ export default function Scores() {
       ahead: direction >= 0 ? 3 : 0,
       behind: direction <= 0 ? 3 : 0,
     });
-  }, [dates, prefetchAroundIndex, fetchGamesForDate]);
+  }, [dates, prefetchAroundIndex, fetchGamesForDate, getLeagueDateKey]);
 
   const handleCarouselSelect = useCallback((index) => {
     applyIndexChange(index);
@@ -302,14 +376,6 @@ export default function Scores() {
     prefetchAroundIndex(idx);
   };
 
-  const refreshCurrentDay = async (manual = false) => {
-    if (manual) {
-      setIsRefreshing(true);
-      setTimeout(() => setIsRefreshing(false), 600);
-    }
-    await fetchGamesForDate(selectedDate, { force: true });
-  };
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -336,6 +402,17 @@ export default function Scores() {
   }, [viewMode]);
 
   useEffect(() => {
+    localStorage.setItem(SCOREBOARD_LEAGUE_KEY, scoreboardLeague);
+  }, [scoreboardLeague]);
+
+  useEffect(() => {
+    if (!isInitialReady) return;
+    void fetchGamesForDate(selectedDate, { force: false });
+    prefetchAroundIndex(selectedIndex, { ahead: 4, behind: 4 });
+    requestAnimationFrame(() => carouselRef.current?.scrollTo(selectedIndex, false));
+  }, [scoreboardLeague, isInitialReady, selectedDate, selectedIndex, fetchGamesForDate, prefetchAroundIndex]);
+
+  useEffect(() => {
     try {
       sessionStorage.setItem(SCORES_DATE_KEY, selectedDate.toISOString());
     } catch {
@@ -343,9 +420,9 @@ export default function Scores() {
     }
   }, [selectedDate]);
 
-  const activeDateStr = getDateStr(selectedDate);
-  const activeGamesSignature = Object.prototype.hasOwnProperty.call(gamesMap, activeDateStr)
-    ? String(gamesMap[activeDateStr]?.length ?? 0)
+  const activeDateKey = getLeagueDateKey(selectedDate);
+  const activeGamesSignature = Object.prototype.hasOwnProperty.call(gamesMap, activeDateKey)
+    ? String(gamesMap[activeDateKey]?.length ?? 0)
     : 'loading';
 
   useEffect(() => {
@@ -412,9 +489,11 @@ export default function Scores() {
 
   const sortGames = (games) => [...(games ?? [])].sort((a, b) => {
     const isFav = (g) => {
-      const awayId = Number(g.teams?.away?.team?.id);
-      const homeId = Number(g.teams?.home?.team?.id);
-      return favoriteTeams.includes(awayId) || favoriteTeams.includes(homeId);
+      const away = g.teams?.away?.team;
+      const home = g.teams?.home?.team;
+      const awayIds = [Number(away?.id), Number(away?.parentOrgId)].filter(Number.isFinite);
+      const homeIds = [Number(home?.id), Number(home?.parentOrgId)].filter(Number.isFinite);
+      return [...awayIds, ...homeIds].some((id) => favoriteTeams.includes(id));
     };
     const fa = isFav(a);
     const fb = isFav(b);
@@ -435,9 +514,9 @@ export default function Scores() {
   });
 
   const renderGamesForDate = (date, { isActive = false, isAdjacent = false } = {}) => {
-    const dateStr = getDateStr(date);
-    const hasLoaded = Object.prototype.hasOwnProperty.call(gamesMap, dateStr);
-    const games = gamesMap[dateStr];
+    const dateKey = getLeagueDateKey(date);
+    const hasLoaded = Object.prototype.hasOwnProperty.call(gamesMap, dateKey);
+    const games = gamesMap[dateKey];
     const sortedGames = sortGames(games ?? []);
 
     if (!hasLoaded) {
@@ -785,9 +864,9 @@ export default function Scores() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto  sm:px-6 py-5 sm:py-8">
+    <div className="max-w-7xl mx-auto  sm:px-6  sm:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 px-4 sm:px-0 sm:mb-8 gap-2">
+      <div className="flex items-center justify-between  px-4 sm:px-0 sm:mb-8 gap-2">
         <div>
           <h1 className="font-display text-3xl sm:text-4xl tracking-tighter">Scoreboard</h1>
           <p className="text-slate-400 text-sm sm:text-base ">
@@ -796,12 +875,11 @@ export default function Scores() {
 
           
         </div>
-        {liveCount > 0 && (
-          <div className="flex items-center gap-2 text-sm px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 whitespace-nowrap">
-            <span className="w-2 h-2 rounded-full bg-red-400 live-pulse" />
-            {liveCount} Live
-          </div>
-        )}
+        <ScoreboardLeagueBadge
+          league={selectedLeague}
+          value={scoreboardLeague}
+          onChange={setScoreboardLeague}
+        />
       </div>
 
       {/* Date Navigation Bar */}
@@ -852,18 +930,6 @@ export default function Scores() {
             <i className="fa-solid fa-chevron-right" />
           </button>
         </div>
-
-        <button
-          onClick={() => refreshCurrentDay(true)}
-          className="flex items-center gap-x-1.5 text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-2xl text-slate-400 hover:text-slate-200 transition-all active:scale-[0.985]"
-        >
-          {isRefreshing ? (
-            <BaseballSpinner size="xs" inline />
-          ) : (
-            <i className="fa-solid fa-rotate text-xs" />
-          )}
-          <span className="hidden xs:inline">Refresh</span>
-        </button>
       </div>
 
       {/* Games Grid */}
@@ -873,8 +939,8 @@ export default function Scores() {
           <div className="font-semibold flex items-center gap-x-2">
             <i className={`fa-solid fa-baseball-ball text-${THEME_COLOR}-400`} />
             {isToday(selectedDate)
-              ? "Today's Games"
-              : `Games on ${formatDisplayDate(selectedDate)}`}
+              ? `Today's ${selectedLeague.label} Games`
+              : `${selectedLeague.label} games on ${formatDisplayDate(selectedDate)}`}
           </div>
           <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1 gap-0.5 ">
             <SegmentedControl
@@ -908,7 +974,7 @@ export default function Scores() {
             onScrollIndexChange={handleCarouselScroll}
             hideUntilReady
             autoHeight
-            reinitDeps={viewMode}
+            reinitDeps={`${viewMode}-${scoreboardLeague}`}
             scrollDuration={32}
             slideGap={20}
             showArrows={false}

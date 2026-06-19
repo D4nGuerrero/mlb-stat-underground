@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
-import { Menu, MenuButton, MenuItems } from '@headlessui/react';
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { THEME_COLOR } from '../../../theme/theme.js';
 import { BaseballSpinner } from '../../../components/ui';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -30,6 +30,7 @@ import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../../../utils
 import { assetUrl } from '../../../utils/baseUrl.js';
 import LiveRecentPlaysTimeline from '../../../components/LiveRecentPlaysTimeline';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
+import ScoresListGameRow from '../../../components/ScoresListGameRow';
 import {
   BaseDiamondIndicator,
   OutsIndicator,
@@ -53,6 +54,8 @@ const LIVE_DIFF_POLL_MS = 2_500;
 const LIVE_FULL_FEED_REFRESH_MS = 4_000;
 const SHOW_PLAY_DETAIL_PITCH_TRAILS = false;
 const GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY = 'gameday:inPlayOutsPurple';
+const MLB_LEAGUE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg';
+const MILB_LEAGUE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg';
 
 async function fetchLiveGameFeed(gamePk) {
   const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
@@ -818,11 +821,65 @@ function buildCalendarWeeks(monthDate) {
   });
 }
 
-async function fetchGamesForDate(dateStr) {
-  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team(record),linescore`);
+function leagueLogoForSportId(sportId) {
+  return Number(sportId) === 1 ? MLB_LEAGUE_LOGO : MILB_LEAGUE_LOGO;
+}
+
+async function fetchGamesForDate(dateStr, sportId = 1) {
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=${sportId || 1}&date=${dateStr}&hydrate=team(record),linescore`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   return dedupeDaySchedule((json.dates ?? []).flatMap((d) => d.games ?? []));
+}
+
+function GamedayGamePicker({ games, currentGamePk, loading, onSelect, label = 'Gameday' }) {
+  const count = games.length;
+  return (
+    <Menu as="div" className="relative justify-self-center">
+      <MenuButton
+        type="button"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-bold text-sm text-slate-100 transition-colors hover:bg-slate-800/70 active:text-white"
+      >
+        <span>{label}</span>
+        <i className="fa-solid fa-chevron-down text-[10px] text-slate-400" aria-hidden />
+      </MenuButton>
+      <MenuItems
+        anchor="bottom"
+        transition
+        className="z-50 mt-2 w-[min(100vw-1rem,20rem)] max-h-[min(70vh,22rem)] overflow-y-auto rounded-xl bg-slate-900 border border-slate-700 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+      >
+        {loading && (
+          <div className="px-4 py-3 text-xs text-slate-500">Loading games...</div>
+        )}
+        {!loading && count === 0 && (
+          <div className="px-4 py-3 text-xs text-slate-500">No other games today</div>
+        )}
+        {!loading && count > 0 && (
+          <div className="divide-y divide-slate-800/60">
+            {games.map((game) => {
+              const isCurrent = String(game.gamePk) === String(currentGamePk);
+              return (
+                <MenuItem key={game.gamePk} disabled={isCurrent} as="div">
+                  {({ focus, close }) => (
+                    <ScoresListGameRow
+                      game={game}
+                      compact
+                      isSelected={isCurrent}
+                      className={focus && !isCurrent ? 'bg-slate-800/60' : ''}
+                      onClick={isCurrent ? undefined : () => {
+                        close();
+                        onSelect(game.gamePk);
+                      }}
+                    />
+                  )}
+                </MenuItem>
+              );
+            })}
+          </div>
+        )}
+      </MenuItems>
+    </Menu>
+  );
 }
 
 function GamedayDayPicker({
@@ -1116,10 +1173,14 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [pinnedVideo, setPinnedVideo] = useState(null);
   const [previewTab, setPreviewTab] = useState('preview');
   const officialDate = feed?.gameData?.datetime?.officialDate;
+  const gameSportId = feed?.gameData?.teams?.home?.sport?.id
+    ?? feed?.gameData?.teams?.away?.sport?.id
+    ?? 1;
+  const leagueLogoSrc = leagueLogoForSportId(gameSportId);
   const scoringCount = feed?.liveData?.plays?.scoringPlays?.length ?? 0;
   const batterId = feed?.liveData?.linescore?.offense?.batter?.id;
   const pitcherId = feed?.liveData?.linescore?.defense?.pitcher?.id;
-  const { daySchedule, dayScheduleLoading } = useDaySchedule(officialDate, dedupeDaySchedule);
+  const { daySchedule, dayScheduleLoading } = useDaySchedule(officialDate, dedupeDaySchedule, gameSportId);
   const { gameContent } = useGameContent(gamePk, scoringCount);
   const { previewLineups, previewLineupsLoading } = usePreviewLineups(
     gamePk,
@@ -1144,7 +1205,7 @@ function GamePageContent({ gamePk, navigate, location }) {
 
   const goToGamedayDate = useCallback(async (dateStr) => {
     try {
-      const gamesForDate = await fetchGamesForDate(dateStr);
+      const gamesForDate = await fetchGamesForDate(dateStr, gameSportId);
       const nextGamePk = gamesForDate[0]?.gamePk;
       if (nextGamePk) {
         navigate(`/game/${nextGamePk}`, { state: { returnDate: dateStr } });
@@ -1154,7 +1215,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     } catch {
       navigate('/', { state: { returnDate: dateStr } });
     }
-  }, [navigate]);
+  }, [navigate, gameSportId]);
 
   const shiftGamedayDate = useCallback((days) => {
     void goToGamedayDate(addDaysToDateString(officialDate, days));
@@ -1849,13 +1910,11 @@ function GamePageContent({ gamePk, navigate, location }) {
           <i className="fa-solid fa-arrow-left text-xs" />
           <span>Scores</span>
         </button>
-        <GamedayDayPicker
+        <GamedayGamePicker
           games={daySchedule}
           currentGamePk={gamePk}
           loading={dayScheduleLoading}
           onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
-          onDateSelect={goToGamedayDate}
-          dateValue={officialDate}
         />
         <div className="justify-self-end flex items-center justify-end min-w-[4.5rem]">
           {isLive ? (
@@ -1868,8 +1927,8 @@ function GamePageContent({ gamePk, navigate, location }) {
             </div>
           ) : (
             <img
-              src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg"
-              alt="MLB"
+              src={leagueLogoSrc}
+              alt={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
               className="w-6 h-6 object-contain"
             />
           )}
@@ -1911,7 +1970,7 @@ function GamePageContent({ gamePk, navigate, location }) {
 
       <div className={`px-0 sm:px-3 ${(isLive && currentTab === 'live') ? 'xl:h-full xl:min-h-0 xl:overflow-hidden' : ''} ${isFinal ? 'xl:h-full xl:min-h-0 xl:overflow-hidden xl:flex xl:flex-col' : ''}`}>
         {!isPreview && !(isLive && currentTab === 'live') && (
-          <div className="mb-5">
+          <div className="sm:mb-5">
             <DesktopGameStrip
               games={daySchedule}
               currentGamePk={gamePk}
