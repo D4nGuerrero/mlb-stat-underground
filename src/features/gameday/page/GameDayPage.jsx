@@ -1753,7 +1753,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   ) : null;
 
   const desktopLiveBoxScorePanel = ld.boxscore ? (
-    <div className="bg-slate-900 border border-slate-700/60 p-2.5 2xl:p-3 rounded-2xl h-full min-h-0 overflow-y-auto">
+    <div className="gameday-scroll-rail bg-slate-900 border border-slate-700/60 p-2.5 2xl:p-3 rounded-2xl h-full min-h-0 overflow-y-auto">
       <div className="flex items-center justify-between gap-3 mb-2 shrink-0">
         <span className="text-[10px] text-slate-500 uppercase tracking-widest">
           Box Score
@@ -1822,7 +1822,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         </div>
       </section>
 
-      <aside className="min-w-0 min-h-0 overflow-y-auto">
+      <aside className="gameday-scroll-rail min-w-0 min-h-0 overflow-y-auto rounded-2xl">
         {summaryPanel}
       </aside>
     </div>
@@ -2158,7 +2158,7 @@ function GamePageContent({ gamePk, navigate, location }) {
                 {liveVisualPanel}
               </div>
 
-              <div className="xl:order-1 xl:h-full xl:min-h-0 xl:overflow-y-auto">
+              <div className="gameday-scroll-rail xl:order-1 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:rounded-2xl">
                 {recentPlaysPanel}
               </div>
 
