@@ -1028,7 +1028,7 @@ function DesktopGameStrip({
 
     el.addEventListener('wheel', handleGamesWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleGamesWheel);
-  }, []);
+  }, [games.length, loading]);
 
   return (
     <div className="hidden xl:grid xl:grid-cols-[7.25rem_minmax(0,1fr)] xl:gap-2 xl:min-h-[5.25rem] xl:max-h-[5.25rem]">
