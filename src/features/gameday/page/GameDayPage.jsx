@@ -56,6 +56,11 @@ const SHOW_PLAY_DETAIL_PITCH_TRAILS = false;
 const GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY = 'gameday:inPlayOutsPurple';
 const MLB_LEAGUE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg';
 const MILB_LEAGUE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg';
+const LMB_SPORT_ID = 23;
+const MILB_SPORT_IDS = new Set([11, 12, 13, 14, 16]);
+const LMB_FIELD_BACKGROUND_URL = 'https://lmb.com.mx/_next/image?url=%2Fimages%2Ffield.webp&w=1200&q=75';
+const milbStadiumTopUrl = (timeOfDay = 'day') =>
+  `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/default-milb@2x.jpg`;
 
 async function fetchLiveGameFeed(gamePk) {
   const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
@@ -1176,6 +1181,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const gameSportId = feed?.gameData?.teams?.home?.sport?.id
     ?? feed?.gameData?.teams?.away?.sport?.id
     ?? 1;
+  const singleFieldImageUrl = Number(gameSportId) === LMB_SPORT_ID ? LMB_FIELD_BACKGROUND_URL : null;
   const leagueLogoSrc = leagueLogoForSportId(gameSportId);
   const scoringCount = feed?.liveData?.plays?.scoringPlays?.length ?? 0;
   const batterId = feed?.liveData?.linescore?.offense?.batter?.id;
@@ -1368,6 +1374,9 @@ function GamePageContent({ gamePk, navigate, location }) {
 
   const venueId = feed?.gameData?.venue?.id;
   const exteriorTimeOfDay = stadiumTimeOfDay(isLiveForBackdrop ? backdropClock : feed?.gameData?.gameDate);
+  const strikeZoneTopImageUrl = MILB_SPORT_IDS.has(Number(gameSportId))
+    ? milbStadiumTopUrl(exteriorTimeOfDay)
+    : null;
   const exteriorSrc = venueId ? stadiumExteriorUrl(venueId, exteriorTimeOfDay) : null;
   const [exteriorFailed, setExteriorFailed] = useState(() => !exteriorSrc);
 
@@ -1684,6 +1693,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           season={previewSeason}
           onRecentRowReady={revealLiveRecentRow}
           baseballModelUrl={assetUrl('baseball-centered.glb')}
+          singleFieldImageUrl={singleFieldImageUrl}
+          strikeZoneTopImageUrl={strikeZoneTopImageUrl}
           showHotZones
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           immersiveField
@@ -2252,6 +2263,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           gameDateTime={gd.datetime?.dateTime}
           season={previewSeason}
           baseballModelUrl={assetUrl('baseball-centered.glb')}
+          singleFieldImageUrl={singleFieldImageUrl}
+          strikeZoneTopImageUrl={strikeZoneTopImageUrl}
           onPlayerSelect={handlePlayDetailPlayerSelect}
           getPlayBadge={getPlayBadge}
           getPlayHitData={getPlayHitData}

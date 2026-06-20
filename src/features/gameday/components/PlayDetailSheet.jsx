@@ -24,6 +24,8 @@ export default function PlayDetailSheet({
   gameDateTime,
   season,
   baseballModelUrl,
+  singleFieldImageUrl = null,
+  strikeZoneTopImageUrl = null,
 }) {
   if (!selectedPlay) return null;
 
@@ -164,6 +166,8 @@ export default function PlayDetailSheet({
               showPitchTrails={showPitchTrails}
               showPitchToast={false}
               baseballModelUrl={baseballModelUrl}
+              singleFieldImageUrl={singleFieldImageUrl}
+              strikeZoneTopImageUrl={strikeZoneTopImageUrl}
               className="rounded-none border-x-0 border-b-0 border-t border-slate-700/50"
             />
             <div

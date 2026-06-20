@@ -98,6 +98,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   baseballModelUrl = null,
   strikeZoneTopImageUrl = null,
   strikeZoneBottomImageUrl = null,
+  singleFieldImageUrl = null,
   showPitchToast = true,
   showPitchTrails = true,
   showHotZones = false,
@@ -187,6 +188,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     strikeZoneTopImageUrl ??
     (venueId && !exteriorFailed ? stadiumExteriorUrl(venueId, exteriorTimeOfDay) : null);
   const strikeZoneBottomSrc = strikeZoneBottomImageUrl ?? stadiumInfieldUrl();
+  const useSingleFieldImage = Boolean(singleFieldImageUrl);
   const batterFieldSideStyle =
     String(batSide).toUpperCase() === 'L'
       ? { right: `${BATTER_FIELD_SIDE_OFFSET_PCT}%` }
@@ -246,32 +248,47 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
           className={fieldLayerClass}
           style={{
             aspectRatio: `${FIELD_ASPECT}`,
-            backgroundColor: !strikeZoneTopSrc ? '#0f172a' : undefined,
+            backgroundColor: !strikeZoneTopSrc && !singleFieldImageUrl ? '#0f172a' : undefined,
           }}
         >
-          <div
-            className="absolute inset-x-0 top-0 h-auto bg-no-repeat"
-            style={{
-              backgroundImage: strikeZoneTopSrc ? `url(${strikeZoneTopSrc})` : undefined,
-              // Preserve image ratio while the oversized field layer scales up/down.
-              backgroundSize: 'calc(100% + 1px) auto',
-              aspectRatio: '4 / 3',
-              // backgroundPosition: '50% 0%',
-              backgroundPositionX: '50%, 50%',
-              backgroundPositionY: '2%, 100%'
-            
-            }}
-          />
-          <div
-            className="absolute inset-x-0 bottom-0  bg-no-repeat"
-            style={{
-              backgroundImage: strikeZoneBottomSrc ? `url(${strikeZoneBottomSrc})` : undefined,
-              backgroundSize: 'calc(100% + 1px) auto',
-              backgroundPosition: '50% 74.1%',
-              aspectRatio: 4 /3,
-            
-            }}
-          />
+          {useSingleFieldImage ? (
+            <div
+              className="absolute inset-0 bg-no-repeat"
+              style={{
+                backgroundImage: `url(${singleFieldImageUrl})`,
+                // LMB uses one full-field image. Keep its ratio intact and crop inside the same MLB field viewport.
+                // backgroundSize: 'cover',
+                backgroundPosition: '20% -70%',
+                backgroundSize: '105% auto',
+              }}
+            />
+          ) : (
+            <>
+              <div
+                className="absolute inset-x-0 top-0 h-auto bg-no-repeat"
+                style={{
+                  backgroundImage: strikeZoneTopSrc ? `url(${strikeZoneTopSrc})` : undefined,
+                  // Preserve image ratio while the oversized field layer scales up/down.
+                  backgroundSize: 'calc(100% + 1px) auto',
+                  aspectRatio: '4 / 3',
+                  // backgroundPosition: '50% 0%',
+                  backgroundPositionX: '50%, 50%',
+                  backgroundPositionY: '2%, 100%'
+                
+                }}
+              />
+              <div
+                className="absolute inset-x-0 bottom-0  bg-no-repeat"
+                style={{
+                  backgroundImage: strikeZoneBottomSrc ? `url(${strikeZoneBottomSrc})` : undefined,
+                  backgroundSize: 'calc(100% + 1px) auto',
+                  backgroundPosition: '50% 74.1%',
+                  aspectRatio: 4 /3,
+                
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
 
