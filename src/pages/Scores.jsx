@@ -124,6 +124,7 @@ export default function Scores() {
   const [isInitialReady, setIsInitialReady] = useState(false);
   const [viewMode, setViewMode] = useState(loadViewMode);
   const [scoreboardLeague, setScoreboardLeague] = useState(loadScoreboardLeague);
+  const [expandedCardGamePk, setExpandedCardGamePk] = useState(null);
   const carouselRef = useRef(null);
   const [carouselStartIndex, setCarouselStartIndex] = useState(selectedIndex);
   const returnDateAppliedRef = useRef(false);
@@ -157,6 +158,15 @@ export default function Scores() {
   const isToday = (date) => isSameDay(date, new Date());
   const isAtMinDate = isSameDay(selectedDate, MIN_DATE);
   const isAtMaxDate = isSameDay(selectedDate, maxDate);
+
+  const buildGameState = (date, extra = {}) => ({
+    returnDate: date.toISOString(),
+    ...extra,
+  });
+
+  const buildWatchUrl = (gamePk) => (
+    `https://www.mlb.com/tv/g${gamePk}?callsign=rsn&affiliateId=GAMEDAY`
+  );
 
   const fetchGamesForDate = useCallback(async (date, { force = false } = {}) => {
     if (!date) return;
@@ -465,6 +475,106 @@ export default function Scores() {
     return 0;
   });
 
+  const renderExpandedLinescore = (game, { isFinal }) => {
+    const ls = game.linescore;
+    if (!ls?.innings?.length) {
+      return (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/30 px-3 py-3 text-xs text-slate-500">
+          Line score will appear when game data is available.
+        </div>
+      );
+    }
+
+    const inningCount = Math.max(9, ...ls.innings.map((inning) => Number(inning.num) || 0));
+    const inningNums = Array.from({ length: inningCount }, (_, index) => index + 1);
+    const inningByNum = new Map(ls.innings.map((inning) => [Number(inning.num), inning]));
+    const away = game.teams.away;
+    const home = game.teams.home;
+    const awayScore = Number(away.score ?? 0);
+    const homeScore = Number(home.score ?? 0);
+    const homeWalkoffOrNoBottom = isFinal && homeScore > awayScore;
+
+    const inningRun = (side, inningNum) => {
+      const inning = inningByNum.get(inningNum);
+      const runs = inning?.[side]?.runs;
+      if (side === 'home' && inningNum === 9 && runs == null && homeWalkoffOrNoBottom) return 'X';
+      return runs ?? '';
+    };
+
+    const total = (side, key, fallback) => ls.teams?.[side]?.[key] ?? fallback ?? 0;
+    const lineGridStyle = {
+      gridTemplateColumns: `1.9rem repeat(${inningNums.length}, minmax(0, 1fr)) 0.35rem 1.35rem 1.35rem 1.35rem`,
+    };
+    const rowClass = 'grid items-center gap-1';
+
+    return (
+      <div className="overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/25 px-2 py-3 sm:px-3">
+        <div className="w-full space-y-2 font-mono text-[11px] tabular-nums sm:text-xs">
+          <div className={`${rowClass} text-center text-[10px] font-bold text-slate-500 sm:text-xs`} style={lineGridStyle}>
+            <span />
+            {inningNums.map((num) => <span key={num}>{num}</span>)}
+            <span />
+            <span className="text-slate-300">R</span>
+            <span className="text-slate-300">H</span>
+            <span className="text-slate-300">E</span>
+          </div>
+          {[
+            { side: 'away', team: away.team, score: awayScore },
+            { side: 'home', team: home.team, score: homeScore },
+          ].map(({ side, team, score }) => (
+            <div key={side} className={`${rowClass} text-center text-slate-200`} style={lineGridStyle}>
+              <span className="text-left font-black text-white">{team.abbreviation}</span>
+              {inningNums.map((num) => <span key={num}>{inningRun(side, num)}</span>)}
+              <span className="h-7 border-l border-slate-700/80" />
+              <span className="font-black text-white">{score}</span>
+              <span>{total(side, 'hits')}</span>
+              <span>{total(side, 'errors')}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderExpandedCardActions = (game, date) => {
+    const linkBase = 'flex-1 rounded-xl px-3 py-2 text-center text-sm font-black text-blue-400 transition-colors hover:bg-slate-800/70 hover:text-blue-300';
+    const gameState = buildGameState(date);
+
+    return (
+      <div className="grid grid-cols-3 gap-2 border-t border-slate-800 pt-3">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(`/game/${game.gamePk}`, { state: gameState });
+          }}
+          className={linkBase}
+        >
+          Gameday
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(`/game/${game.gamePk}`, { state: buildGameState(date, { activeTab: 'boxscore' }) });
+          }}
+          className={linkBase}
+        >
+          Box
+        </button>
+        <a
+          href={buildWatchUrl(game.gamePk)}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className={linkBase}
+        >
+          Watch
+        </a>
+      </div>
+    );
+  };
+
   const renderGamesForDate = (date, { isActive = false, isAdjacent = false } = {}) => {
     const dateKey = getLeagueDateKey(date);
     const hasLoaded = Object.prototype.hasOwnProperty.call(gamesMap, dateKey);
@@ -659,11 +769,27 @@ export default function Scores() {
           const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
           const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
           const noHitAlerts = getNoHitAlert(game);
+          const expandedKey = `${dateKey}:${game.gamePk}`;
+          const isExpanded = expandedCardGamePk === expandedKey;
           return (
             <div
               key={game.gamePk}
-              onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
-              className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-4 cursor-pointer transition-all hover:-translate-y-0.5 active:scale-[0.985]"
+              onClick={() => setExpandedCardGamePk((current) => (current === expandedKey ? null : expandedKey))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setExpandedCardGamePk((current) => (current === expandedKey ? null : expandedKey));
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isExpanded}
+              className={[
+                'bg-slate-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.985]',
+                isExpanded
+                  ? `border-${THEME_COLOR}-500/50 shadow-lg shadow-black/20`
+                  : 'border-slate-800 hover:border-slate-600 hover:-translate-y-0.5',
+              ].join(' ')}
             >
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] text-slate-600 truncate">{game.venue?.name}</span>
@@ -695,6 +821,10 @@ export default function Scores() {
                         : '—'}
                     </span>
                   )}
+                  <i
+                    className={`fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    aria-hidden
+                  />
                 </div>
               </div>
               <div className="flex items-center justify-between mb-2">
@@ -732,6 +862,12 @@ export default function Scores() {
                   <span>{compactPlayerName(game.teams.away.probablePitcher)}</span>
                   <span className="text-slate-700">vs</span>
                   <span>{compactPlayerName(game.teams.home.probablePitcher)}</span>
+                </div>
+              )}
+              {isExpanded && (
+                <div className="mt-4 space-y-3" onClick={(event) => event.stopPropagation()}>
+                  {renderExpandedLinescore(game, { isFinal })}
+                  {renderExpandedCardActions(game, date)}
                 </div>
               )}
             </div>

@@ -1380,7 +1380,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [error, setError] = useState(null);
   const [selectedPlay, setSelectedPlay] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
-  const [activeTab, setActiveTab] = useState('live');
+  const [activeTab, setActiveTab] = useState(() => location.state?.activeTab ?? 'live');
   const [leftRailView, setLeftRailView] = useState('live');
   const [boxScoreSide, setBoxScoreSide] = useState('away');
   const [usePurpleInPlayOuts, setUsePurpleInPlayOuts] = useLocalStorageState(
