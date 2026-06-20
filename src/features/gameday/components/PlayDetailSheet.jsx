@@ -31,6 +31,12 @@ export default function PlayDetailSheet({
 
   const play = selectedPlay;
   const pitches = (play.playEvents || []).filter((event) => event.isPitch);
+  const playScored = Boolean(play.about?.isScoringPlay || play.about?.hasScoreChange);
+  const playEventsWithContext = (play.playEvents || []).map((event) => ({
+    ...event,
+    __playScored: playScored,
+    __playContext: play,
+  }));
   const hitData = getPlayHitData(play);
   const badge = getPlayBadge(play.result?.eventType, play);
   const szT = pitches[pitches.length - 1]?.pitchData?.strikeZoneTop || 3.55;
@@ -52,7 +58,7 @@ export default function PlayDetailSheet({
       open
       onClose={closeSheet}
       size="lg"
-      panelClassName="max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#101827] border-slate-700/70 p-0"
+      panelClassName="max-h-[88vh] sm:max-h-[92vh] overflow-y-auto bg-[#101827] border-slate-700/10 p-0"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#101827] z-10">
         <div className="w-10 h-1 rounded-full bg-slate-600" />
@@ -155,7 +161,7 @@ export default function PlayDetailSheet({
               exteriorFailed={exteriorFailed}
               gameDateTime={gameDateTime}
               currentPlay={play}
-              playEvents={play.playEvents || []}
+              playEvents={playEventsWithContext}
               szTop={szT}
               szBot={szB}
               gamePk={gamePk}
@@ -165,6 +171,7 @@ export default function PlayDetailSheet({
               season={season}
               showPitchTrails={showPitchTrails}
               showPitchToast={false}
+              usePurpleInPlayOuts
               baseballModelUrl={baseballModelUrl}
               singleFieldImageUrl={singleFieldImageUrl}
               strikeZoneTopImageUrl={strikeZoneTopImageUrl}
@@ -218,17 +225,22 @@ export default function PlayDetailSheet({
                 const isInPlay = desc.toLowerCase().includes('in play');
                 const isFoul = desc.toLowerCase().includes('foul');
                 const isSwingK = desc.toLowerCase().includes('swinging');
+                const isInPlayOut = isInPlay && (pitch.details?.code === 'X' || pitch.details?.code === 'Y') && !playScored;
                 const dotColor = isInPlay
-                  ? 'bg-blue-500'
+                  ? isInPlayOut
+                    ? 'bg-[#7756b3]'
+                    : 'bg-blue-500'
                   : isBall
                     ? 'bg-green-500'
                     : isFoul
-                      ? 'bg-slate-400'
+                      ? 'bg-red-500'
                       : isSwingK
-                        ? 'bg-orange-400'
+                        ? 'bg-red-500'
                         : 'bg-red-500';
                 const rowBg = isInPlay
-                  ? 'bg-blue-500/5 border-blue-500/10'
+                  ? isInPlayOut
+                    ? 'bg-purple-500/5 border-purple-500/10'
+                    : 'bg-blue-500/5 border-blue-500/10'
                   : 'border-transparent';
                 const countLabel = countAfter
                   ? `${countAfter.balls ?? 0} - ${countAfter.strikes ?? 0}`
@@ -237,15 +249,15 @@ export default function PlayDetailSheet({
                 return (
                   <div
                     key={index}
-                    className={`flex items-center gap-3 rounded-2xl px-3 py-3 border bg-[#0f1a23] ${rowBg}`}
+                    className={`flex items-center gap-3 rounded-2xl  border bg-[#0f1a23] ${rowBg}`}
                   >
                     <div
-                      className={`w-7 h-7 sm:w-12 sm:h-12 rounded-full flex-shrink-0 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white ring-2 ring-white/70 shadow-sm ${dotColor}`}
+                      className={`w-7 h-7  rounded-full flex-shrink-0 flex items-center justify-center text-2xl  font-extrabold text-white ring-2 ring-white/80 shadow-sm ${dotColor}`}
                     >
                       {index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-md sm:text-2xl font-extrabold text-white leading-tight">{desc || '-'}</div>
+                      <div className="text-sm sm:text-2xl font-extrabold text-white leading-tight">{desc || '-'}</div>
                       <div className="mt-0.5 text-sm sm:text-xl text-white leading-tight">
                         {mph && <span className="font-extrabold">{mph} mph</span>}
                         {mph && type && <span className="text-white/80"> </span>}
@@ -253,12 +265,12 @@ export default function PlayDetailSheet({
                       </div>
                       {(spinRate || breakIn) && (
                         <div className="flex gap-3 mt-1 text-[10px]">
-                          {spinRate && (
+                          {/* {spinRate && (
                             <span className="text-slate-500">
                               <span className="text-slate-400">{Math.round(spinRate)}</span>{' '}
                               rpm
                             </span>
-                          )}
+                          )} */}
                           {breakIn && (
                             <span className="text-slate-500">
                               <span className="text-slate-400">

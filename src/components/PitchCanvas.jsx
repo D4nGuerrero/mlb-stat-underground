@@ -260,6 +260,14 @@ export default function PitchCanvas({
       if (!ev.isPitch || !hasRenderablePitchData(ev.pitchData)) continue;
       n += 1;
       const pitch = buildPitchFromEvent(ev, n);
+      if (pitch) {
+        pitch.playScored = Boolean(
+          ev.__playScored ||
+          ev.__playContext?.about?.isScoringPlay ||
+          ev.__playContext?.about?.hasScoreChange ||
+          ev.__playContext?.result?.isScoringPlay,
+        );
+      }
       if (pitch) list.push(pitch);
     }
     return list;

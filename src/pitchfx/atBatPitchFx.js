@@ -465,13 +465,13 @@ export function getPitchShader(pitch, scalers) {
   else if (pitch.isStrike) ballKey = 'ballColorStrike';
   else if (pitch.isInPlay) {
     ballKey = 'ballColorInPlay';
-    if ((pitch.code === 'X' || pitch.code === 'Y') && scalers.ballColorInPlayOuts) {
+    if ((pitch.code === 'X' || pitch.code === 'Y') && !pitch.playScored && scalers.ballColorInPlayOuts) {
       ballKey = scalers.usePurpleInPlayOuts ? 'ballColorInPlayOuts' : 'ballColorInPlayOutsDefault';
     }
   }
 
   const fill = getPitchTrailColor(pitch);
-  const isInPlayOut = pitch.isInPlay && (pitch.code === 'X' || pitch.code === 'Y');
+  const isInPlayOut = pitch.isInPlay && (pitch.code === 'X' || pitch.code === 'Y') && !pitch.playScored;
   const ball = isInPlayOut && ballKey
     ? scalers[ballKey]
     : pitch.ballColor || pitch.details?.ballColor || (ballKey ? scalers[ballKey] : fill);
