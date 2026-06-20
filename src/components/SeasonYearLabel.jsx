@@ -6,6 +6,14 @@ import {
   resolveSeasonYearDecoration,
 } from '../utils/seasonHonors';
 
+const MINORS_LEVEL_LABELS = {
+  WIN: '❄️',
+};
+
+function formatMinorsLevel(minorsLevel) {
+  return MINORS_LEVEL_LABELS[minorsLevel] ?? minorsLevel;
+}
+
 function HonorBadge({ badge }) {
   const imageSrc = resolveAssetUrl(badge.image);
   const [useFallback, setUseFallback] = useState(!imageSrc);
@@ -43,7 +51,7 @@ export default function SeasonYearLabel({ season, minorsLevel, badges = [] }) {
           className={overlay.className}
         />
       ))}
-      {minorsLevel ? ` (${minorsLevel})` : ''}
+      {minorsLevel ? ` (${formatMinorsLevel(minorsLevel)})` : ''}
     </>
   );
 

@@ -182,7 +182,18 @@ const CAREER_GAME_TYPE_OPTIONS = [
   { value: 'P', label: 'Postseason Cumulative' },
 ];
 
-const MINOR_SPORT_IDS = [11, 12, 13, 14,16];
+const MINOR_SPORT_IDS = [
+  11, // Triple-A
+  12, // Double-A
+  13, // High-A
+  14, // Single-A
+  16, // Rookie
+  17, // Winter Leagues
+  23, // Independent Leagues / Mexico bucket
+  31, // Nippon Professional Baseball
+  32, // Korean Baseball Organization
+  51, // International Baseball
+];
 
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'losses', 'errors']);
 
@@ -1046,9 +1057,6 @@ async function fetchPlayerStats(playerId, params, level = 'mlb') {
     ),
   );
 
-  console.log('AVER', responses);
-  
-
   return mergeMinorLeagueStats(responses);
 }
 
@@ -1121,8 +1129,11 @@ function StatsTable({
   emptyMessage = 'No stats available',
   highlightCareerHighs = false,
   footerRow = null,
+  collapsibleSeasonGroups = false,
+  expandAllSeasonGroups = false,
 }) {
   const tableRef = useRef(null);
+  const [seasonGroupOverrides, setSeasonGroupOverrides] = useState(() => new Map());
   const { sortCol, sortDir, handleSort, sortMark, sortActive } = useTableSort(LABEL_SORT_KEY, 'desc');
   useStickyColOffset(tableRef, [rows, footerRow, cols, sortCol, sortDir]);
 
@@ -1149,11 +1160,31 @@ function StatsTable({
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
 
-  const renderRow = (row, i, { isFooter = false } = {}) => (
+  const isSeasonGroupExpanded = (season) => (
+    seasonGroupOverrides.has(season) ? seasonGroupOverrides.get(season) : expandAllSeasonGroups
+  );
+
+  const toggleSeasonGroup = (season) => {
+    const nextExpanded = !isSeasonGroupExpanded(season);
+    setSeasonGroupOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(season, nextExpanded);
+      return next;
+    });
+  };
+
+  const renderRow = (row, i, {
+    isFooter = false,
+    isGroupedDetail = false,
+    groupExpanded = false,
+    isGroupedSummary = false,
+    onToggleGroup,
+  } = {}) => (
     <tr
       key={row.id ?? i}
       className={[
         'group border-b border-slate-800/60',
+        isGroupedDetail ? 'bg-slate-950/20' : '',
         isFooter ? 'border-t border-slate-600 font-bold text-slate-100 bg-[#182030]' : 'hover:bg-slate-800/20',
       ].join(' ')}
     >
@@ -1166,7 +1197,20 @@ function StatsTable({
             : 'font-medium text-slate-500',
         ].join(' ')}
       >
-        {row.label}
+        {isGroupedSummary ? (
+          <button
+            type="button"
+            onClick={onToggleGroup}
+            className="inline-flex items-center gap-1.5 text-left transition-colors hover:text-white"
+            aria-expanded={groupExpanded}
+          >
+            <i
+              className={`fa-solid fa-chevron-right text-[9px] text-slate-500 transition-transform ${groupExpanded ? 'rotate-90' : ''}`}
+              aria-hidden
+            />
+            {row.label}
+          </button>
+        ) : row.label}
       </td>
       {cols.map((c, colIdx) => {
         const value = row[c.key] ?? row.stat?.[c.key];
@@ -1179,11 +1223,13 @@ function StatsTable({
               isTeamSticky
                 ? scrollStickyTeamAbbrCell('bg-[#121827]', { footer: isFooter })
                 : scrollStatCell(
-                    isHigh
-                      ? `font-bold text-${THEME_COLOR}-500`
-                      : isFooter
-                        ? 'text-slate-100 bg-[#182030]'
-                        : 'text-slate-300',
+                    isGroupedDetail
+                      ? 'text-slate-500'
+                      : isHigh
+                        ? `font-bold text-${THEME_COLOR}-500`
+                        : isFooter
+                          ? 'text-slate-100 bg-[#182030]'
+                          : 'text-slate-300',
                     { align: 'text-center' },
                   )
             }
@@ -1194,6 +1240,41 @@ function StatsTable({
       })}
     </tr>
   );
+
+  const renderCollapsibleRows = () => {
+    const grouped = new Map();
+
+    for (const row of sortedRows) {
+      if (!duplicateSeasons?.has(row.season)) continue;
+      if (!grouped.has(row.season)) grouped.set(row.season, []);
+      grouped.get(row.season).push(row);
+    }
+
+    const emittedGroupedSeasons = new Set();
+    return sortedRows.flatMap((row, i) => {
+      if (!duplicateSeasons?.has(row.season)) return [renderRow(row, i)];
+      if (emittedGroupedSeasons.has(row.season)) return [];
+
+      emittedGroupedSeasons.add(row.season);
+      const groupRows = grouped.get(row.season) ?? [];
+      const summaryRow = groupRows.find(isSeasonTotalRow) ?? groupRows[0];
+      const detailRows = groupRows.filter((item) => item !== summaryRow);
+      const expanded = isSeasonGroupExpanded(row.season);
+
+      return [
+        renderRow(summaryRow, `${row.season}-summary`, {
+          groupExpanded: expanded,
+          isGroupedSummary: true,
+          onToggleGroup: () => toggleSeasonGroup(row.season),
+        }),
+        ...(expanded
+          ? detailRows.map((detailRow, detailIdx) =>
+              renderRow(detailRow, `${row.season}-detail-${detailRow.id ?? detailIdx}`, { isGroupedDetail: true }),
+            )
+          : []),
+      ];
+    }).filter(Boolean);
+  };
 
   const labelTitle = labelKey === 'season' ? 'Year' : 'Split';
 
@@ -1225,7 +1306,7 @@ function StatsTable({
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row, i) => renderRow(row, i))}
+          {collapsibleSeasonGroups ? renderCollapsibleRows() : sortedRows.map((row, i) => renderRow(row, i))}
           {footerRow && renderRow(footerRow, 'footer', { isFooter: true })}
         </tbody>
       </table>
@@ -1947,6 +2028,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const [careerLevel, setCareerLevel] = useState(initialViewState.careerLevel);
   const [careerGroup, setCareerGroup] = useState(initialViewState.careerGroup);
   const [careerGameType, setCareerGameType] = useState(initialViewState.careerGameType);
+  const [careerSeasonGroupsExpanded, setCareerSeasonGroupsExpanded] = useState(false);
 
   const [logLevel, setLogLevel] = useState(initialViewState.logLevel);
   const [logGroup, setLogGroup] = useState(initialViewState.logGroup);
@@ -1960,6 +2042,21 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const [watchAnimating, setWatchAnimating] = useState(false);
 
   const isPitcher = isPitcherPosition(playerInfo?.primaryPosition?.abbreviation);
+
+  const handleCareerLevelChange = useCallback((nextLevel) => {
+    setCareerLevel(nextLevel);
+    setCareerSeasonGroupsExpanded(false);
+  }, []);
+
+  const handleCareerGroupChange = useCallback((nextGroup) => {
+    setCareerGroup(nextGroup);
+    setCareerSeasonGroupsExpanded(false);
+  }, []);
+
+  const handleCareerGameTypeChange = useCallback((nextGameType) => {
+    setCareerGameType(nextGameType);
+    setCareerSeasonGroupsExpanded(false);
+  }, []);
 
   useEffect(() => {
     playerViewStateCache.set(locationKey, {
@@ -2269,7 +2366,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
                           <SegmentedControl
                             value={careerLevel}
-                            onChange={setCareerLevel}
+                            onChange={handleCareerLevelChange}
                             size="sm"
                             options={[
                               { value: 'mlb', label: 'MLB' },
@@ -2280,24 +2377,40 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                         <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
                           <SegmentedControl
                             value={careerGroup}
-                            onChange={setCareerGroup}
+                            onChange={handleCareerGroupChange}
                             size="sm"
                             options={careerGroupOptions}
                           />
                         </div>
                         <Select
                           value={careerGameType}
-                          onChange={setCareerGameType}
+                          onChange={handleCareerGameTypeChange}
                           options={CAREER_GAME_TYPE_OPTIONS}
                           className="w-56"
                         />
+                        {careerLevel === 'minors' && (
+                          <button
+                            type="button"
+                            onClick={() => setCareerSeasonGroupsExpanded((value) => !value)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-600 hover:bg-slate-700 hover:text-white"
+                          >
+                            <i
+                              className={`fa-solid fa-chevron-right text-[10px] transition-transform ${careerSeasonGroupsExpanded ? 'rotate-90' : ''}`}
+                              aria-hidden
+                            />
+                            {careerSeasonGroupsExpanded ? 'Collapse all' : 'Expand all'}
+                          </button>
+                        )}
                       </div>
                       <StatsTable
+                        key={`career-${careerLevel}-${careerGroup}-${careerGameType}-${careerSeasonGroupsExpanded ? 'expanded' : 'collapsed'}`}
                         cols={displayCols}
                         rows={careerRows}
                         labelKey="season"
                         highlightCareerHighs
                         footerRow={careerTotalsRow}
+                        collapsibleSeasonGroups={careerLevel === 'minors'}
+                        expandAllSeasonGroups={careerSeasonGroupsExpanded}
                         emptyMessage="No career stats available for this selection."
                       />
                     </>
