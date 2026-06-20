@@ -10,6 +10,7 @@ import {
   stadiumTimeOfDay,
   getLinescoreInningNums,
   formatFinalStatus,
+  compactPlayerName,
 } from '../../../utils/mlbHelpers';
 import {
   buildSummaryItems,
@@ -810,7 +811,7 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
 
 function FinalHeaderDecisionLine({ label, player, stats, onPlayerSelect }) {
   if (!player) return null;
-  const name = player.fullName?.split(' ').slice(-1)[0] ?? player.fullName;
+  const name = compactPlayerName(player, player.fullName);
   const statLine = label === 'S'
     ? stats?.saves != null
       ? `${stats.saves}${fmtEra(stats.era) ? ` | ${fmtEra(stats.era)} ERA` : ''}`
@@ -1729,9 +1730,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   };
 
   const getLastName = (player) =>
-    player?.fullName?.split(' ').slice(-1)[0] ||
-    player?.name?.split(' ').slice(-1)[0] ||
-    '';
+    compactPlayerName(player, '');
 
   const formatCurrentBattingLine = (player) => {
     if (!player?.id) return null;
@@ -2365,8 +2364,7 @@ function GamePageContent({ gamePk, navigate, location }) {
                 ].map(({ label, player }) => {
                   if (!player) return <div key={label} />;
                   const stats = getPitcherStats(player.id);
-                  const lastName =
-                    player.fullName?.split(' ').slice(-1)[0] ?? player.fullName;
+                  const lastName = compactPlayerName(player, player.fullName);
                   return (
                     <div key={label}>
                       <span className="text-slate-500 font-semibold mr-1">

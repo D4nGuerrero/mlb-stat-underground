@@ -1,8 +1,10 @@
+import { compactPlayerName } from './mlbHelpers';
+
 export function parseLineupPlayers(players = []) {
   return players.map((player, index) => ({
     id: player.id,
     fullName: player.fullName,
-    lastName: player.lastName ?? player.fullName?.split(' ').slice(-1)[0] ?? '—',
+    lastName: compactPlayerName(player),
     useName: player.useName,
     position: player.primaryPosition?.abbreviation ?? '—',
     battingOrder: index + 1,

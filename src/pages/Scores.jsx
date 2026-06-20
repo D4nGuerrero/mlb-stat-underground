@@ -3,7 +3,7 @@ import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
+import { compactPlayerName, teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
 import {
   BaseDiamondIndicator,
   getRunnersOnBase,
@@ -729,9 +729,9 @@ export default function Scores() {
               )}
               {!isLive && !isFinal && (
                 <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
-                  <span>{game.teams.away.probablePitcher?.fullName?.split(' ').pop() ?? '—'}</span>
+                  <span>{compactPlayerName(game.teams.away.probablePitcher)}</span>
                   <span className="text-slate-700">vs</span>
-                  <span>{game.teams.home.probablePitcher?.fullName?.split(' ').pop() ?? '—'}</span>
+                  <span>{compactPlayerName(game.teams.home.probablePitcher)}</span>
                 </div>
               )}
             </div>

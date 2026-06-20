@@ -3,6 +3,7 @@ import {
   pitcherActionShotUrl,
   playerActionShotUrl,
   playerHeadshotUrl,
+  compactPlayerName,
 } from '../../../utils/mlbHelpers';
 import {
   BaseDiamondIndicator,
@@ -163,7 +164,7 @@ function formatPitcherStat(s) {
             fallbackSrc={playerHeadshotUrl(linescore?.defense?.pitcher?.id)}
             imageSrc={pitcherActionShotUrl(linescore?.defense?.pitcher?.id)}
             label="Pitching"
-            name={linescore?.defense?.pitcher?.fullName?.split(' ').slice(-1)[0]}
+            name={compactPlayerName(linescore?.defense?.pitcher)}
             onSelect={onPlayerSelect}
             playerId={linescore?.defense?.pitcher?.id}
             stat={
@@ -188,7 +189,7 @@ function formatPitcherStat(s) {
             fallbackSrc={playerHeadshotUrl(linescore?.offense?.batter?.id)}
             imageSrc={playerActionShotUrl(linescore?.offense?.batter?.id)}
             label="At Bat"
-            name={linescore?.offense?.batter?.fullName?.split(' ').slice(-1)[0]}
+            name={compactPlayerName(linescore?.offense?.batter)}
             onSelect={onPlayerSelect}
             playerId={linescore?.offense?.batter?.id}
             stat={

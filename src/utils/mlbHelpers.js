@@ -36,6 +36,7 @@ export const mlbTeams = [
 const TEAM_ABBR_BY_ID = Object.fromEntries(mlbTeams.map((t) => [t.id, t.abbr]));
 const MLB_TEAM_BY_ID = Object.fromEntries(mlbTeams.map((t) => [t.id, t]));
 const MLB_TEAM_ID_SET = new Set(mlbTeams.map((t) => t.id));
+const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']);
 
 const PIDS = {
   IAN_KINSLER: 435079,
@@ -90,6 +91,31 @@ export function getTeamAbbr(teamOrId) {
   const team = teamOrId;
   if (!team?.id) return team?.abbreviation ?? '—';
   return TEAM_ABBR_BY_ID[team.id] ?? team.abbreviation ?? team.name?.split(' ').pop() ?? '—';
+}
+
+export function compactPlayerName(personOrName, fallback = '—') {
+  if (!personOrName) return fallback;
+  if (typeof personOrName === 'string') {
+    return compactPlayerNameFromFullName(personOrName, fallback);
+  }
+
+  const lastName = String(personOrName.lastName ?? '').trim();
+  if (lastName && !NAME_SUFFIXES.has(lastName.toLowerCase())) return lastName;
+
+  const fullName = personOrName.fullName ?? personOrName.name ?? '';
+  return compactPlayerNameFromFullName(fullName, fallback);
+}
+
+function compactPlayerNameFromFullName(fullName, fallback) {
+  const parts = String(fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return fallback;
+
+  const last = parts.at(-1);
+  if (parts.length > 1 && NAME_SUFFIXES.has(last.toLowerCase())) {
+    return `${parts.at(-2)} ${last}`;
+  }
+
+  return last;
 }
 
 // export const teamLogoUrl = (teamId) =>

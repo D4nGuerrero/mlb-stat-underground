@@ -1,3 +1,5 @@
+import { compactPlayerName } from './mlbHelpers';
+
 const WATCH_TYPES = new Set(['TV', 'INTERNET']);
 const LISTEN_TYPES = new Set(['FM', 'AM']);
 
@@ -75,7 +77,7 @@ function mapBatterMatchupSplits(splits) {
     if (!existing) {
       byId.set(id, {
         batterId: id,
-        lastName: split.batter.lastName ?? split.batter.fullName?.split(' ').slice(-1)[0] ?? '—',
+        lastName: compactPlayerName(split.batter),
         fullName: split.batter.fullName,
         totals: mergeBatterStats(
           { atBats: 0, homeRuns: 0, rbi: 0, hits: 0, doubles: 0, triples: 0, baseOnBalls: 0, hitByPitch: 0, sacFlies: 0 },
@@ -112,7 +114,7 @@ async function fetchOpposingBatterMatchups(pitcherId, opposingTeamId, season) {
       if (!stat?.atBats) return null;
       return {
         batterId: entry.person.id,
-        lastName: entry.person.fullName?.split(' ').slice(-1)[0] ?? '—',
+        lastName: compactPlayerName(entry.person),
         fullName: entry.person.fullName,
         stat,
       };
@@ -216,7 +218,7 @@ export async function fetchProbablePitcherCard(pitcherRef, opposingTeamId, seaso
       tbd: false,
       id: person?.id ?? id,
       fullName: person?.fullName ?? pitcherRef.fullName,
-      lastName: person?.lastName ?? pitcherRef.fullName?.split(' ').slice(-1)[0] ?? '—',
+      lastName: compactPlayerName(person ?? pitcherRef),
       pitchHand: person?.pitchHand?.code ?? null,
       number: person?.primaryNumber ?? null,
       seasonStat,
@@ -228,7 +230,7 @@ export async function fetchProbablePitcherCard(pitcherRef, opposingTeamId, seaso
       tbd: false,
       id,
       fullName: pitcherRef.fullName,
-      lastName: pitcherRef.fullName?.split(' ').slice(-1)[0] ?? '—',
+      lastName: compactPlayerName(pitcherRef),
       batterMatchups: [],
     };
   }

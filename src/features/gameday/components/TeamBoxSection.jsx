@@ -1,5 +1,5 @@
 import { THEME_COLOR } from '../../../theme/theme.js';
-import { teamLogoUrl, sumInningsPitched } from '../../../utils/mlbHelpers';
+import { compactPlayerName, teamLogoUrl, sumInningsPitched } from '../../../utils/mlbHelpers';
 import { stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } from '../../../components/ui';
 import { TABLE_TEXT_CLASS } from '../../../theme/tableTheme';
 
@@ -141,7 +141,7 @@ export default function TeamBoxSection({
               const batting = player.stats?.batting || {};
               const seasonBatting = player.seasonStats?.batting || {};
               const subLetter = getSubLetter(player.battingOrder);
-              const lastName = player.person?.fullName?.split(' ').slice(-1)[0] || '';
+              const lastName = compactPlayerName(player.person, '');
               const pos = player.position?.abbreviation || '';
 
               return (
@@ -243,7 +243,7 @@ export default function TeamBoxSection({
               {pitchers.map((player) => {
                 const pitching = player.stats?.pitching || {};
                 const seasonEra = player.seasonStats?.pitching?.era;
-                const lastName = player.person?.fullName?.split(' ').slice(-1)[0] || '';
+                const lastName = compactPlayerName(player.person, '');
                 const decMark =
                   decisions?.winner?.id === player.person?.id
                     ? 'W'

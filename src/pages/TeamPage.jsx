@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
+import { compactPlayerName, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
@@ -1439,7 +1439,7 @@ function DepthChartTab({ teamId, season, onNavigateAway }) {
               className="flex items-center gap-2 py-1 hover:opacity-80 transition-opacity"
             >
               <img src={playerHeadshotUrl(p.person.id)} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-700 flex-shrink-0" onError={(e) => (e.target.src = FALLBACK_HEADSHOT)} />
-              <span className="text-xs font-medium truncate">{p.person.fullName.split(' ').slice(-1)[0]}</span>
+              <span className="text-xs font-medium truncate">{compactPlayerName(p.person)}</span>
             </Link>
           ))}
         </div>

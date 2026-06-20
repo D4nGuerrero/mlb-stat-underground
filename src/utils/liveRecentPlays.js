@@ -13,6 +13,7 @@ import {
   getBasesAtPlayIndex,
   toIndicatorBases,
 } from './playSituation';
+import { compactPlayerName } from './mlbHelpers';
 
 const LIVE_EXTRA_EVENT_TYPES = new Set([
   'mound_visit',
@@ -42,7 +43,7 @@ export function getPitchResultKind(description, isInPlay = false) {
 }
 
 function lastName(person) {
-  return person?.fullName?.split(' ').slice(-1)[0] ?? person?.fullName ?? '—';
+  return compactPlayerName(person);
 }
 
 function inningMeta(about, ordinals) {

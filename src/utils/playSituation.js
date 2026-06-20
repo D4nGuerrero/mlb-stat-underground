@@ -1,5 +1,7 @@
+import { compactPlayerName } from './mlbHelpers';
+
 function lastName(person) {
-  return person?.fullName?.split(' ').slice(-1)[0] ?? person?.fullName ?? '—';
+  return compactPlayerName(person);
 }
 
 export function getPlayStartOuts(playEvents) {
