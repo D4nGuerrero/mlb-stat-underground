@@ -1844,7 +1844,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           showHotZones
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           immersiveField
-          className="xl:h-full xl:min-h-0 xl:w-[calc(100%+10rem)] xl:max-w-none xl:scale-[1.1] xl:origin-center 2xl:w-[calc(100%+14rem)] 2xl:scale-[1.13]"
+          className="xl:h-full xl:min-h-0 xl:w-[calc(100%+10rem)] xl:max-w-none 2xl:w-[calc(100%+14rem)]"
         />
       </div>
 

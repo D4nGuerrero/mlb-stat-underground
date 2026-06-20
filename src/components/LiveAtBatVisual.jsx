@@ -75,6 +75,9 @@ function latestPitchRowKey(playEvents, currentPlay) {
 
 const FIELD_ASPECT = 315 / 270;
 const STRIKE_ZONE_FIELD_WIDTH_PCT = (AT_BAT_STRIKE_ZONE_CLIP.width / 1158) * 100;
+// Horizontal placement of the strike-zone/pitch overlay inside the stadium field.
+// Lower than 50 moves the whole zone/trail/dots left; higher moves it right.
+const STRIKE_ZONE_FIELD_LEFT_PCT = 49.1;
 // Raise/lower the strike-zone canvas within the stadium field. Smaller = higher, larger = lower.
 const STRIKE_ZONE_FIELD_TOP_PCT = 34.2;
 const BATTER_FIELD_WIDTH_PCT = 17.1278;
@@ -227,7 +230,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
 
   const fieldLayerClass = immersiveField
     ? 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-[155%] 2xl:w-[145%]'
-    : 'absolute left-1/2 top-1/2 w-[280%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
+    : 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
   const pitchOverlayFieldClass = immersiveField
     ? 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-[155%] 2xl:w-[145%]'
     : 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
@@ -343,6 +346,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
             // Tune these percentages to move the zone within the fixed 1158x869 field coordinate space.
             className="absolute left-1/2 -translate-x-1/2"
             style={{
+              left: `${STRIKE_ZONE_FIELD_LEFT_PCT}%`,
               top: `${STRIKE_ZONE_FIELD_TOP_PCT}%`,
               width: `${STRIKE_ZONE_FIELD_WIDTH_PCT}%`,
             }}

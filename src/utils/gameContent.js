@@ -147,6 +147,48 @@ function scoreHighlightMatch(item, highlight) {
   return score;
 }
 
+function highlightText(highlight) {
+  return `${highlight?.headline ?? ''} ${highlight?.description ?? ''}`.toLowerCase();
+}
+
+function extractPlayStatNumber(text) {
+  const match = (text ?? '').match(/\((\d+)\)/);
+  return match?.[1] ?? null;
+}
+
+function eventTypeMatchesHighlight(item, highlight) {
+  const eventType = item?.eventType ?? '';
+  const text = highlightText(highlight);
+
+  if (eventType === 'home_run') {
+    return highlight.taxonomies.includes('home-run') || /home run|homer|homers/.test(text);
+  }
+  if (eventType === 'double') return /\bdouble|doubles\b/.test(text);
+  if (eventType === 'triple') return /\btriple|triples\b/.test(text);
+  if (eventType === 'single') return /\bsingle|singles\b/.test(text);
+  if (eventType === 'sac_fly') return /sacrifice|sac fly/.test(text);
+  if (eventType.includes('stolen')) return /steal|stolen/.test(text);
+
+  return true;
+}
+
+function isReliableHighlightMatch(item, highlight) {
+  if (!item?.isScoring || !highlight) return false;
+  if (!highlight.mp4Url && !highlight.hlsUrl) return false;
+
+  // While MLB is still processing a new scoring-play video, older highlights
+  // can look "close enough" by text. Do not borrow another player's video.
+  if (item.batterId && !highlight.playerIds.includes(item.batterId)) return false;
+  if (!eventTypeMatchesHighlight(item, highlight)) return false;
+
+  const itemStatNumber = extractPlayStatNumber(item.description);
+  if (itemStatNumber && !highlightText(highlight).includes(`(${itemStatNumber})`)) {
+    return false;
+  }
+
+  return scoreHighlightMatch(item, highlight) >= 7;
+}
+
 /** Match a scoring summary item to the best highlight video, if any. */
 export function matchHighlightForItem(item, highlights) {
   if (!item?.isScoring || !highlights?.length) return null;
@@ -161,7 +203,7 @@ export function matchHighlightForItem(item, highlights) {
 
   const ranked = pool
     .map((h) => ({ h, score: scoreHighlightMatch(item, h) }))
-    .filter(({ score }) => score >= 4)
+    .filter(({ h, score }) => score >= 7 && isReliableHighlightMatch(item, h))
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0]?.h;
@@ -179,14 +221,10 @@ export function buildHighlightMap(summaryItems, highlights) {
     const candidates = highlights
       .filter((h) => !used.has(h.id))
       .map((h) => ({ h, score: scoreHighlightMatch(item, h) }))
-      .filter(({ score }) => score >= 4)
+      .filter(({ h, score }) => score >= 7 && isReliableHighlightMatch(item, h))
       .sort((a, b) => b.score - a.score);
 
-    const batterMatches = item.batterId
-      ? candidates.filter(({ h }) => h.playerIds.includes(item.batterId))
-      : candidates;
-
-    const pick = (batterMatches[0] ?? candidates[0])?.h;
+    const pick = candidates[0]?.h;
     if (pick && (pick.mp4Url || pick.hlsUrl)) {
       map[item.key] = pick;
       used.add(pick.id);
