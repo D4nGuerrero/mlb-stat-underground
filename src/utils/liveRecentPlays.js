@@ -88,7 +88,7 @@ function scoringTeamSide(play) {
 export function dueUpFromOffense(offense) {
   return [offense?.batter, offense?.onDeck, offense?.inHole]
     .filter((p) => p?.id)
-    .map((p) => ({ id: p.id, name: lastName(p), fullName: p.fullName }));
+    .map((p) => ({ id: p.id, name: p.fullName || p.name || lastName(p), fullName: p.fullName }));
 }
 
 function isPickoffAttempt(ev) {
@@ -97,12 +97,13 @@ function isPickoffAttempt(ev) {
   return /^pickoff attempt/i.test(desc);
 }
 
-function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays) {
+function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { includeAttempts = true } = {}) {
   const eventType = ev.details?.eventType;
   const meta = inningMeta(play.about, ordinals);
   const sortTime = ev.startTime || ev.endTime || play.about?.startTime || null;
 
   if (isPickoffAttempt(ev)) {
+    if (!includeAttempts) return true;
     rows.push({
       kind: 'pickoff_attempt',
       key: `pickoff-attempt-${play.about?.atBatIndex}-${eventIdx}`,
@@ -234,6 +235,50 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
   );
 }
 
+function pushActiveAtBatEventRows(rows, play, ordinals, allPlays, { includePickoffAttempts = true } = {}) {
+  const meta = inningMeta(play.about, ordinals);
+  let pitchNumber = 0;
+
+  (play.playEvents ?? []).forEach((ev, eventIdx) => {
+    pushPlayEventRows(rows, play, ev, eventIdx, ordinals);
+
+    if (pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { includeAttempts: includePickoffAttempts })) {
+      return;
+    }
+
+    pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays);
+
+    if (ev.details?.eventType === 'batter_timeout') {
+      rows.push({
+        kind: 'batter_timeout',
+        key: `batter-timeout-${play.about?.atBatIndex}-${eventIdx}`,
+        description: 'Batter Timeout',
+        ...meta,
+        sortTime: ev.endTime || ev.startTime || play.about?.startTime || new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (!ev.isPitch) return;
+
+    pitchNumber += 1;
+    const description = ev.details?.description || ev.details?.call?.description || 'Pitch';
+    rows.push({
+      kind: 'live_pitch',
+      key: `live-pitch-${play.about?.atBatIndex}-${eventIdx}`,
+      pitchNumber,
+      description,
+      pitchType: ev.details?.type?.description || null,
+      mph: ev.pitchData?.startSpeed ? parseFloat(ev.pitchData.startSpeed) : null,
+      isInPlay: Boolean(ev.details?.isInPlay),
+      balls: ev.count?.balls,
+      strikes: ev.count?.strikes,
+      ...meta,
+      sortTime: ev.endTime || ev.startTime || play.about?.startTime || new Date().toISOString(),
+    });
+  });
+}
+
 /**
  * Build chronological live recent-plays rows (oldest → newest).
  * Caller reverses for display and pins first pitch at the bottom.
@@ -246,23 +291,32 @@ export function buildLiveRecentPlaysRows({
 }) {
   const rows = [];
   const currentAtBatIndex = currentPlay?.about?.atBatIndex;
+  let activeAtBatEmitted = false;
 
   for (let playIdx = 0; playIdx < allPlays.length; playIdx += 1) {
     const play = allPlays[playIdx];
-    const isActiveAtBat =
+    const isCurrentAtBat =
       isLive &&
-      !play.about?.isComplete &&
       currentAtBatIndex != null &&
       play.about?.atBatIndex === currentAtBatIndex;
 
+    if (isCurrentAtBat) {
+      // Keep the current at-bat pitch sequence visible through the final pitch
+      // handoff. Once MLB advances currentPlay to the next at-bat, this play
+      // falls through below and becomes the normal completed summary row.
+      pushActiveAtBatEventRows(rows, play, ordinals, allPlays, {
+        includePickoffAttempts: !play.about?.isComplete,
+      });
+      activeAtBatEmitted = true;
+      continue;
+    }
+
     (play.playEvents ?? []).forEach((ev, eventIdx) => {
       pushPlayEventRows(rows, play, ev, eventIdx, ordinals);
-      if (!pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays)) {
+      if (!pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { includeAttempts: false })) {
         pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays);
       }
     });
-
-    if (isActiveAtBat) continue;
 
     if (play.about?.isComplete && play.result?.event) {
       const outOccurred = playRecordedOut(play);
@@ -303,38 +357,9 @@ export function buildLiveRecentPlaysRows({
     }
   }
 
-  if (isLive && currentPlay && !currentPlay.about?.isComplete) {
-    const meta = inningMeta(currentPlay.about, ordinals);
-    let pitchNumber = 0;
-
-    (currentPlay.playEvents ?? []).forEach((ev, eventIdx) => {
-      if (ev.details?.eventType === 'batter_timeout') {
-        rows.push({
-          kind: 'batter_timeout',
-          key: `batter-timeout-${currentPlay.about?.atBatIndex}-${eventIdx}`,
-          description: 'Batter Timeout',
-          ...meta,
-          sortTime: ev.endTime || ev.startTime || currentPlay.about?.startTime || new Date().toISOString(),
-        });
-        return;
-      }
-
-      if (!ev.isPitch) return;
-      pitchNumber += 1;
-      const description = ev.details?.description || ev.details?.call?.description || 'Pitch';
-      rows.push({
-        kind: 'live_pitch',
-        key: `live-pitch-${currentPlay.about?.atBatIndex}-${eventIdx}`,
-        pitchNumber,
-        description,
-        pitchType: ev.details?.type?.description || null,
-        mph: ev.pitchData?.startSpeed ? parseFloat(ev.pitchData.startSpeed) : null,
-        isInPlay: Boolean(ev.details?.isInPlay),
-        balls: ev.count?.balls,
-        strikes: ev.count?.strikes,
-        ...meta,
-        sortTime: ev.endTime || ev.startTime || currentPlay.about?.startTime || new Date().toISOString(),
-      });
+  if (isLive && currentPlay && !activeAtBatEmitted) {
+    pushActiveAtBatEventRows(rows, currentPlay, ordinals, allPlays, {
+      includePickoffAttempts: !currentPlay.about?.isComplete,
     });
   }
 

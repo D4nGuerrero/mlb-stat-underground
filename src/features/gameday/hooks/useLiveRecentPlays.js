@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   buildLiveRecentPlaysFeed,
   dueUpFromOffense,
@@ -7,11 +7,6 @@ import {
 import { isValidLiveFeed } from '../../../utils/liveFeedMerge';
 
 export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
-  const liveRecentSeenKeysRef = useRef(null);
-  const liveRecentRevealTimersRef = useRef(new Map());
-  const [liveRecentSeenKeys, setLiveRecentSeenKeys] = useState(() => new Set());
-  const [deferredLiveRecentKeys, setDeferredLiveRecentKeys] = useState(() => new Set());
-
   const liveRecentFeed = useMemo(() => {
     if (!feed || !isValidLiveFeed(feed)) {
       return { displayRows: [], firstPitch: null };
@@ -34,89 +29,19 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   const liveRecentRows = liveRecentFeed.displayRows;
   const liveFirstPitch = liveRecentFeed.firstPitch;
 
-  const revealLiveRecentRow = useCallback((rowKey) => {
-    if (!rowKey) return;
-
-    const timer = liveRecentRevealTimersRef.current.get(rowKey);
-    if (timer) {
-      clearTimeout(timer);
-      liveRecentRevealTimersRef.current.delete(rowKey);
-    }
-
-    setDeferredLiveRecentKeys((prev) => {
-      if (!prev.has(rowKey)) return prev;
-      const next = new Set(prev);
-      next.delete(rowKey);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    const keys = liveRecentRows.map((row) => row.key);
-    if (liveRecentSeenKeysRef.current == null) {
-      liveRecentSeenKeysRef.current = new Set(keys);
-      return undefined;
-    }
-
-    const previous = liveRecentSeenKeysRef.current;
-    const newlyAddedRows = liveRecentRows.filter(
-      (row) => !previous.has(row.key) && row.kind === 'live_pitch',
-    );
-    const nextSeen = new Set(keys);
-    liveRecentSeenKeysRef.current = nextSeen;
-    setLiveRecentSeenKeys(nextSeen);
-    if (!newlyAddedRows.length) return undefined;
-
-    setDeferredLiveRecentKeys((prev) => {
-      const next = new Set(prev);
-      newlyAddedRows.forEach((row) => next.add(row.key));
-      return next;
-    });
-
-    newlyAddedRows.forEach((row) => {
-      if (liveRecentRevealTimersRef.current.has(row.key)) return;
-      const timer = setTimeout(() => {
-        liveRecentRevealTimersRef.current.delete(row.key);
-        revealLiveRecentRow(row.key);
-      }, 5000);
-      liveRecentRevealTimersRef.current.set(row.key, timer);
-    });
-
-    return undefined;
-  }, [liveRecentRows, revealLiveRecentRow]);
-
-  useEffect(
-    () => () => {
-      liveRecentRevealTimersRef.current.forEach((timer) => clearTimeout(timer));
-      liveRecentRevealTimersRef.current.clear();
-    },
-    [],
-  );
-
-  const visibleLiveRecentRows = useMemo(
-    () =>
-      liveRecentRows.filter((row) => {
-        if (deferredLiveRecentKeys.has(row.key)) return false;
-        if (
-          liveRecentSeenKeys.size > 0 &&
-          row.kind === 'live_pitch' &&
-          !liveRecentSeenKeys.has(row.key)
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    [deferredLiveRecentKeys, liveRecentRows, liveRecentSeenKeys],
-  );
+  // Pitch sequence is operational data: show it as soon as the feed has it.
+  // The timeline component can still animate inserted rows, but this hook no
+  // longer withholds pitch rows while the ball/toast animation catches up.
+  const revealLiveRecentRow = useCallback(() => {}, []);
 
   const liveRecentGroups = useMemo(
     () =>
-      groupLiveRecentRows(visibleLiveRecentRows, {
+      groupLiveRecentRows(liveRecentRows, {
         isLive,
         currentInning: linescore?.currentInning,
         currentHalf: linescore?.inningHalf === 'Top' ? 'top' : 'bottom',
       }),
-    [visibleLiveRecentRows, isLive, linescore?.currentInning, linescore?.inningHalf],
+    [liveRecentRows, isLive, linescore?.currentInning, linescore?.inningHalf],
   );
 
   const isBetweenHalfInnings =
