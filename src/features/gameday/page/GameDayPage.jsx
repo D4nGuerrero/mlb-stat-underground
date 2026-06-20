@@ -21,7 +21,7 @@ import {
   parseGameHighlightVideos,
   buildHighlightMap,
 } from '../../../utils/gameContent';
-import { TabBar, SegmentedControl } from '../../../components/ui';
+import { TabBar, SegmentedControl, Modal } from '../../../components/ui';
 import GamePreviewView from '../../../components/GamePreviewView';
 import GameLineupsView from '../../../components/GameLineupsView';
 import { formatGameStartDisplay, formatVenueLine } from '../../../utils/gamePreview';
@@ -260,7 +260,7 @@ const HIT_TRAJECTORY_LABELS = {
   bunt_popup: 'Bunt Popup',
 };
 
-function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange }) {
+function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange, onOpenPitchCounts }) {
   const buttonRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 8 });
@@ -332,10 +332,166 @@ function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange }
               <span>In-play outs purple</span>
               {usePurpleInPlayOuts && <i className="fa-solid fa-check text-purple-300" aria-hidden />}
             </button>
+            <div className="my-1 border-t border-slate-800" />
+            <button
+              type="button"
+              onClick={() => {
+                onOpenPitchCounts?.();
+                setOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
+            >
+              <span>Pitch count by inning</span>
+              <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
+            </button>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+function buildPitchCountByInning(allPlays = [], away, home) {
+  const innings = new Set();
+  const sides = {
+    away: { team: away, pitchers: new Map() },
+    home: { team: home, pitchers: new Map() },
+  };
+
+  allPlays.forEach((play) => {
+    const inning = Number(play?.about?.inning);
+    const pitcher = play?.matchup?.pitcher;
+    if (!inning || !pitcher?.id) return;
+
+    const pitchCount = (play.playEvents ?? []).filter((event) => event?.isPitch).length;
+    if (!pitchCount) return;
+
+    // Top half: away team bats, so the home pitcher is throwing. Bottom half is the reverse.
+    const pitchingSide = play.about?.halfInning === 'top' ? 'home' : 'away';
+    const side = sides[pitchingSide];
+    innings.add(inning);
+
+    if (!side.pitchers.has(pitcher.id)) {
+      side.pitchers.set(pitcher.id, {
+        id: pitcher.id,
+        name: pitcher.fullName || pitcher.name || 'Pitcher',
+        byInning: {},
+        total: 0,
+      });
+    }
+
+    const row = side.pitchers.get(pitcher.id);
+    row.byInning[inning] = (row.byInning[inning] ?? 0) + pitchCount;
+    row.total += pitchCount;
+  });
+
+  return {
+    innings: [...innings].sort((a, b) => a - b),
+    away: { team: away, pitchers: [...sides.away.pitchers.values()] },
+    home: { team: home, pitchers: [...sides.home.pitchers.values()] },
+  };
+}
+
+function PitchCountTeamTable({ data, innings }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-slate-700/60 bg-slate-950/50 overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
+        <img src={teamLogoUrl(data.team?.id)} alt="" className="h-6 w-6 object-contain" />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-white">{data.team?.abbreviation || data.team?.name}</div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Pitchers</div>
+        </div>
+      </div>
+
+      <div className="space-y-2 p-2">
+        {data.pitchers.length ? (
+          data.pitchers.map((pitcher) => (
+            <div key={pitcher.id} className="rounded-xl border border-slate-800 bg-slate-900/70 px-2.5 py-2">
+              {(() => {
+                const pitchedInnings = innings.filter((inning) => pitcher.byInning[inning] != null);
+                return (
+                  <>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-bold text-slate-100">{pitcher.name}</div>
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Pitch count</div>
+                </div>
+              </div>
+              <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/60">
+                <div
+                  className="grid divide-x divide-slate-800 text-center"
+                  style={{ gridTemplateColumns: `repeat(${pitchedInnings.length + 1}, minmax(2.25rem, 1fr))` }}
+                >
+                  {pitchedInnings.map((inning) => (
+                    <div key={`inning-${inning}`} className="px-1 py-1 text-[10px] font-bold text-slate-400">
+                      {inning}
+                    </div>
+                  ))}
+                  <div className={`px-1 py-1 text-[10px] font-black text-${THEME_COLOR}-300`}>Total</div>
+                </div>
+                <div
+                  className="grid divide-x divide-slate-800 border-t border-slate-800 text-center font-mono"
+                  style={{ gridTemplateColumns: `repeat(${pitchedInnings.length + 1}, minmax(2.25rem, 1fr))` }}
+                >
+                  {pitchedInnings.map((inning) => (
+                    <div key={`count-${inning}`} className="px-1 py-1 text-[11px] font-bold text-slate-100">
+                      {pitcher.byInning[inning]}
+                    </div>
+                  ))}
+                  <div className="px-1 py-1 text-[11px] font-black text-white">{pitcher.total}</div>
+                </div>
+              </div>
+                  </>
+                );
+              })()}
+            </div>
+          ))
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-800 px-3 py-6 text-center text-xs text-slate-500">
+            No pitch data yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PitchCountByInningSheet({ open, onClose, allPlays, away, home }) {
+  const data = useMemo(() => buildPitchCountByInning(allPlays, away, home), [allPlays, away, home]);
+  const innings = data.innings.length ? data.innings : [1];
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      align="bottom"
+      size="lg"
+      panelClassName="max-h-[82vh] bg-[#101827] border-slate-700/70"
+    >
+      <div className="sm:hidden flex justify-center pt-3 pb-1">
+        <div className="h-1 w-10 rounded-full bg-slate-600" />
+      </div>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+        <div>
+          <div className="text-sm font-bold text-white">Pitch Count By Inning</div>
+          <div className="text-xs text-slate-500">Live pitch totals grouped by pitcher</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-800 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+          aria-label="Close pitch count by inning"
+        >
+          <i className="fa-solid fa-xmark" aria-hidden />
+        </button>
+      </div>
+      <div className="max-h-[calc(82vh-5.5rem)] overflow-y-auto p-3">
+        <div className="space-y-3">
+          <PitchCountTeamTable data={data.away} innings={innings} />
+          <PitchCountTeamTable data={data.home} innings={innings} />
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1165,11 +1321,13 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [selectedPlay, setSelectedPlay] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('live');
+  const [leftRailView, setLeftRailView] = useState('live');
   const [boxScoreSide, setBoxScoreSide] = useState('away');
   const [usePurpleInPlayOuts, setUsePurpleInPlayOuts] = useLocalStorageState(
     GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY,
     false,
   );
+  const [pitchCountSheetOpen, setPitchCountSheetOpen] = useState(false);
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
   const summaryScrollYRef = useRef(0);
@@ -1516,23 +1674,10 @@ function GamePageContent({ gamePk, navigate, location }) {
     player?.name?.split(' ').slice(-1)[0] ||
     '';
 
-  const formatBatterContribution = (stat) => {
-    const parts = [];
-    if (Number(stat?.rbi) > 0) parts.push(`${stat.rbi} RBI`);
-    if (Number(stat?.runs) > 0) parts.push(`${stat.runs} R`);
-    if (Number(stat?.homeRuns) > 0) parts.push(`${stat.homeRuns} HR`);
-    if (Number(stat?.doubles) > 0) parts.push(`${stat.doubles} 2B`);
-    if (Number(stat?.triples) > 0) parts.push(`${stat.triples} 3B`);
-    if (Number(stat?.baseOnBalls) > 0) parts.push(`${stat.baseOnBalls} BB`);
-    if (Number(stat?.stolenBases) > 0) parts.push(`${stat.stolenBases} SB`);
-    return parts.join(', ');
-  };
-
   const formatCurrentBattingLine = (player) => {
     if (!player?.id) return null;
     const stat = getBatterGameStat(player.id);
-    const extras = formatBatterContribution(stat);
-    return `${getLastName(player)}: ${stat?.hits ?? 0}-${stat?.atBats ?? 0}${extras ? ` | ${extras}` : ''}`;
+    return `${getLastName(player)}: ${stat?.hits ?? 0}-${stat?.atBats ?? 0}`;
   };
 
   const vsMatchupLine =
@@ -1598,6 +1743,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         <GamedayOptionsMenu
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           onUsePurpleInPlayOutsChange={setUsePurpleInPlayOuts}
+          onOpenPitchCounts={() => setPitchCountSheetOpen(true)}
         />
       )}
     </div>
@@ -1736,31 +1882,73 @@ function GamePageContent({ gamePk, navigate, location }) {
     </>
   ) : null;
 
+  const summaryPanel = (
+    <SummarySection
+      awayAbbr={away.abbreviation}
+      expandedVideoKey={expandedVideoKey}
+      getPlayBadge={getPlayBadge}
+      highlightByItemKey={highlightByItemKey}
+      homeAbbr={home.abbreviation}
+      onOpenPlay={openSheet}
+      onPlayerClick={handleSummaryPlayerClick}
+      onToggleVideo={handleSummaryVideoToggle}
+      pinnedVideo={pinnedVideo}
+      pitchingChangeBadge={PITCHING_CHANGE_BADGE}
+      statusChangeBadge={STATUS_CHANGE_BADGE}
+      summaryFilter={summaryFilter}
+      summaryItemGroups={summaryItemGroups}
+      summaryLeadIn={summaryLeadIn}
+      onSummaryFilterChange={setSummaryFilter}
+    />
+  );
+
   const recentPlaysPanel = (
     <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest">
+        <span className="xl:hidden text-[10px] text-slate-500 uppercase tracking-widest">
           Recent Plays
         </span>
+        <div className="hidden xl:flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setLeftRailView('live')}
+            className={`text-sm font-black transition-colors ${leftRailView === 'live' ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            onClick={() => setLeftRailView('summary')}
+            className={`text-sm font-black transition-colors ${leftRailView === 'summary' ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
+          >
+            Summary
+          </button>
+        </div>
         <span className="text-[9px] text-slate-600">
-          {liveRecentRows.length} events
+          {leftRailView === 'summary' ? `${summaryItems.length} plays` : `${liveRecentRows.length} events`}
         </span>
       </div>
       <div className="p-2 sm:p-4 xl:p-3 2xl:p-4">
-        <LiveRecentPlaysTimeline
-          groups={liveRecentGroups}
-          firstPitch={liveFirstPitch}
-          away={away}
-          home={home}
-          getPlayBadge={getPlayBadge}
-          highlightByItemKey={highlightByItemKey}
-          expandedVideoKey={expandedVideoKey}
-          pinnedVideo={pinnedVideo}
-          onPlayerClick={(e, batterId) => handleSummaryPlayerClick(e, batterId)}
-          onOpenPlay={openSheet}
-          onToggleVideo={handleSummaryVideoToggle}
-          ScoringPlayVideo={ScoringPlayVideo}
-        />
+        {leftRailView === 'summary' ? (
+          <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
+            {summaryPanel}
+          </div>
+        ) : (
+          <LiveRecentPlaysTimeline
+            groups={liveRecentGroups}
+            firstPitch={liveFirstPitch}
+            away={away}
+            home={home}
+            getPlayBadge={getPlayBadge}
+            highlightByItemKey={highlightByItemKey}
+            expandedVideoKey={expandedVideoKey}
+            pinnedVideo={pinnedVideo}
+            onPlayerClick={(e, batterId) => handleSummaryPlayerClick(e, batterId)}
+            onOpenPlay={openSheet}
+            onToggleVideo={handleSummaryVideoToggle}
+            ScoringPlayVideo={ScoringPlayVideo}
+          />
+        )}
       </div>
     </div>
   );
@@ -1855,26 +2043,6 @@ function GamePageContent({ gamePk, navigate, location }) {
     </div>
   ) : null;
 
-  const summaryPanel = (
-    <SummarySection
-      awayAbbr={away.abbreviation}
-      expandedVideoKey={expandedVideoKey}
-      getPlayBadge={getPlayBadge}
-      highlightByItemKey={highlightByItemKey}
-      homeAbbr={home.abbreviation}
-      onOpenPlay={openSheet}
-      onPlayerClick={handleSummaryPlayerClick}
-      onToggleVideo={handleSummaryVideoToggle}
-      pinnedVideo={pinnedVideo}
-      pitchingChangeBadge={PITCHING_CHANGE_BADGE}
-      statusChangeBadge={STATUS_CHANGE_BADGE}
-      summaryFilter={summaryFilter}
-      summaryItemGroups={summaryItemGroups}
-      summaryLeadIn={summaryLeadIn}
-      onSummaryFilterChange={setSummaryFilter}
-    />
-  );
-
   const finalDesktopLayout = isFinal ? (
     <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_480px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:gap-8 xl:overflow-hidden">
       <section className="min-w-0 min-h-0 flex flex-col gap-6 overflow-hidden">
@@ -1904,7 +2072,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     <div
       className={`max-w-5xl mx-auto px-0 sm:px-6 py-0 sm:py-8 ${
         isLive && currentTab === 'live'
-          ? 'xl:h-screen xl:max-h-screen xl:max-w-none xl:overflow-hidden xl:px-3 xl:py-3 2xl:px-5'
+          ? 'xl:h-[calc(100vh-4rem)] xl:max-h-[calc(100vh-4rem)] xl:max-w-none xl:overflow-hidden xl:px-3 xl:py-3 2xl:px-5'
           : isFinal
             ? 'xl:h-[calc(100vh-4rem)] xl:max-h-[calc(100vh-4rem)] xl:max-w-none xl:overflow-hidden xl:px-3 xl:py-3 2xl:px-5'
           : 'xl:max-w-[1500px]'
@@ -2270,6 +2438,13 @@ function GamePageContent({ gamePk, navigate, location }) {
           getPlayHitData={getPlayHitData}
           renderHitDataPanel={(hitData) => <HitDataPanel hitData={hitData} />}
           showPitchTrails={SHOW_PLAY_DETAIL_PITCH_TRAILS}
+        />
+        <PitchCountByInningSheet
+          open={pitchCountSheetOpen}
+          onClose={() => setPitchCountSheetOpen(false)}
+          allPlays={allPlays}
+          away={away}
+          home={home}
         />
           </>
         )}

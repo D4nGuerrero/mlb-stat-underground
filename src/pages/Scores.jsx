@@ -581,21 +581,22 @@ export default function Scores() {
                 onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
                 className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-3.5 cursor-pointer transition-all active:scale-[0.97]"
               >
-                <div className="flex justify-between items-start gap-2 mb-3 min-h-[2rem]">
+                <div className="flex justify-between items-start gap-2 mb-3 min-h-[2rem] j">
                   <div className="min-w-0">
                     {renderGridStatusCorner(game, { isLive, isFinal, isDelayed, isPostponed })}
                   </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    {isLive && (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] text-red-400 font-bold">
-                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
-                      </span>
-                    )}
+                  <div className="flex flex-row items-end gap-1 flex-shrink-0">
                     {noHitAlerts?.map((a) => (
                       <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
                         {a.label}
                       </span>
                     ))}
+                    {isLive && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] text-red-400 font-bold">
+                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
+                      </span>
+                    )}
+                    
                   </div>
                 </div>
 
@@ -795,7 +796,7 @@ export default function Scores() {
       alerts.push({
         side: 'home',
         type: pgEligible ? 'PG' : 'NH',
-        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter',
+        label: pgEligible ? '✨ Perfect game watch' : 'No-hitter',
       });
     }
 
@@ -808,7 +809,7 @@ export default function Scores() {
       alerts.push({
         side: 'away',
         type: pgEligible ? 'PG' : 'NH',
-        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter',
+        label: pgEligible ? '✨ Perfect game watch' : 'No-hitter',
       });
     }
 

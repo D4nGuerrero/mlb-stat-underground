@@ -619,9 +619,6 @@ body {
     overflow: hidden;
   }
 
-  body.game-page-live-fullscreen nav#main-nav {
-    display: none !important;
-  }
 }
 
 /* Today button styling */

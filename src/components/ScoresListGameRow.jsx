@@ -122,7 +122,7 @@ function ListGameCenter({ game, status, noHitAlerts, compact = false, ultraCompa
       {noHitAlerts?.map((a) => (
         <span
           key={a.side}
-          className={`font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 ${ultraCompact ? 'text-[7px]' : compact ? 'text-[8px]' : 'text-[9px]'}`}
+          className={`mt-2 font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 ${ultraCompact ? 'text-[7px]' : compact ? 'text-[8px]' : 'text-[9px]'}`}
         >
           {a.label}
         </span>
