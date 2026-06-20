@@ -348,7 +348,7 @@ function SummaryPlayItemRow({
           {item.outsLabel && (
             <>
               {' '}
-              <span className="font-bold text-slate-100">{item.outsLabel}</span>
+              <span className="whitespace-nowrap font-bold text-slate-100">{item.outsLabel}</span>
             </>
           )}
         </p>

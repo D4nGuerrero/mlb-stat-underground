@@ -338,7 +338,7 @@ function LiveRecentPlayRow({
           {row.outsLabel && (
             <>
               {' '}
-              <span className="font-bold text-slate-100">{row.outsLabel}</span>
+              <span className="whitespace-nowrap font-bold text-slate-100">{row.outsLabel}</span>
             </>
           )}
         </p>
@@ -382,7 +382,7 @@ function LiveRecentPlayRow({
           {row.outsLabel && (
             <>
               {' '}
-              <span className="font-bold text-slate-100">{row.outsLabel}</span>
+              <span className="whitespace-nowrap font-bold text-slate-100">{row.outsLabel}</span>
             </>
           )}
         </p>
