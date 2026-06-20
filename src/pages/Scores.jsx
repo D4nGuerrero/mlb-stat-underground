@@ -58,6 +58,7 @@ const LEAGUE_OPTIONS = [
   { value: 'high-a', label: 'High-A', shortLabel: 'A+', sportQuery: 'sportId=13', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
   { value: 'single-a', label: 'Single-A', shortLabel: 'A', sportQuery: 'sportId=14', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
   { value: 'rookie', label: 'Rookie', shortLabel: 'Rookie', sportQuery: 'sportId=16', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
+  { value: 'lmb', label: 'Mexican League', shortLabel: 'LMB', sportQuery: 'sportId=23&leagueId=125', logo: 'https://www.mlbstatic.com/team-logos/732.svg' },
 ];
 const LEAGUE_CONFIG_BY_VALUE = Object.fromEntries(LEAGUE_OPTIONS.map((option) => [option.value, option]));
 const LEAGUE_MODES = new Set(LEAGUE_OPTIONS.map((option) => option.value));
@@ -99,7 +100,7 @@ function ScoreboardLeagueBadge({ league, value, onChange }) {
         className="group flex items-center gap-2 text-right outline-none transition-opacity hover:opacity-90 active:scale-[0.985]"
         aria-label="Change scoreboard league level"
       >
-        <span className="font-sans font-bold text-2xl sm:text-3xl tracking-tight text-white">
+        <span className="font-sans font-bold text-2xl sm:text-sm tracking-tight text-white">
           {league.shortLabel}
         </span>
         <img src={league.logo} alt="" className="h-20 w-20 sm:h-9 sm:w-9 object-contain" draggable={false} />
@@ -107,7 +108,7 @@ function ScoreboardLeagueBadge({ league, value, onChange }) {
       <MenuItems
         anchor="bottom end"
         transition
-        className="z-50 mt-2 w-52 rounded-2xl border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-black/40 backdrop-blur focus:outline-none transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+        className="z-50 -mt-2 sm:m-2 w-52 rounded-2xl border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-black/40 backdrop-blur focus:outline-none transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
       >
         {LEAGUE_OPTIONS.map((option) => {
           const selected = option.value === value;
@@ -822,7 +823,7 @@ export default function Scores() {
     const ls = game.linescore;
     if (!ls || game.status.abstractGameState !== 'Live') return null;
     const inning = ls.currentInning || 0;
-    if (inning < 2) return null;
+    if (inning < 4) return null;
 
     const awayHits = ls.teams?.away?.hits ?? 0;
     const homeHits = ls.teams?.home?.hits ?? 0;
@@ -843,7 +844,7 @@ export default function Scores() {
       alerts.push({
         side: 'home',
         type: pgEligible ? 'PG' : 'NH',
-        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter watch',
+        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter',
       });
     }
 
@@ -856,7 +857,7 @@ export default function Scores() {
       alerts.push({
         side: 'away',
         type: pgEligible ? 'PG' : 'NH',
-        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter watch',
+        label: pgEligible ? '✨ Perfect game watch' : '🚫 No-hitter',
       });
     }
 
