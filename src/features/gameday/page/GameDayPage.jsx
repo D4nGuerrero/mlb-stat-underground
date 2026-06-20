@@ -986,6 +986,65 @@ function leagueLogoForSportId(sportId) {
   return Number(sportId) === 1 ? MLB_LEAGUE_LOGO : MILB_LEAGUE_LOGO;
 }
 
+function buildMlbTvUrl(gamePk) {
+  return `https://www.mlb.com/tv/g${gamePk}?callsign=rsn&affiliateId=GAMEDAY`;
+}
+
+function WatchMenu({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
+  return (
+    <Menu as="div" className="relative">
+      <MenuButton
+        className="grid h-8 w-8 place-items-center transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+        aria-label="Open watch options"
+      >
+        <img
+          src={logoSrc}
+          alt={leagueLabel}
+          className="h-6 w-6 object-contain"
+          draggable={false}
+        />
+      </MenuButton>
+      <MenuItems
+        anchor="bottom end"
+        className="z-50 mt-2 w-56 origin-top-right rounded-2xl border border-slate-700/70 bg-[#121827]/95 p-2 shadow-2xl shadow-black/40 backdrop-blur focus:outline-none"
+      >
+        <div className="px-3 pb-2 pt-1">
+          <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+            Watch
+          </div>
+          <div className="mt-0.5 text-sm font-bold text-white">
+            Game Broadcast
+          </div>
+        </div>
+        <MenuItem>
+          {({ focus }) => (
+            <a
+              href={buildMlbTvUrl(gamePk)}
+              target="_blank"
+              rel="noreferrer"
+              className={[
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors',
+                focus ? `bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200` : 'text-slate-200',
+              ].join(' ')}
+            >
+              <span className={`grid h-8 w-8 place-items-center rounded-lg bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`}>
+                <i className="fa-solid fa-tv text-xs" aria-hidden />
+              </span>
+              <span className="min-w-0">
+                <span className="block">Watch on MLB.TV</span>
+                <span className="block text-[11px] font-medium text-slate-500">
+                  Opens official broadcast
+                </span>
+              </span>
+              <i className="fa-solid fa-arrow-up-right-from-square ml-auto text-[10px] text-slate-500" aria-hidden />
+            </a>
+          )}
+        </MenuItem>
+      </MenuItems>
+    </Menu>
+  );
+}
+
 async function fetchGamesForDate(dateStr, sportId = 1) {
   const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=${sportId || 1}&date=${dateStr}&hydrate=team(record),linescore`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2095,7 +2154,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           loading={dayScheduleLoading}
           onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
         />
-        <div className="justify-self-end flex items-center justify-end min-w-[4.5rem]">
+        <div className="justify-self-end flex items-center justify-end gap-2 min-w-[4.5rem]">
           {isLive ? (
             <div className="flex items-center gap-1 text-[10px] text-red-400">
               <div className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />
@@ -2104,13 +2163,12 @@ function GamePageContent({ gamePk, navigate, location }) {
                 {ls?.currentInning}
               </span>
             </div>
-          ) : (
-            <img
-              src={leagueLogoSrc}
-              alt={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
-              className="w-6 h-6 object-contain"
-            />
-          )}
+          ) : null}
+          <WatchMenu
+            gamePk={gamePk}
+            logoSrc={leagueLogoSrc}
+            leagueLabel={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
+          />
         </div>
       </div>
 
@@ -2125,26 +2183,33 @@ function GamePageContent({ gamePk, navigate, location }) {
           <i className="fa-solid fa-arrow-left text-xs" />
           <span>Scores</span>
         </button>
-        {isLive && (
-          <div
-            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
-              wsStatus === 'connected'
-                ? `text-${THEME_COLOR}-400 border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10`
-                : wsStatus === 'connecting' || wsStatus === 'reconnecting'
-                  ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10'
-                  : 'text-slate-500 border-slate-700/40'
-            }`}
-          >
+        <div className="flex items-center gap-2">
+          {isLive && (
             <div
-              className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? `bg-${THEME_COLOR}-400 animate-pulse` : wsStatus === 'reconnecting' ? 'bg-yellow-400 animate-pulse' : 'bg-slate-600'}`}
-            />
-            {wsStatus === 'connected'
-              ? 'Live'
-              : wsStatus === 'reconnecting'
-                ? 'Reconnecting…'
-                : 'Connecting…'}
-          </div>
-        )}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
+                wsStatus === 'connected'
+                  ? `text-${THEME_COLOR}-400 border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10`
+                  : wsStatus === 'connecting' || wsStatus === 'reconnecting'
+                    ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10'
+                    : 'text-slate-500 border-slate-700/40'
+              }`}
+            >
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? `bg-${THEME_COLOR}-400 animate-pulse` : wsStatus === 'reconnecting' ? 'bg-yellow-400 animate-pulse' : 'bg-slate-600'}`}
+              />
+              {wsStatus === 'connected'
+                ? 'Live'
+                : wsStatus === 'reconnecting'
+                  ? 'Reconnecting…'
+                  : 'Connecting…'}
+            </div>
+          )}
+          <WatchMenu
+            gamePk={gamePk}
+            logoSrc={leagueLogoSrc}
+            leagueLabel={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
+          />
+        </div>
       </div>
 
       <div className={`px-0 sm:px-3 ${(isLive && currentTab === 'live') ? 'xl:h-full xl:min-h-0 xl:overflow-hidden' : ''} ${isFinal ? 'xl:h-full xl:min-h-0 xl:overflow-hidden xl:flex xl:flex-col' : ''}`}>
