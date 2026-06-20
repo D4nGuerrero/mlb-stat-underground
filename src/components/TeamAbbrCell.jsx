@@ -21,6 +21,7 @@ export default function TeamAbbrCell({
   teamName,
   link = false,
   abbrOnly = false,
+  hidePlaceholderAbbr = false,
   className = '',
   size = 'md',
   abbrClassName = 'text-sm font-medium',
@@ -29,6 +30,7 @@ export default function TeamAbbrCell({
   const id = teamId ?? team?.id;
   const abbr = getTeamAbbr(team ?? id);
   const name = teamName ?? team?.name ?? team?.teamName ?? abbr;
+  const showAbbr = !(hidePlaceholderAbbr && abbr === '—');
 
   if (!id && abbr === '—') {
     return <span className="text-slate-500">—</span>;
@@ -38,10 +40,10 @@ export default function TeamAbbrCell({
     <span className={`inline-flex items-center gap-1 sm:gap-1.5 min-w-0 ${className}`}>
       <TeamLogoImg teamId={id} className={`${SIZES[size] ?? SIZES.md} object-contain flex-shrink-0`} alt={abbr} />
       {abbrOnly ? (
-        <span className={`${abbrClassName} leading-none`}>{abbr}</span>
+        showAbbr && <span className={`${abbrClassName} leading-none`}>{abbr}</span>
       ) : (
         <>
-          <span className={`${abbrClassName} sm:hidden leading-none`}>{abbr}</span>
+          {showAbbr && <span className={`${abbrClassName} sm:hidden leading-none`}>{abbr}</span>}
           <span className={`hidden sm:inline whitespace-nowrap leading-tight ${nameClassName}`}>{name}</span>
         </>
       )}

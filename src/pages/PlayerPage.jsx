@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, useLocation, useNavigationType, Link } from 'react-router-dom';
-import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackgroundClass, getTeamAbbr, spotracPlayerUrl, retiredPlayerTeamOverride } from '../utils/mlbHelpers';
+import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackgroundClass, getTeamAbbr, spotracPlayerUrl, retiredPlayerTeamOverride, mlbTeams } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
@@ -36,6 +36,7 @@ import {
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
+const MLB_PARENT_TEAM_IDS = new Set(mlbTeams.map((team) => Number(team.id)));
 
 const playerViewStateCache = new Map();
 const TXN_SHEET_RETURN_PREFIX = 'playerTxnSheetReturn:';
@@ -202,7 +203,8 @@ function mapPlayerToWatchEntry(player) {
 
 function PlayerHeroActions({ player, playerId, watchlist, onToggleWatch, watchAnimating }) {
   const isWatched = watchlist.some((p) => p.id === Number(playerId));
-  const parentOrgId = player?.active !== false ? player?.currentTeam?.parentOrgId : null;
+  const rawParentOrgId = player?.active !== false ? player?.currentTeam?.parentOrgId : null;
+  const parentOrgId = MLB_PARENT_TEAM_IDS.has(Number(rawParentOrgId)) ? rawParentOrgId : null;
 
   return (
     <div className="absolute bottom-4 right-5 sm:bottom-6 sm:right-8 z-30 flex items-center gap-2">

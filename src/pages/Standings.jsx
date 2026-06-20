@@ -3,6 +3,8 @@ import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate } from 'react-router-dom';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
+import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
+import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
 import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -65,6 +67,15 @@ const VS_DIV_GLOSSARY = [
   { key: 'RHP', text: 'Vs. right-handed pitchers' },
   { key: 'LHP', text: 'Vs. left-handed pitchers' },
 ];
+
+const loadStandingsLeague = () => {
+  try {
+    const saved = localStorage.getItem(LEAGUE_LEVEL_STORAGE_KEY);
+    return LEAGUE_LEVEL_VALUES.has(saved) ? saved : 'mlb';
+  } catch {
+    return 'mlb';
+  }
+};
 
 function divisionShortName(divId, fallback) {
   return DIVISION_META[divId]?.short ?? fallback?.replace(/American League |National League /, '') ?? 'Division';
@@ -141,11 +152,13 @@ export default function Standings() {
   const [viewScope, setViewScope] = useState('division');
   const [sortCol, setSortCol] = useState('divisionRank');
   const [sortDir, setSortDir] = useState('asc');
+  const [standingsLeague, setStandingsLeague] = useState(loadStandingsLeague);
 
   const standingsType = STANDINGS_TYPE_BY_TAB[activeTab] ?? 'regularSeason';
+  const selectedLeague = LEAGUE_LEVEL_BY_VALUE[standingsLeague] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
 
   const fetchStandings = async () => {
-    const key = `${season}:${standingsType}`;
+    const key = `${standingsLeague}:${season}:${standingsType}`;
     if (cache.current[key]) {
       setStandingsData(cache.current[key]);
       setIsLoading(false);
@@ -156,7 +169,7 @@ export default function Standings() {
     setError(null);
     try {
       const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=${standingsType}&hydrate=team(division,league),records(divisionRecords,splitRecords,leagueRecords)`,
+        `https://statsapi.mlb.com/api/v1/standings?${selectedLeague.standingsQuery}&season=${season}&standingsTypes=${standingsType}&hydrate=team(division,league),records(divisionRecords,splitRecords,leagueRecords)`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -172,7 +185,20 @@ export default function Standings() {
   useEffect(() => {
     fetchStandings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season, standingsType]);
+  }, [season, standingsType, standingsLeague]);
+
+  useEffect(() => {
+    localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, standingsLeague);
+  }, [standingsLeague]);
+
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key !== LEAGUE_LEVEL_STORAGE_KEY) return;
+      if (LEAGUE_LEVEL_VALUES.has(event.newValue)) setStandingsLeague(event.newValue);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const buildTeamRow = (tr, { leagueId, divId }) => {
     const splits = tr.records?.splitRecords || [];
@@ -198,6 +224,7 @@ export default function Standings() {
 
     return {
       teamId: tr.team?.id,
+      team: tr.team,
       teamName: tr.team?.name,
       wins: tr.wins ?? 0,
       losses: tr.losses ?? 0,
@@ -234,53 +261,55 @@ export default function Standings() {
   };
 
   const parseStandings = useCallback((records) => {
-    if (!records) return { al: {}, nl: {}, wildCard: { al: [], nl: [] } };
-    const al = {};
-    const nl = {};
-    const wildCard = { al: [], nl: [] };
+    if (!records) return { divisions: [], wildCardGroups: [] };
+    const divisions = {};
+    const wildCardGroups = {};
 
     records.forEach((record) => {
       const firstTeam = record.teamRecords?.[0]?.team;
       const leagueId = record.league?.id ?? firstTeam?.league?.id;
-      const divId = record.division?.id ?? firstTeam?.division?.id;
-      const divName = record.division?.name ?? firstTeam?.division?.name ?? 'Unknown Division';
+      const leagueName = record.league?.name ?? firstTeam?.league?.name ?? 'League';
+      const divId = record.division?.id ?? firstTeam?.division?.id ?? `league-${leagueId ?? 'unknown'}`;
+      const divName = record.division?.name ?? firstTeam?.division?.name ?? leagueName;
 
       if (record.standingsType === 'wildCard') {
-        const bucket = leagueId === 103 ? wildCard.al : wildCard.nl;
+        const key = leagueId ?? 'league';
+        if (!wildCardGroups[key]) wildCardGroups[key] = { leagueId, name: leagueName, teams: [] };
         (record.teamRecords || []).forEach((tr) => {
-          bucket.push(buildTeamRow(tr, { leagueId, divId }));
+          wildCardGroups[key].teams.push(buildTeamRow(tr, { leagueId, divId }));
         });
         return;
       }
 
       if (!divId || leagueId == null) return;
 
-      const target = leagueId === 103 ? al : nl;
-      if (!target[divId]) {
-        target[divId] = {
+      if (!divisions[divId]) {
+        divisions[divId] = {
           divId,
           name: divisionShortName(divId, divName),
           leagueId,
-          leagueLabel: leagueId === 103 ? 'American League' : 'National League',
+          leagueLabel: leagueName,
           teams: [],
         };
       }
 
       (record.teamRecords || []).forEach((tr) => {
-        target[divId].teams.push(buildTeamRow(tr, { leagueId, divId }));
+        divisions[divId].teams.push(buildTeamRow(tr, { leagueId, divId }));
       });
     });
 
-    [al, nl].forEach((lg) => {
-      Object.values(lg).forEach((div) => {
-        div.teams.sort((a, b) => a.divisionRank - b.divisionRank);
-      });
+    Object.values(divisions).forEach((div) => {
+      div.teams.sort((a, b) => a.divisionRank - b.divisionRank);
     });
 
-    wildCard.al.sort((a, b) => (a.wildCardRank ?? 99) - (b.wildCardRank ?? 99));
-    wildCard.nl.sort((a, b) => (a.wildCardRank ?? 99) - (b.wildCardRank ?? 99));
+    Object.values(wildCardGroups).forEach((group) => {
+      group.teams.sort((a, b) => (a.wildCardRank ?? 99) - (b.wildCardRank ?? 99));
+    });
 
-    return { al, nl, wildCard };
+    return {
+      divisions: Object.values(divisions),
+      wildCardGroups: Object.values(wildCardGroups),
+    };
   }, []);
 
   const parsed = useMemo(
@@ -316,45 +345,42 @@ export default function Standings() {
 
   const getGroupedData = () => {
     if (!parsed) return null;
-    const { al, nl, wildCard } = parsed;
+    const { divisions, wildCardGroups } = parsed;
 
     if (activeTab === 'wildcard') {
       return {
         layout: 'league-groups',
-        groups: [
-          { name: 'American League', teams: sortTeams(wildCard.al) },
-          { name: 'National League', teams: sortTeams(wildCard.nl) },
-        ],
+        groups: wildCardGroups.map((group) => ({ ...group, teams: sortTeams(group.teams) })),
       };
     }
 
-    const alDivs = sortDivisions(Object.values(al)).map((d) => ({ ...d, teams: sortTeams(d.teams) }));
-    const nlDivs = sortDivisions(Object.values(nl)).map((d) => ({ ...d, teams: sortTeams(d.teams) }));
-    const alTeams = sortTeams(alDivs.flatMap((d) => d.teams));
-    const nlTeams = sortTeams(nlDivs.flatMap((d) => d.teams));
+    const divs = sortDivisions(divisions).map((d) => ({ ...d, teams: sortTeams(d.teams) }));
+    const leagueGroups = Object.values(divs.reduce((acc, div) => {
+      const key = div.leagueId ?? div.leagueLabel;
+      if (!acc[key]) acc[key] = { name: div.leagueLabel, teams: [], divisions: [] };
+      acc[key].teams.push(...div.teams);
+      acc[key].divisions.push(div);
+      return acc;
+    }, {})).map((group) => ({ ...group, teams: sortTeams(group.teams) }));
 
     if (viewScope === 'league') {
       return {
         layout: 'league-groups',
-        groups: [
-          { name: 'American League', teams: alTeams },
-          { name: 'National League', teams: nlTeams },
-        ],
+        groups: leagueGroups,
       };
     }
 
     if (viewScope === 'overall') {
       return {
         layout: 'single',
-        title: 'MLB Overall',
-        teams: sortTeams([...alTeams, ...nlTeams]),
+        title: `${selectedLeague.shortLabel} Overall`,
+        teams: sortTeams(divs.flatMap((d) => d.teams)),
       };
     }
 
     return {
       layout: 'divisions',
-      alDivs,
-      nlDivs,
+      groups: leagueGroups,
     };
   };
 
@@ -416,8 +442,10 @@ export default function Standings() {
         onClick={() => navigate(`/team/${team.teamId}`)}
       >
         <TeamAbbrCell
+          team={team.team}
           teamId={team.teamId}
           teamName={team.teamName}
+          hidePlaceholderAbbr={selectedLeague.value !== 'mlb'}
           size="xxl"
           abbrClassName="text-[10px] font-medium"
           nameClassName="text-[20px] font-medium"
@@ -504,13 +532,14 @@ export default function Standings() {
 
   const renderTable = (title, teams, { highlightLeader = false } = {}) => {
     const columns = COLUMN_SETS[activeTab] ?? COLUMN_SETS.standings;
+    const tableMinWidthClass = activeTab === 'expanded' ? 'min-w-[760px] sm:min-w-[980px]' : '';
     return (
       <div key={title} className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden px-3">
         <div className="px-5 sm:px-6 py-3 border-b border-slate-800">
           <h2 className="font-semibold text-base sm:text-lg">{title}</h2>
         </div>
         <div className={TABLE_SCROLL}>
-          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT_STANDINGS}`}>
+          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT_STANDINGS} ${tableMinWidthClass}`}>
             <colgroup>
               <col className={TABLE_TEAM_COL_CLASS} />
               {columns.map((col) => (
@@ -566,9 +595,15 @@ export default function Standings() {
   return (
     <div className="max-w-7xl mx-auto sm:px-6 py-6 sm:py-8 max-w-3xl">
       <div className="mb-6 px-3 sm:px-0">
-        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
-          MLB Standings 
-
+        <div className="flex items-center justify-between gap-3">
+          <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
+            {selectedLeague.shortLabel} Standings
+          </div>
+          <LeagueLevelPicker
+            value={standingsLeague}
+            onChange={setStandingsLeague}
+            ariaLabel="Change standings league level"
+          />
         </div>
         {/* <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Standings</h1>
         <p className="text-slate-400 mt-1 text-sm">
@@ -620,18 +655,14 @@ export default function Standings() {
 
       {grouped?.layout === 'divisions' && (
         <div className="space-y-5">
-          <div className="space-y-4">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
-              American League
+          {grouped.groups.map((group, index) => (
+            <div key={group.name} className={`${index > 0 ? 'border-t border-slate-700/60 pt-5' : ''} space-y-4`}>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
+                {group.name}
+              </div>
+              {group.divisions.map((div) => renderTable(div.name, div.teams, { highlightLeader: true }))}
             </div>
-            {grouped.alDivs.map((div) => renderTable(div.name, div.teams, { highlightLeader: true }))}
-          </div>
-          <div className="border-t border-slate-700/60 pt-5 space-y-4">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
-              National League
-            </div>
-            {grouped.nlDivs.map((div) => renderTable(div.name, div.teams, { highlightLeader: true }))}
-          </div>
+          ))}
         </div>
       )}
 

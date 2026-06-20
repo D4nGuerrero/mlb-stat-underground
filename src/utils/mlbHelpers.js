@@ -89,7 +89,7 @@ export function getTeamAbbr(teamOrId) {
   }
   const team = teamOrId;
   if (!team?.id) return team?.abbreviation ?? '—';
-  return team.abbreviation ?? TEAM_ABBR_BY_ID[team.id] ?? team.name?.split(' ').pop() ?? '—';
+  return TEAM_ABBR_BY_ID[team.id] ?? team.abbreviation ?? team.name?.split(' ').pop() ?? '—';
 }
 
 // export const teamLogoUrl = (teamId) =>

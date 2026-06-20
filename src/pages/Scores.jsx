@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
@@ -13,6 +12,8 @@ import {
 } from '../components/LiveGameIndicators';
 import ScoresListGameRow from '../components/ScoresListGameRow';
 import { SegmentedControl, SwipeableCarousel, LoadingSpinner } from '../components/ui';
+import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
+import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
 
 const MIN_DATE = new Date('2024-03-01');
 const WINDOW_PAST = 60;
@@ -48,20 +49,8 @@ const buildDateRange = (min, max) => {
 const getMaxDate = () => addDays(new Date(), FUTURE_DAYS);
 
 const VIEW_MODE_KEY = 'mlbScoresViewMode';
-const SCOREBOARD_LEAGUE_KEY = 'mlbScoresLeagueMode';
 const SCORES_DATE_KEY = 'mlbScoresSelectedDate';
 const VIEW_MODES = new Set(['card', 'list', 'grid']);
-const LEAGUE_OPTIONS = [
-  { value: 'mlb', label: 'MLB', shortLabel: 'MLB', sportQuery: 'sportId=1', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg' },
-  { value: 'aaa', label: 'Triple-A', shortLabel: 'AAA', sportQuery: 'sportId=11', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
-  { value: 'aa', label: 'Double-A', shortLabel: 'AA', sportQuery: 'sportId=12', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
-  { value: 'high-a', label: 'High-A', shortLabel: 'A+', sportQuery: 'sportId=13', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
-  { value: 'single-a', label: 'Single-A', shortLabel: 'A', sportQuery: 'sportId=14', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
-  { value: 'rookie', label: 'Rookie', shortLabel: 'Rookie', sportQuery: 'sportId=16', logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/milb-alt.svg' },
-  { value: 'lmb', label: 'Mexican League', shortLabel: 'LMB', sportQuery: 'sportId=23&leagueId=125', logo: 'https://www.mlbstatic.com/team-logos/732.svg' },
-];
-const LEAGUE_CONFIG_BY_VALUE = Object.fromEntries(LEAGUE_OPTIONS.map((option) => [option.value, option]));
-const LEAGUE_MODES = new Set(LEAGUE_OPTIONS.map((option) => option.value));
 
 const resolveScoresCenterDate = (returnDate) => {
   if (returnDate) return startOfDay(new Date(returnDate));
@@ -85,59 +74,12 @@ const loadViewMode = () => {
 
 const loadScoreboardLeague = () => {
   try {
-    const saved = localStorage.getItem(SCOREBOARD_LEAGUE_KEY);
-    return LEAGUE_MODES.has(saved) ? saved : 'mlb';
+    const saved = localStorage.getItem(LEAGUE_LEVEL_STORAGE_KEY);
+    return LEAGUE_LEVEL_VALUES.has(saved) ? saved : 'mlb';
   } catch {
     return 'mlb';
   }
 };
-
-function ScoreboardLeagueBadge({ league, value, onChange }) {
-  return (
-    <Menu as="div" className="relative">
-      <MenuButton
-        type="button"
-        className="group flex items-center gap-2 text-right outline-none transition-opacity hover:opacity-90 active:scale-[0.985]"
-        aria-label="Change scoreboard league level"
-      >
-        <span className="font-sans font-bold text-2xl sm:text-sm tracking-tight text-white">
-          {league.shortLabel}
-        </span>
-        <img src={league.logo} alt="" className="h-20 w-20 sm:h-9 sm:w-9 object-contain" draggable={false} />
-      </MenuButton>
-      <MenuItems
-        anchor="bottom end"
-        transition
-        className="z-50 -mt-2 sm:m-2 w-52 rounded-2xl border border-slate-700 bg-slate-900/95 p-1 shadow-2xl shadow-black/40 backdrop-blur focus:outline-none transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
-      >
-        {LEAGUE_OPTIONS.map((option) => {
-          const selected = option.value === value;
-          return (
-            <MenuItem key={option.value}>
-              {({ focus, close }) => (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value);
-                    close();
-                  }}
-                  className={[
-                    'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
-                    focus ? 'bg-slate-800 text-white' : 'text-slate-300',
-                    selected ? `text-${THEME_COLOR}-300` : '',
-                  ].join(' ')}
-                >
-                  <span className="font-bold">{option.label}</span>
-                  {selected && <i className={`fa-solid fa-check text-xs text-${THEME_COLOR}-300`} aria-hidden />}
-                </button>
-              )}
-            </MenuItem>
-          );
-        })}
-      </MenuItems>
-    </Menu>
-  );
-}
 
 const computeDateWindow = (center, maxDate) => {
   const start = addDays(center, -WINDOW_PAST);
@@ -187,7 +129,7 @@ export default function Scores() {
   const returnDateAppliedRef = useRef(false);
 
   const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
-  const selectedLeague = LEAGUE_CONFIG_BY_VALUE[scoreboardLeague] ?? LEAGUE_CONFIG_BY_VALUE.mlb;
+  const selectedLeague = LEAGUE_LEVEL_BY_VALUE[scoreboardLeague] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
 
   useEffect(() => {
     selectedIndexRef.current = selectedIndex;
@@ -403,8 +345,17 @@ export default function Scores() {
   }, [viewMode]);
 
   useEffect(() => {
-    localStorage.setItem(SCOREBOARD_LEAGUE_KEY, scoreboardLeague);
+    localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, scoreboardLeague);
   }, [scoreboardLeague]);
+
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key !== LEAGUE_LEVEL_STORAGE_KEY) return;
+      if (LEAGUE_LEVEL_VALUES.has(event.newValue)) setScoreboardLeague(event.newValue);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     if (!isInitialReady) return;
@@ -876,8 +827,7 @@ export default function Scores() {
 
           
         </div>
-        <ScoreboardLeagueBadge
-          league={selectedLeague}
+        <LeagueLevelPicker
           value={scoreboardLeague}
           onChange={setScoreboardLeague}
         />
