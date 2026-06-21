@@ -687,6 +687,105 @@ function parseStatValue(value) {
   return Number.isNaN(n) ? null : n;
 }
 
+function formatRateStat(value) {
+  if (value == null || value === '') return '—';
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric.toFixed(3).replace(/^0/, '');
+  const text = String(value);
+  return text.startsWith('0.') ? text.slice(1) : text;
+}
+
+function formatTwoDecimalStat(value) {
+  if (value == null || value === '') return '—';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : String(value);
+}
+
+function formatWholeStat(value) {
+  if (value == null || value === '') return '—';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? String(Math.round(numeric)) : String(value);
+}
+
+function getYearByYearSplitsFromStats(stats, group) {
+  return stats?.find((s) => s.type?.displayName === 'yearByYear' && s.group?.displayName === group)?.splits ?? [];
+}
+
+function rowsFromYearByYearStats(stats, group) {
+  return getYearByYearSplitsFromStats(stats, group)
+    .filter((split) => split.season && split.stat)
+    .map((split, index) => ({
+      id: `${split.season}-${split.team?.id ?? 'total'}-${index}`,
+      season: Number(split.season),
+      team: split.team,
+      stat: split.stat,
+      isSeasonTotal: !split.team?.id,
+    }));
+}
+
+function getSeasonStatFromYearByYear(stats, group, season) {
+  const rows = rowsFromYearByYearStats(stats, group).filter((row) => row.season === Number(season));
+  if (!rows.length) return null;
+  const existingTotal = rows.find(isSeasonTotalRow);
+  if (existingTotal) return existingTotal.stat;
+  return computeSeasonTotalsRow(rows, group, season)?.stat ?? rows[0]?.stat ?? null;
+}
+
+function getCareerStatFromYearByYear(stats, group) {
+  const rows = rowsFromYearByYearStats(stats, group);
+  return computeCareerTotalsRow(rows, group)?.stat ?? null;
+}
+
+function PlayerStatSummaryCard({ playerInfo, isPitcher, stats }) {
+  const isActive = playerInfo?.active !== false;
+  const group = isPitcher ? 'pitching' : 'hitting';
+  const stat = isActive
+    ? getSeasonStatFromYearByYear(stats, group, CURRENT_YEAR)
+    : getCareerStatFromYearByYear(stats, group);
+  const header = isActive ? `${CURRENT_YEAR} SEASON STATS` : 'CAREER STATS';
+  const headerClass = isActive
+    ? `border-${THEME_COLOR}-500/25 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-300`
+    : 'border-slate-600/40 bg-slate-700/30 text-slate-300';
+  const items = isPitcher
+    ? [
+        { label: 'W-L', value: stat ? `${stat.wins ?? 0}-${stat.losses ?? 0}` : '—' },
+        { label: 'IP', value: stat?.inningsPitched ?? '—' },
+        { label: 'ERA', value: formatTwoDecimalStat(stat?.era) },
+        { label: 'K', value: formatWholeStat(stat?.strikeOuts) },
+        { label: 'WHIP', value: formatTwoDecimalStat(stat?.whip) },
+      ]
+    : [
+        { label: 'AVG', value: formatRateStat(stat?.avg) },
+        { label: 'HR', value: formatWholeStat(stat?.homeRuns) },
+        { label: 'RBI', value: formatWholeStat(stat?.rbi) },
+        { label: 'OPS', value: formatRateStat(stat?.ops) },
+      ];
+
+  return (
+    <section className="px-4 pt-4 sm:px-8 sm:pt-6">
+      <div className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/70 shadow-lg shadow-black/15">
+        <div className={`border-b px-4 py-2 text-center ${headerClass}`}>
+          <div className="text-[10px] font-black uppercase tracking-[0.22em]">
+            {header}
+          </div>
+        </div>
+        <div className={`grid ${isPitcher ? 'grid-cols-5' : 'grid-cols-4'} divide-x divide-slate-800/80 px-1 py-3 sm:py-4`}>
+          {items.map((item) => (
+            <div key={item.label} className="min-w-0 px-1.5 text-center">
+              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:text-[10px]">
+                {item.label}
+              </div>
+              <div className="mt-1 font-display text-2xl leading-none tracking-tighter text-slate-100 sm:text-3xl">
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function computeCareerHighs(rows, cols) {
   const highs = {};
   for (const col of cols) {
@@ -2162,7 +2261,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   useEffect(() => {
     if (!playerId || !playerInfo) return;
-    const neededLevels = [...new Set([logLevel, splitLevel])].filter(
+    const neededLevels = [...new Set(['mlb', logLevel, splitLevel])].filter(
       (level) => level && !yearByYearByLevel[level],
     );
     if (!neededLevels.length) return;
@@ -2265,6 +2364,9 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const playerImageOptions = isMinorsProfile ? { level: 'minors' } : undefined;
   const currentTeamLogoOptions = isMinorsProfile ? { level: 'minors' } : undefined;
   const heroBgClass = playerHeroBackgroundClass(playerInfo?.id);
+  const regularMlbYearByYear =
+    yearByYearByLevel.mlb ??
+    (careerLevel === 'mlb' && careerGameType === 'R' ? yearByYear : null);
 
   const PLAYER_TABS = [
     { key: 'career', label: 'Career' },
@@ -2351,6 +2453,12 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
               </div>
             </div>
           </div>
+
+          <PlayerStatSummaryCard
+            playerInfo={playerInfo}
+            isPitcher={isPitcher}
+            stats={regularMlbYearByYear}
+          />
 
           <PlayerBioInfo playerInfo={playerInfo} draftPick={draftPick} />
 

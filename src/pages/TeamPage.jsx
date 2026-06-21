@@ -22,6 +22,7 @@ const SCHEDULE_SEASON_OPTIONS = Array.from(
 }));
 
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
+const MLB_SPORT_ID = 1;
 
 const localDateKey = (d) => {
   const y = d.getFullYear();
@@ -881,6 +882,7 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
 function ScheduleTab({
   teamId,
   season,
+  sportId = MLB_SPORT_ID,
   setSeason,
   view,
   setView,
@@ -914,7 +916,7 @@ function ScheduleTab({
           query: {
             teamId,
             season,
-            sportId: 1,
+            sportId,
             gameType: 'R',
             hydrate: 'team,linescore',
           },
@@ -941,7 +943,7 @@ function ScheduleTab({
       cancelled = true;
       controller.abort();
     };
-  }, [teamId, season]);
+  }, [teamId, season, sportId]);
 
   const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const monthName = (mm) => new Date(Number(season), Number(mm) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
@@ -1042,9 +1044,12 @@ function ScheduleTab({
   };
 
   const handleCalendarPointerDown = (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Desktop mouse clicks should behave like normal button clicks. We only
+    // capture touch/pen gestures here so the month grid can swipe on mobile.
+    if (e.pointerType === 'mouse') return;
     calendarSwipeRef.current = {
       pointerId: e.pointerId,
+      target: e.currentTarget,
       x: e.clientX,
       y: e.clientY,
       dragging: false,
@@ -1072,6 +1077,7 @@ function ScheduleTab({
     const start = calendarSwipeRef.current;
     calendarSwipeRef.current = null;
     if (!start || start.pointerId !== e.pointerId) return;
+    start.target?.releasePointerCapture?.(e.pointerId);
 
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
@@ -1090,6 +1096,10 @@ function ScheduleTab({
   };
 
   const handleCalendarPointerCancel = () => {
+    const start = calendarSwipeRef.current;
+    if (start?.target && start?.pointerId != null) {
+      start.target.releasePointerCapture?.(start.pointerId);
+    }
     calendarSwipeRef.current = null;
     setCalendarDragOffset(0);
   };
@@ -1658,6 +1668,7 @@ function TeamPageContent({ teamId }) {
   const [scheduleMonth, setScheduleMonth] = useState(defaults.scheduleMonth);
   const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
   const isFavorite = isFavoriteTeam(teamId);
+  const teamSportId = Number(teamInfo?.sport?.id) || MLB_SPORT_ID;
 
   useEffect(() => {
     restoreTeamPageScroll(teamId);
@@ -1670,7 +1681,7 @@ function TeamPageContent({ teamId }) {
     const loadTeamInfo = async () => {
       try {
         const json = await fetchStatsApiJson(`/api/v1/teams/${teamId}`, {
-          query: { hydrate: 'division,league,venue' },
+          query: { hydrate: 'division,league,venue,sport' },
           signal: controller.signal,
           ttl: 5 * 60_000,
           retries: 1,
@@ -1869,9 +1880,10 @@ function TeamPageContent({ teamId }) {
               if (key === 'schedule') {
                 return (
                   <ScheduleTab
-                    key={`${teamId}:${season}`}
+                    key={`${teamId}:${season}:${teamSportId}`}
                     teamId={teamId}
                     season={season}
+                    sportId={teamSportId}
                     setSeason={setSeason}
                     view={scheduleView}
                     setView={setScheduleView}
