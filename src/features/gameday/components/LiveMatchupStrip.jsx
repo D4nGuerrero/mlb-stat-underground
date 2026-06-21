@@ -16,6 +16,7 @@ function LiveMatchupPlayerCard({
   name,
   onSelect,
   playerId,
+  role,
   stat,
 }) {
   return (
@@ -42,8 +43,9 @@ function LiveMatchupPlayerCard({
           }}
         />
       </div>
-      <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[72px] truncate">
-        {name || '—'}
+      <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[88px] truncate">
+        <span>{name || '—'}</span>
+        {role && <span className="ml-1 text-[10px] font-black text-slate-500">{role}</span>}
       </div>
       <div className="text-[12px] text-red-500 font-mono text-center font-bold font-sans">
         {stat}
@@ -66,6 +68,22 @@ function formatBatterContribution(stat) {
   return parts.length ? `${line} | ${parts.join(', ')}` : line;
 }
 
+function formatPitcherRole(currentPlay, linescore) {
+  const hand =
+    currentPlay?.matchup?.pitchHand?.code ||
+    linescore?.defense?.pitcher?.pitchHand?.code;
+  return /^[LR]$/i.test(hand || '') ? `${String(hand).toUpperCase()}HP` : null;
+}
+
+function formatBatterRole(player, currentPlay, linescore) {
+  return (
+    player?.position?.abbreviation ||
+    currentPlay?.matchup?.batter?.primaryPosition?.abbreviation ||
+    linescore?.offense?.batter?.position?.abbreviation ||
+    null
+  );
+}
+
 export default function LiveMatchupStrip({
   currentPlay,
   dueUpBatters,
@@ -73,12 +91,16 @@ export default function LiveMatchupStrip({
   dueUpInningOrdinal,
   finalMessage = null,
   getBatterGameStat,
+  getGamePlayer,
   getPitcherGameStat,
   linescore,
   onPlayerSelect,
   showDueUpMatchup,
 }) {
   const pitcherStatObj = getPitcherGameStat(linescore?.defense?.pitcher?.id);
+  const batterPlayer = getGamePlayer?.(linescore?.offense?.batter?.id);
+  const batterRole = formatBatterRole(batterPlayer, currentPlay, linescore);
+  const pitcherRole = formatPitcherRole(currentPlay, linescore);
 
 function formatPitcherStat(s) {
   if (!s) return null;
@@ -167,6 +189,7 @@ function formatPitcherStat(s) {
             name={compactPlayerName(linescore?.defense?.pitcher)}
             onSelect={onPlayerSelect}
             playerId={linescore?.defense?.pitcher?.id}
+            role={pitcherRole}
             stat={
               pitcherStatObj ? (
                 <div className="text-white/50">
@@ -192,6 +215,7 @@ function formatPitcherStat(s) {
             name={compactPlayerName(linescore?.offense?.batter)}
             onSelect={onPlayerSelect}
             playerId={linescore?.offense?.batter?.id}
+            role={batterRole}
             stat={
               getBatterGameStat(linescore?.offense?.batter?.id) != null ? (
                 <div className={`text-white/50 `}>

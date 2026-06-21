@@ -1913,6 +1913,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         dueUpInningOrdinal={dueUpInningOrdinal}
         finalMessage={finalMessage}
         getBatterGameStat={getBatterGameStat}
+        getGamePlayer={getGamePlayer}
         getPitcherGameStat={getPitcherGameStat}
         linescore={ls}
         onPlayerSelect={handlePlayDetailPlayerSelect}
