@@ -41,7 +41,7 @@ import {
 import LiveMatchupStrip from '../components/LiveMatchupStrip';
 import PlayDetailSheet from '../components/PlayDetailSheet';
 import SummarySection, { ScoringPlayVideo } from '../components/SummarySection';
-import TeamBoxSection from '../components/TeamBoxSection';
+import TeamBoxSection, { TeamReservesSection } from '../components/TeamBoxSection';
 import { useDaySchedule } from '../hooks/useDaySchedule';
 import { useGameContent } from '../hooks/useGameContent';
 import { useLiveRecentPlays } from '../hooks/useLiveRecentPlays';
@@ -178,11 +178,15 @@ const PLAY_BADGE = {
     cls: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
   },
   caught_stealing_2b: {
-    label: 'CS',
+    label: 'Caught Stealing 2B',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   caught_stealing_3b: {
-    label: 'CS',
+    label: 'Caught Stealing 3B',
+    cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
+  },
+  caught_stealing_home: {
+        label: 'Caught Stealing Home',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
   wild_pitch: {
@@ -2068,6 +2072,15 @@ function GamePageContent({ gamePk, navigate, location }) {
             .join(', ')}
         </div>
       )}
+
+      {!isFinal && (
+        <div className="mt-4 pt-4 border-t border-slate-700/40">
+          <TeamReservesSection
+            teamBox={ld.boxscore?.teams?.[boxScoreSide]}
+            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          />
+        </div>
+      )}
     </div>
   ) : null;
 
@@ -2099,6 +2112,20 @@ function GamePageContent({ gamePk, navigate, location }) {
           onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
         />
       </div>
+      {!isFinal && (
+        <div className="mt-3 grid grid-cols-2 items-start gap-2 2xl:gap-3 border-t border-slate-800/70 pt-3">
+          <TeamReservesSection
+            teamBox={ld.boxscore?.teams?.away}
+            compact
+            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          />
+          <TeamReservesSection
+            teamBox={ld.boxscore?.teams?.home}
+            compact
+            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          />
+        </div>
+      )}
     </div>
   ) : null;
 

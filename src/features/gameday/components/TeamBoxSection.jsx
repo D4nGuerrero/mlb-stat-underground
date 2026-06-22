@@ -22,6 +22,11 @@ const getAllBatters = (teamBox) =>
     .filter((p) => p.battingOrder)
     .sort((a, b) => parseInt(a.battingOrder, 10) - parseInt(b.battingOrder, 10));
 
+const getPlayersFromIds = (teamBox, ids = []) =>
+  ids
+    .map((id) => teamBox?.players?.[`ID${id}`])
+    .filter((player) => player?.person?.id);
+
 const getSubLetter = (order) => {
   const suffix = parseInt(order, 10) % 100;
   return suffix === 0 ? null : String.fromCharCode(96 + suffix);
@@ -31,6 +36,109 @@ const formatBoxRate = (value) => {
   if (value == null || value === '' || value === '-') return '-';
   return String(value).replace(/^0(?=\.)/, '');
 };
+
+function ReservePlayersSection({
+  players,
+  title,
+  type,
+  compact,
+  fullscreenFit,
+  onPlayerSelect,
+}) {
+  if (!players.length) return null;
+
+  return (
+    <div className={`${fullscreenFit ? 'mt-1' : 'mt-3'} rounded-xl border border-slate-800/70 bg-slate-950/35 px-2 py-2`}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className={`${fullscreenFit ? 'text-[8px]' : 'text-[10px]'} font-black uppercase tracking-[0.18em] text-slate-500`}>
+          {title}
+        </span>
+        <span className={`${fullscreenFit ? 'text-[8px]' : 'text-[10px]'} font-semibold text-slate-600`}>
+          {players.length}
+        </span>
+      </div>
+      <div className={`grid ${compact || fullscreenFit ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'} gap-1.5`}>
+        {players.map((player) => {
+          const person = player.person;
+          const name = compactPlayerName(person, '');
+          const position = player.position?.abbreviation;
+          const batting = player.seasonStats?.batting || {};
+          const pitching = player.seasonStats?.pitching || {};
+          const pitchHand = player.pitchHand?.code || person?.pitchHand?.code;
+          const meta = type === 'bullpen'
+            ? [
+              pitchHand ? `${String(pitchHand).toUpperCase()}HP` : position,
+              pitching.era != null ? `${formatBoxRate(pitching.era)} ERA` : null,
+            ]
+            : [
+              position,
+              batting.avg != null ? formatBoxRate(batting.avg) : null,
+              batting.ops != null ? `${formatBoxRate(batting.ops)} OPS` : null,
+            ];
+
+          return (
+            <button
+              key={person.id}
+              type="button"
+              onClick={() => onPlayerSelect?.(person.id)}
+              className={`min-w-0 rounded-lg border border-slate-800/70 bg-slate-900/55 px-2 py-1.5 text-left transition-colors hover:border-${THEME_COLOR}-500/35 hover:bg-slate-800/70`}
+            >
+              <div className={`${fullscreenFit ? 'text-[9px]' : 'text-[11px]'} font-bold text-slate-200 truncate`}>
+                {name || person.fullName}
+              </div>
+              <div className={`${fullscreenFit ? 'text-[8px]' : 'text-[10px]'} text-slate-500 truncate`}>
+                {meta.filter(Boolean).join(' | ') || 'Available'}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function TeamReservesSection({
+  teamBox,
+  compact = false,
+  fullscreenFit = false,
+  onPlayerSelect,
+}) {
+  if (!teamBox) return null;
+
+  const batters = getAllBatters(teamBox);
+  const pitchers = (teamBox.pitchers || [])
+    .map((id) => teamBox.players?.[`ID${id}`])
+    .filter(Boolean);
+  const batterIds = new Set(batters.map((player) => player.person?.id).filter(Boolean));
+  const activePitcherIds = new Set(pitchers.map((player) => player.person?.id).filter(Boolean));
+  const benchPlayers = getPlayersFromIds(teamBox, teamBox.bench)
+    .filter((player) => !batterIds.has(player.person?.id));
+  const bullpenPlayers = getPlayersFromIds(teamBox, teamBox.bullpen)
+    .filter((player) => !activePitcherIds.has(player.person?.id));
+
+  if (!benchPlayers.length && !bullpenPlayers.length) return null;
+
+  return (
+    <div className={fullscreenFit ? 'space-y-1' : 'space-y-3'}>
+      <ReservePlayersSection
+        title="Bench"
+        type="bench"
+        players={benchPlayers}
+        compact={compact}
+        fullscreenFit={fullscreenFit}
+        onPlayerSelect={onPlayerSelect}
+      />
+      <ReservePlayersSection
+        title="Bullpen"
+        type="bullpen"
+        players={bullpenPlayers}
+        compact={compact}
+        fullscreenFit={fullscreenFit}
+        onPlayerSelect={onPlayerSelect}
+      />
+    </div>
+  );
+}
 
 export default function TeamBoxSection({
   team,
@@ -308,6 +416,7 @@ export default function TeamBoxSection({
           </table>
         </div>
       )}
+
     </div>
   );
 }
