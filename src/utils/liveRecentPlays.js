@@ -14,6 +14,7 @@ import {
   toIndicatorBases,
 } from './playSituation';
 import { compactPlayerName } from './mlbHelpers';
+import { formatPitchDescriptionWithAbsContext } from './absChallenge';
 
 const LIVE_EXTRA_EVENT_TYPES = new Set([
   'mound_visit',
@@ -262,7 +263,12 @@ function pushActiveAtBatEventRows(rows, play, ordinals, allPlays, { includePicko
     if (!ev.isPitch) return;
 
     pitchNumber += 1;
-    const description = ev.details?.description || ev.details?.call?.description || 'Pitch';
+    const description = formatPitchDescriptionWithAbsContext(
+      ev.details?.description || ev.details?.call?.description || 'Pitch',
+      ev,
+      play.playEvents ?? [],
+      eventIdx,
+    );
     rows.push({
       kind: 'live_pitch',
       key: `live-pitch-${play.about?.atBatIndex}-${eventIdx}`,

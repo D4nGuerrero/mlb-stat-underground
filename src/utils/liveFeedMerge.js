@@ -52,6 +52,26 @@ function deepMerge(prev, next) {
     const nv = next[key];
     if (nv === undefined) continue;
     const pv = prev[key];
+    if (
+      key === 'currentPlay' &&
+      nv !== null &&
+      typeof nv === 'object' &&
+      pv !== null &&
+      typeof pv === 'object' &&
+      nv.about?.atBatIndex != null &&
+      pv.about?.atBatIndex != null &&
+      nv.about.atBatIndex !== pv.about.atBatIndex
+    ) {
+      if (Number(nv.about.atBatIndex) < Number(pv.about.atBatIndex)) {
+        result[key] = pv;
+        continue;
+      }
+      // A new at-bat can arrive before MLB includes its first playEvents array.
+      // Replace instead of deep-merging so the previous at-bat's final pitch
+      // cannot flash back into the live visual under the new currentPlay.
+      result[key] = nv;
+      continue;
+    }
     if (key === 'linescore' && nv !== null && typeof nv === 'object') {
       result[key] = mergeLinescore(pv ?? {}, nv);
       continue;

@@ -4,6 +4,7 @@
  */
 
 import { getPitchResultKind } from '../utils/liveRecentPlays';
+import { formatPitchDescriptionWithAbs } from '../utils/absChallenge';
 
 const BASE_FOOT = 12;
 const PIXEL_FOOT = 75;
@@ -391,7 +392,7 @@ export function buildPitchFromEvent(event, pitchNumber, batter = null) {
     type: details.type?.code || '',
     trailColor: details.trailColor || null,
     ballColor: details.ballColor || null,
-    result: details.description || '',
+    result: formatPitchDescriptionWithAbs(details.description || '', event),
   };
 }
 

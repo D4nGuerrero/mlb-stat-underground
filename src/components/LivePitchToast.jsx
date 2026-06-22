@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { getPitchResultKind } from '../utils/liveRecentPlays';
+import { formatPitchDescriptionWithAbs } from '../utils/absChallenge';
 
 const RESULT_STYLES = {
   strike: 'border-red-500/45 text-red-100',
@@ -13,7 +14,10 @@ const RESULT_STYLES = {
 
 function toastFromPitch(pitch) {
   if (!pitch) return null;
-  const description = pitch.details?.description || pitch.details?.call?.description || 'Pitch';
+  const description = formatPitchDescriptionWithAbs(
+    pitch.details?.description || pitch.details?.call?.description || 'Pitch',
+    pitch,
+  );
   const pitchType = pitch.details?.type?.description;
   const mph = pitch.pitchData?.startSpeed ? Math.round(pitch.pitchData.startSpeed) : null;
   return {

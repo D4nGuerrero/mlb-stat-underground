@@ -3,6 +3,7 @@ import PitchCanvas from './PitchCanvas';
 import { AT_BAT_STRIKE_ZONE_CLIP } from '../pitchfx/atBatPitchFx';
 import LivePitchToast from './LivePitchToast';
 import { getPitchResultKind } from '../utils/liveRecentPlays';
+import { formatPitchDescriptionWithAbsContext } from '../utils/absChallenge';
 import {
   stadiumExteriorUrl,
   stadiumInfieldUrl,
@@ -17,6 +18,10 @@ function pitchEventsSignature(playEvents) {
   if (!pitches.length) return '0';
   const last = pitches[pitches.length - 1];
   return `${pitches.length}|${last.playId ?? ''}|${last.pitchNumber ?? ''}|${last.endTime ?? last.startTime ?? ''}|${last.details?.description ?? ''}`;
+}
+
+function hasRenderablePitchEvents(playEvents) {
+  return (playEvents ?? []).some((event) => event?.isPitch && event?.pitchData?.coordinates);
 }
 
 function classifyPlayToast(eventType = '') {
@@ -42,7 +47,18 @@ function buildLiveToastItem(playEvents, currentPlay) {
   if (!last) return null;
 
   if (last.isPitch) {
-    const description = last.details?.description || last.details?.call?.description || 'Pitch';
+    const lastPitchEventIndex = (() => {
+      for (let idx = events.length - 1; idx >= 0; idx -= 1) {
+        if (events[idx] === last) return idx;
+      }
+      return -1;
+    })();
+    const description = formatPitchDescriptionWithAbsContext(
+      last.details?.description || last.details?.call?.description || 'Pitch',
+      last,
+      events,
+      lastPitchEventIndex,
+    );
     const pitchType = last.details?.type?.description;
     const mph = last.pitchData?.startSpeed ? Math.round(last.pitchData.startSpeed) : null;
     return {
@@ -109,8 +125,47 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   immersiveField = false,
   className = '',
 }) {
+  const incomingAtBatIndex = currentPlay?.about?.atBatIndex ?? null;
   const sig = useMemo(() => pitchEventsSignature(playEvents), [playEvents]);
-  const stablePlayEvents = playEvents;
+  const incomingHasPitches = hasRenderablePitchEvents(playEvents);
+  const clearHeldPlayTimerRef = useRef(null);
+  const [displaySnapshot, setDisplaySnapshot] = useState(() => ({
+    atBatIndex: incomingAtBatIndex,
+    currentPlay,
+    playEvents,
+  }));
+
+  useEffect(() => () => {
+    if (clearHeldPlayTimerRef.current) window.clearTimeout(clearHeldPlayTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (clearHeldPlayTimerRef.current) {
+      window.clearTimeout(clearHeldPlayTimerRef.current);
+      clearHeldPlayTimerRef.current = null;
+    }
+
+    setDisplaySnapshot((prev) => {
+      const prevHasPitches = hasRenderablePitchEvents(prev.playEvents);
+      const sameAtBat = prev.atBatIndex === incomingAtBatIndex;
+
+      if (incomingHasPitches || sameAtBat || !prevHasPitches) {
+        return { atBatIndex: incomingAtBatIndex, currentPlay, playEvents };
+      }
+
+      // MLB can advance currentPlay to the next batter before it includes any
+      // new playEvents. Hold the completed visual briefly so the final pitch
+      // does not clear, flash back in, then clear again during handoff.
+      clearHeldPlayTimerRef.current = window.setTimeout(() => {
+        clearHeldPlayTimerRef.current = null;
+        setDisplaySnapshot({ atBatIndex: incomingAtBatIndex, currentPlay, playEvents });
+      }, 1800);
+      return prev;
+    });
+  }, [incomingAtBatIndex, incomingHasPitches, sig, currentPlay, playEvents]);
+
+  const stablePlayEvents = displaySnapshot.playEvents;
+  const visualCurrentPlay = displaySnapshot.currentPlay;
 
   const [toastItem, setToastItem] = useState(null);
   const lastToastIdRef = useRef(null);
@@ -124,10 +179,10 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
 
   useEffect(() => {
     if (!showPitchToast) return;
-    const item = buildLiveToastItem(playEvents, currentPlay);
+    const item = buildLiveToastItem(stablePlayEvents, visualCurrentPlay);
     if (!item || !item.id?.startsWith('play-') || lastToastIdRef.current === item.id) return;
 
-    const lastPitch = [...(playEvents ?? [])].reverse().find((event) => event?.isPitch);
+    const lastPitch = [...(stablePlayEvents ?? [])].reverse().find((event) => event?.isPitch);
     const lastPitchId = lastPitch?.playId ?? lastPitch?.pitchNumber;
     if (
       lastPitchId != null &&
@@ -139,8 +194,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     lastToastIdRef.current = item.id;
     const nextToast = {
       ...item,
-      rowKey: currentPlay?.about?.atBatIndex != null
-        ? `atbat-${currentPlay.about.atBatIndex}`
+      rowKey: visualCurrentPlay?.about?.atBatIndex != null
+        ? `atbat-${visualCurrentPlay.about.atBatIndex}`
         : null,
     };
     if (toastItemRef.current) {
@@ -148,23 +203,23 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       return;
     }
     setToastItem(nextToast);
-  }, [sig, playEvents, currentPlay, showPitchToast]);
+  }, [sig, stablePlayEvents, visualCurrentPlay, showPitchToast]);
 
   const showLandedPitchToast = useCallback((pitch) => {
     if (!showPitchToast) return;
     const pitchId = pitch?.event?.playId ?? pitch?.num;
     if (pitchId != null && String(lastLandedPitchIdRef.current) === String(pitchId)) return;
 
-    const item = buildLiveToastItem(playEvents, currentPlay);
+    const item = buildLiveToastItem(stablePlayEvents, visualCurrentPlay);
     if (!item || lastToastIdRef.current === item.id) return;
 
     lastLandedPitchIdRef.current = pitchId;
     lastToastIdRef.current = item.id;
     setToastItem({
       ...item,
-      rowKey: latestPitchRowKey(playEvents, currentPlay),
+      rowKey: latestPitchRowKey(stablePlayEvents, visualCurrentPlay),
     });
-  }, [playEvents, currentPlay, showPitchToast]);
+  }, [stablePlayEvents, visualCurrentPlay, showPitchToast]);
 
   const clearToast = useCallback(() => {
     setToastItem((current) => {

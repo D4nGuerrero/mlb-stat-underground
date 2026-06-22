@@ -1,5 +1,6 @@
 import { Modal } from '../../../components/ui';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
+import { formatPitchDescriptionWithAbsContext } from '../../../utils/absChallenge';
 import { playerHeadshotUrl } from '../../../utils/mlbHelpers';
 import {
   BaseDiamondIndicator,
@@ -30,7 +31,9 @@ export default function PlayDetailSheet({
   if (!selectedPlay) return null;
 
   const play = selectedPlay;
-  const pitches = (play.playEvents || []).filter((event) => event.isPitch);
+  const pitches = (play.playEvents || [])
+    .map((event, eventIdx) => ({ event, eventIdx }))
+    .filter(({ event }) => event.isPitch);
   const playScored = Boolean(play.about?.isScoringPlay || play.about?.hasScoreChange);
   const playEventsWithContext = (play.playEvents || []).map((event) => ({
     ...event,
@@ -207,8 +210,13 @@ export default function PlayDetailSheet({
               Pitch Sequence / {pitches.length} pitch{pitches.length !== 1 ? 'es' : ''}
             </div>
             <div className="space-y-2">
-              {pitches.map((pitch, index) => {
-                const desc = pitch.details?.description || '';
+              {pitches.map(({ event: pitch, eventIdx }, index) => {
+                const desc = formatPitchDescriptionWithAbsContext(
+                  pitch.details?.description || '',
+                  pitch,
+                  play.playEvents || [],
+                  eventIdx,
+                );
                 const type = pitch.details?.type?.description || '';
                 const mph = pitch.pitchData?.startSpeed
                   ? parseFloat(pitch.pitchData.startSpeed).toFixed(1)

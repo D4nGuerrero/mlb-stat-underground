@@ -1,5 +1,7 @@
 // src/utils/mlbHelpers.js
 
+import { formatPitchDescriptionWithAbs } from './absChallenge';
+
 export const mlbTeams = [
   { id: 109, name: 'Arizona Diamondbacks', abbr: 'ARI' },
   { id: 144, name: 'Atlanta Braves', abbr: 'ATL' },
@@ -411,8 +413,9 @@ export const renderStrikeZone = (playEvents = [], szTop = 3.5, szBot = 1.5, opts
   );
 
   const dots = pitches.map((p, i) => {
+    const description = formatPitchDescriptionWithAbs(p.details?.description || '', p);
     const { f, s, g } = pitchColor(
-      p.details?.description || '',
+      description,
       p.details?.type?.code || ''
     );
     const cx = toX(p.pitchData.coordinates.pX).toFixed(1);
@@ -425,7 +428,7 @@ export const renderStrikeZone = (playEvents = [], szTop = 3.5, szBot = 1.5, opts
     const typeCode = p.details?.type?.code || '?';
     return `
     <g opacity="${opacity.toFixed(2)}">
-      <title>#${n} ${typeCode}${mph ? ' ' + mph + 'mph' : ''} — ${p.details?.description || ''}</title>
+      <title>#${n} ${typeCode}${mph ? ' ' + mph + 'mph' : ''} — ${description}</title>
       <circle cx="${cx}" cy="${cy}" r="${(r + 5).toFixed(1)}" fill="${g}"/>
       <circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}" stroke="${s}" stroke-width="${isLast ? 1.5 : 1}"/>
       ${isLast ? `<circle cx="${(parseFloat(cx) - r * 0.28).toFixed(1)}" cy="${(parseFloat(cy) - r * 0.28).toFixed(1)}" r="${(r * 0.3).toFixed(1)}" fill="rgba(255,255,255,0.4)"/>` : ''}
