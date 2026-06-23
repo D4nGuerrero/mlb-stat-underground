@@ -119,26 +119,37 @@ export async function copyHighlightLink(video) {
   return copyToClipboard(url);
 }
 
-function tokenize(text) {
+function normalizeSearchText(text) {
   return (text ?? '')
     .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
+    .trim();
+}
+
+function tokenize(text) {
+  return normalizeSearchText(text)
     .split(/\s+/)
     .filter((w) => w.length > 3);
 }
 
 function scoreHighlightMatch(item, highlight) {
-  const desc = (item.description ?? '').toLowerCase();
-  const headline = (highlight.headline ?? '').toLowerCase();
+  const desc = normalizeSearchText(item.description);
+  const headline = normalizeSearchText(highlight.headline);
+  const highlightDescription = normalizeSearchText(highlight.description);
   const tokens = tokenize(desc);
   let score = 0;
   for (const t of tokens) {
     if (headline.includes(t)) score += 2;
-    if ((highlight.description ?? '').toLowerCase().includes(t)) score += 1;
+    if (highlightDescription.includes(t)) score += 1;
   }
 
   const eventType = item.eventType ?? '';
   if (eventType === 'home_run' && highlight.taxonomies.includes('home-run')) score += 5;
+  if (['single', 'double', 'triple', 'sac_fly'].includes(eventType) && eventTypeMatchesHighlight(item, highlight)) {
+    score += 3;
+  }
   if (eventType.includes('stolen') && /steal/i.test(highlight.headline)) score += 5;
   if (/grand slam/i.test(desc) && /grand slam/i.test(highlight.headline)) score += 8;
   if (/solo home run/i.test(headline) && /homers?\s*\(\d+\)/i.test(desc)) score += 4;
@@ -148,6 +159,10 @@ function scoreHighlightMatch(item, highlight) {
 }
 
 function highlightText(highlight) {
+  return normalizeSearchText(`${highlight?.headline ?? ''} ${highlight?.description ?? ''}`);
+}
+
+function rawHighlightText(highlight) {
   return `${highlight?.headline ?? ''} ${highlight?.description ?? ''}`.toLowerCase();
 }
 
@@ -172,17 +187,61 @@ function eventTypeMatchesHighlight(item, highlight) {
   return true;
 }
 
+const BATTER_OWNED_EVENTS = new Set([
+  'home_run',
+  'double',
+  'triple',
+  'single',
+  'field_error',
+  'fielders_choice',
+  'fielders_choice_out',
+  'sac_fly',
+  'sac_bunt',
+]);
+
+function itemParticipantIds(item) {
+  return [
+    ...(item?.participantIds ?? []),
+    item?.batterId,
+  ]
+    .map(Number)
+    .filter(Boolean);
+}
+
+function highlightIncludesAnyPlayer(highlight, ids) {
+  const wanted = new Set(ids);
+  return highlight.playerIds.some((id) => wanted.has(id));
+}
+
+function playerIdentityMatches(item, highlight) {
+  if (!highlight.playerIds.length) return false;
+
+  const batterId = Number(item?.batterId);
+  if (BATTER_OWNED_EVENTS.has(item?.eventType) && batterId) {
+    return highlight.playerIds.includes(batterId);
+  }
+
+  return highlightIncludesAnyPlayer(highlight, itemParticipantIds(item));
+}
+
 function isReliableHighlightMatch(item, highlight) {
   if (!item?.isScoring || !highlight) return false;
   if (!highlight.mp4Url && !highlight.hlsUrl) return false;
 
   // While MLB is still processing a new scoring-play video, older highlights
-  // can look "close enough" by text. Do not borrow another player's video.
-  if (item.batterId && !highlight.playerIds.includes(item.batterId)) return false;
+  // can look "close enough" by text. Require a real player overlap. Some MLB
+  // scoring clips are tagged to the scoring runner instead of the batter
+  // (example: "Caleb Durbin scores on groundout"), so participantIds includes
+  // the batter plus runners who scored on the play.
+  if (!playerIdentityMatches(item, highlight)) return false;
   if (!eventTypeMatchesHighlight(item, highlight)) return false;
 
   const itemStatNumber = extractPlayStatNumber(item.description);
-  if (itemStatNumber && !highlightText(highlight).includes(`(${itemStatNumber})`)) {
+  if (
+    item?.eventType === 'home_run' &&
+    itemStatNumber &&
+    !rawHighlightText(highlight).includes(`(${itemStatNumber})`)
+  ) {
     return false;
   }
 
@@ -193,11 +252,11 @@ function isReliableHighlightMatch(item, highlight) {
 export function matchHighlightForItem(item, highlights) {
   if (!item?.isScoring || !highlights?.length) return null;
 
-  const batterId = item.batterId;
+  const participantIds = itemParticipantIds(item);
   let pool = highlights;
 
-  if (batterId) {
-    const byPlayer = highlights.filter((h) => h.playerIds.includes(batterId));
+  if (participantIds.length) {
+    const byPlayer = highlights.filter((h) => highlightIncludesAnyPlayer(h, participantIds));
     if (byPlayer.length) pool = byPlayer;
   }
 

@@ -245,6 +245,21 @@ export function buildPlayDescription(description, outs, outOccurred) {
   return { description: text, outsLabel };
 }
 
+function buildScoringParticipantIds(play, fallbackRunnerId = null) {
+  const ids = new Set();
+  const batterId = play?.matchup?.batter?.id;
+  if (batterId) ids.add(batterId);
+  if (fallbackRunnerId) ids.add(fallbackRunnerId);
+
+  for (const runner of play?.runners || []) {
+    if (runner?.movement?.end !== 'score') continue;
+    const runnerId = runner?.details?.runner?.id;
+    if (runnerId) ids.add(runnerId);
+  }
+
+  return [...ids];
+}
+
 export function buildSummaryItems(allPlays, gameData) {
   const items = [];
 
@@ -301,6 +316,7 @@ export function buildSummaryItems(allPlays, gameData) {
 
       const rawDescription = ev.details?.description || ev.details?.call?.description || '';
       const outOccurred = playEventRecordedOut(play, eventIdx, ev);
+      const runnerId = ev.details?.runner?.id;
       const { description, outsLabel } = buildPlayDescription(
         rawDescription,
         ev.count?.outs ?? play.count?.outs,
@@ -316,6 +332,8 @@ export function buildSummaryItems(allPlays, gameData) {
         outsLabel,
         about: play.about,
         batterId: play.matchup?.batter?.id,
+        batterName: play.matchup?.batter?.fullName,
+        participantIds: buildScoringParticipantIds(play, runnerId),
         awayScore: ev.details?.awayScore,
         homeScore: ev.details?.homeScore,
         isScoring: isScoringDescription(description),
@@ -338,6 +356,8 @@ export function buildSummaryItems(allPlays, gameData) {
         outsLabel,
         about: play.about,
         batterId: play.matchup?.batter?.id,
+        batterName: play.matchup?.batter?.fullName,
+        participantIds: buildScoringParticipantIds(play),
         awayScore: play.result?.awayScore,
         homeScore: play.result?.homeScore,
         isScoring: Boolean(play.about?.isScoringPlay),
