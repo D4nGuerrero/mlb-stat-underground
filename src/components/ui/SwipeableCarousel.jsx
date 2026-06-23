@@ -160,6 +160,33 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     });
   }, [emblaApi, ready, reinitDeps, slideCount, isSettled]);
 
+  useEffect(() => {
+    if (!autoHeight || !emblaApi || typeof ResizeObserver === 'undefined') return undefined;
+
+    const container = emblaApi.containerNode();
+    const selectedSlide = emblaApi.slideNodes()[emblaApi.selectedScrollSnap()];
+    if (!container || !selectedSlide) return undefined;
+
+    let frame = null;
+    const measure = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        syncAutoHeight();
+        frame = null;
+      });
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(selectedSlide);
+    observer.observe(container);
+    measure();
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [autoHeight, emblaApi, selectedIndex, slideCount, syncAutoHeight]);
+
   return (
     <div className={className}>
       <div
