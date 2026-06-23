@@ -21,6 +21,7 @@ import {
 import {
   parseGameHighlightVideos,
   buildHighlightMap,
+  buildMiLBHighlightMap,
 } from '../../../utils/gameContent';
 import { TabBar, SegmentedControl, Modal } from '../../../components/ui';
 import GamePreviewView from '../../../components/GamePreviewView';
@@ -1409,6 +1410,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const feedTimecodeRef = useRef(null);
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
   const [pinnedVideo, setPinnedVideo] = useState(null);
+  const [milbHighlightByItemKey, setMilbHighlightByItemKey] = useState({});
   const [previewTab, setPreviewTab] = useState('preview');
   const officialDate = feed?.gameData?.datetime?.officialDate;
   const gameSportId = feed?.gameData?.teams?.home?.sport?.id
@@ -1614,6 +1616,24 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [exteriorFailed, setExteriorFailed] = useState(() => !exteriorSrc);
 
   useEffect(() => {
+    const isMiLB = MILB_SPORT_IDS.has(Number(gameSportId));
+    if (!isMiLB || !feed?.liveData?.plays?.allPlays?.length || !feed?.gameData) {
+      setMilbHighlightByItemKey({});
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const summaryRows = buildSummaryItems(feed.liveData.plays.allPlays, feed.gameData);
+    buildMiLBHighlightMap(summaryRows, { signal: controller.signal })
+      .then((map) => setMilbHighlightByItemKey(map))
+      .catch((err) => {
+        if (err?.name !== 'AbortError') setMilbHighlightByItemKey({});
+      });
+
+    return () => controller.abort();
+  }, [gamePk, scoringCount, gameSportId]);
+
+  useEffect(() => {
     if (!exteriorSrc) return undefined;
     let cancelled = false;
     const img = new Image();
@@ -1775,7 +1795,10 @@ function GamePageContent({ gamePk, navigate, location }) {
   const summaryItems = filterSummaryItems(allSummaryItems, summaryFilter);
   const summaryItemGroups = groupSummaryByInning(summaryItems, ORDINALS);
   const highlightVideos = parseGameHighlightVideos(gameContent);
-  const highlightByItemKey = buildHighlightMap(allSummaryItems, highlightVideos);
+  const highlightByItemKey = {
+    ...buildHighlightMap(allSummaryItems, highlightVideos),
+    ...milbHighlightByItemKey,
+  };
 
   const handleSummaryPlayerClick = (e, batterId) => {
     e.stopPropagation();

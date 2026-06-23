@@ -18,6 +18,19 @@ export function pickThumbnail(image) {
   return preferred?.src ?? null;
 }
 
+function slugifyMiLBVideoPart(text, maxLength = 80) {
+  return String(text ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxLength)
+    .replace(/-+$/g, '');
+}
+
 function keywordValues(keywordsAll, type) {
   return (keywordsAll ?? [])
     .filter((k) => k.type === type)
@@ -46,6 +59,22 @@ export function parseGameHighlightVideos(content) {
       playerIds: keywordValues(it.keywordsAll, 'player_id').map(Number).filter(Boolean),
       taxonomies: keywordValues(it.keywordsAll, 'taxonomy'),
     }));
+}
+
+function parseMiLBVideo(item) {
+  if (!item?.id && !item?.content_id && !item?.slug) return null;
+  const id = item.id ?? item.content_id ?? item.slug;
+  return {
+    id,
+    headline: item.title ?? item.headline ?? '',
+    description: item.description ?? item.blurb ?? '',
+    thumbnail: pickThumbnail(item.image),
+    mp4Url: pickPlayback(item.playbacks, ['mp4Avc', 'highBit']),
+    hlsUrl: pickPlayback(item.playbacks, ['hlsCloud', 'HTTP_CLOUD_WIRED']),
+    shareUrl: `https://www.milb.com/video/${item.slug ?? id}`,
+    playerIds: [],
+    taxonomies: [],
+  };
 }
 
 /** Direct playable video URL (mp4 preferred, then hls). */
@@ -291,6 +320,118 @@ export function buildHighlightMap(summaryItems, highlights) {
   }
 
   return map;
+}
+
+function scoringRunnerNames(play) {
+  return (play?.runners ?? [])
+    .filter((runner) => runner?.movement?.end === 'score')
+    .map((runner) => runner?.details?.runner?.fullName)
+    .filter(Boolean);
+}
+
+function buildMiLBVideoCandidates(item) {
+  const play = item?.play;
+  const pitcher = play?.matchup?.pitcher?.fullName;
+  const batter = play?.matchup?.batter?.fullName ?? item?.batterName;
+  const description = item?.description ?? play?.result?.description ?? '';
+  const names = [batter, ...scoringRunnerNames(play)].filter(Boolean);
+
+  const primaryCandidates = [
+    slugifyMiLBVideoPart(description, 73),
+    ...names.map((name) => `${pitcher} In play, run(s) to ${name}`)
+      .map((candidate) => slugifyMiLBVideoPart(candidate, 80)),
+  ];
+  const fallbackTexts = [
+    ...names.map((name) => `${pitcher} In play, run(s) to ${name}`),
+    description,
+    batter && description ? `${batter} ${description}` : null,
+  ].filter(Boolean);
+
+  return [...new Set(
+    [
+      ...primaryCandidates,
+      // MiLB play-description content ids are commonly hard-truncated at 73 chars.
+      ...fallbackTexts.flatMap((candidate) => [
+        slugifyMiLBVideoPart(candidate, 73),
+        slugifyMiLBVideoPart(candidate, 80),
+        slugifyMiLBVideoPart(candidate, 120),
+      ]),
+    ],
+  )].filter(Boolean);
+}
+
+const milbVideoCache = new Map();
+const MILB_VIDEO_LOOKUP_TIMEOUT_MS = 3_500;
+
+function timeoutSignal(parentSignal, timeoutMs) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const id = setTimeout(abort, timeoutMs);
+
+  if (parentSignal) {
+    if (parentSignal.aborted) abort();
+    else parentSignal.addEventListener('abort', abort, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(id);
+      parentSignal?.removeEventListener?.('abort', abort);
+    },
+  };
+}
+
+async function fetchMiLBVideoBySlug(slug, signal) {
+  if (milbVideoCache.has(slug)) return milbVideoCache.get(slug);
+
+  const timeout = timeoutSignal(signal, MILB_VIDEO_LOOKUP_TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `https://www.milb.com/data-service/en/videos/${encodeURIComponent(slug)}`,
+      { signal: timeout.signal },
+    );
+    if (!res.ok) {
+      milbVideoCache.set(slug, null);
+      return null;
+    }
+    const video = parseMiLBVideo(await res.json());
+    const playableVideo = video?.mp4Url || video?.hlsUrl ? video : null;
+    milbVideoCache.set(slug, playableVideo);
+    return playableVideo;
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    milbVideoCache.set(slug, null);
+    return null;
+  } finally {
+    timeout.cleanup();
+  }
+}
+
+async function findMiLBVideoForItem(item, signal) {
+  const candidates = buildMiLBVideoCandidates(item);
+  const primary = candidates.slice(0, 1 + scoringRunnerNames(item?.play).length + 1);
+  const fallback = candidates.slice(primary.length);
+
+  const primaryResults = await Promise.all(
+    primary.map((slug) => fetchMiLBVideoBySlug(slug, signal)),
+  );
+  const primaryHit = primaryResults.find(Boolean);
+  if (primaryHit) return primaryHit;
+
+  const fallbackResults = await Promise.all(
+    fallback.map((slug) => fetchMiLBVideoBySlug(slug, signal)),
+  );
+  return fallbackResults.find(Boolean) ?? null;
+}
+
+export async function buildMiLBHighlightMap(summaryItems, { signal } = {}) {
+  const scoringItems = (summaryItems ?? []).filter((item) => item?.isScoring);
+  const entries = await Promise.all(
+    scoringItems.map(async (item) => [item.key, await findMiLBVideoForItem(item, signal)]),
+  );
+
+  return Object.fromEntries(entries.filter(([, video]) => video));
 }
 
 export async function fetchGameContent(gamePk) {
