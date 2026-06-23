@@ -242,12 +242,13 @@ function LiveRecentPlayRow({
     );
   }
 
-  if (row.kind === 'offensive_substitution') {
+  if (row.kind === 'offensive_substitution' || row.kind === 'defensive_substitution') {
+    const isDefense = row.kind === 'defensive_substitution';
     return (
       <LiveTimelineRow
         avatar={(
           <IconAvatar>
-            <i className="fa-solid fa-right-left text-base text-emerald-300" />
+            <i className={`fa-solid fa-right-left text-base ${isDefense ? 'text-cyan-300' : 'text-emerald-300'}`} />
           </IconAvatar>
         )}
       >

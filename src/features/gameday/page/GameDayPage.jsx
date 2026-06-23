@@ -201,6 +201,22 @@ const PLAY_BADGE = {
     label: 'Balk',
     cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
   },
+  offensive_substitution: {
+    label: 'Offensive Sub',
+    cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+  },
+  defensive_substitution: {
+    label: 'Defensive Sub',
+    cls: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+  },
+  defensive_switch: {
+    label: 'Defensive Switch',
+    cls: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+  },
+  pitching_substitution: {
+    label: 'Pitching Change',
+    cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+  },
  
 };
 
@@ -691,11 +707,6 @@ const ORDINALS = [
 const STATUS_CHANGE_BADGE = {
   label: 'Game Advisory',
   cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-};
-
-const PITCHING_CHANGE_BADGE = {
-  label: 'Pitching Substitution',
-  cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
 };
 
 function LinescoreInningCell({ val }) {
@@ -1956,7 +1967,6 @@ function GamePageContent({ gamePk, navigate, location }) {
       onPlayerClick={handleSummaryPlayerClick}
       onToggleVideo={handleSummaryVideoToggle}
       pinnedVideo={pinnedVideo}
-      pitchingChangeBadge={PITCHING_CHANGE_BADGE}
       statusChangeBadge={STATUS_CHANGE_BADGE}
       summaryFilter={summaryFilter}
       summaryItemGroups={summaryItemGroups}
@@ -2017,7 +2027,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   );
 
   const boxScorePanel = ld.boxscore ? (
-    <div className="bg-slate-900 border border-slate-700/60 p-4 sm:p-5 xl:p-4 rounded-2xl">
+    <div className="bg-slate-900  border-slate-700/60 p-4 sm:p-5 xl:p-4 sm:rounded-2xl">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <SegmentedControl
           value={boxScoreSide}

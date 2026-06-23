@@ -138,7 +138,7 @@ function SummaryStatusChangeRow({ item, badge }) {
   );
 }
 
-function SummaryPitchingChangeRow({ item, badge }) {
+function SummarySubstitutionRow({ item, badge }) {
   return (
     <div className="flex items-start gap-2.5 p-2">
       <SummaryPlayAvatar item={item} />
@@ -313,15 +313,18 @@ function SummaryPlayItemRow({
   onPlayerClick,
   onToggleVideo,
   pinnedVideo,
-  pitchingChangeBadge,
   statusChangeBadge,
 }) {
   if (item.kind === 'status_change') {
     return <SummaryStatusChangeRow item={item} badge={statusChangeBadge} />;
   }
 
-  if (item.kind === 'pitching_change') {
-    return <SummaryPitchingChangeRow item={item} badge={pitchingChangeBadge} />;
+  if (
+    item.kind === 'pitching_change' ||
+    item.kind === 'offensive_substitution' ||
+    item.kind === 'defensive_substitution'
+  ) {
+    return <SummarySubstitutionRow item={item} badge={getPlayBadge(item.eventType, item)} />;
   }
 
   const badge = getPlayBadge(item.eventType, item);
@@ -377,7 +380,6 @@ export default function SummarySection({
   onPlayerClick,
   onToggleVideo,
   pinnedVideo,
-  pitchingChangeBadge,
   statusChangeBadge,
   summaryFilter,
   summaryItemGroups,
@@ -385,7 +387,7 @@ export default function SummarySection({
   onSummaryFilterChange,
 }) {
   return (
-    <div className="bg-slate-900 border border-slate-700/60 p-2 sm:p-5 lg:rounded-xl">
+    <div className="bg-slate-900 border-slate-700/60 p-3 sm:p-5 lg:rounded-xl">
       <SegmentedControl
         value={summaryFilter}
         onChange={onSummaryFilterChange}
@@ -421,7 +423,6 @@ export default function SummarySection({
                     onPlayerClick={(e) => onPlayerClick(e, item.batterId)}
                     onOpenPlay={onOpenPlay}
                     onToggleVideo={onToggleVideo}
-                    pitchingChangeBadge={pitchingChangeBadge}
                     statusChangeBadge={statusChangeBadge}
                   />
                 </div>

@@ -3,6 +3,7 @@ import {
   buildPlayDescription,
   playRecordedOut,
   formatPitchingChangeDescription,
+  formatSubstitutionDescription,
   formatGameAdvisoryDescription,
   isNotableGameAdvisory,
   SUMMARY_ACTION_TYPES,
@@ -19,21 +20,14 @@ import { formatPitchDescriptionWithAbsContext } from './absChallenge';
 const LIVE_EXTRA_EVENT_TYPES = new Set([
   'mound_visit',
   'offensive_substitution',
+  'defensive_substitution',
+  'defensive_switch',
   'pitching_substitution',
   'game_advisory',
 ]);
 
 function isPickoffEventType(eventType) {
   return typeof eventType === 'string' && /^pickoff_/i.test(eventType);
-}
-
-function formatOffensiveSubstitutionDescription(raw) {
-  const text = (raw || '').trim();
-  if (!text) return 'Offensive Substitution.';
-  const body = /^offensive substitution:\s*/i.test(text)
-    ? text
-    : `Offensive Substitution: ${text}`;
-  return body.endsWith('.') ? body : `${body}.`;
 }
 
 export function getPitchResultKind(description, isInPlay = false) {
@@ -164,8 +158,24 @@ function pushPlayEventRows(rows, play, ev, eventIdx, ordinals) {
     rows.push({
       kind: 'offensive_substitution',
       key: `offensive-sub-${play.about?.atBatIndex}-${eventIdx}`,
-      description: formatOffensiveSubstitutionDescription(
+      description: formatSubstitutionDescription(
         ev.details?.description || ev.details?.call?.description || '',
+        'Offensive Substitution',
+      ),
+      ...meta,
+      sortTime,
+    });
+    return;
+  }
+
+  if (eventType === 'defensive_substitution' || eventType === 'defensive_switch') {
+    const title = eventType === 'defensive_switch' ? 'Defensive Switch' : 'Defensive Substitution';
+    rows.push({
+      kind: 'defensive_substitution',
+      key: `defensive-sub-${play.about?.atBatIndex}-${eventIdx}`,
+      description: formatSubstitutionDescription(
+        ev.details?.description || ev.details?.call?.description || '',
+        title,
       ),
       ...meta,
       sortTime,

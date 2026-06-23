@@ -57,6 +57,8 @@ export function getSummaryPlayIconKind(item) {
   if (item?.kind === 'first_pitch') return 'baseball';
   if (item?.kind === 'status_change') return getGameAdvisoryIconKind(item);
   if (item?.kind === 'pitching_change') return 'pitching_sub';
+  if (item?.kind === 'offensive_substitution') return 'pitching_sub';
+  if (item?.kind === 'defensive_substitution') return 'pitching_sub';
   const eventType = item?.eventType;
   if (SHOE_ICON_TYPES.has(eventType)) return 'shoe';
   if (PITCH_ICON_TYPES.has(eventType)) return 'pitch';
@@ -226,6 +228,16 @@ export function formatPitchingChangeDescription(raw) {
   return normalizeDescription(body);
 }
 
+export function formatSubstitutionDescription(raw, label = 'Substitution') {
+  const text = (raw || '').trim();
+  if (!text) return `${label}.`;
+  const prefixRe = new RegExp(`^${label.replace(/\s+/g, '\\s+')}\\s*:`, 'i');
+  const body = prefixRe.test(text)
+    ? text
+    : `${label}: ${text}`;
+  return normalizeDescription(body);
+}
+
 /** Build summary copy; outsLabel is set only when an out was recorded on the play. */
 export function buildPlayDescription(description, outs, outOccurred) {
   const text = normalizeDescription(description);
@@ -250,6 +262,35 @@ export function buildSummaryItems(allPlays, gameData) {
           eventType,
           title: 'Pitching Substitution',
           description: formatPitchingChangeDescription(rawDescription),
+          about: play.about,
+          sortTime: ev.startTime || play.about?.startTime || null,
+        });
+        return;
+      }
+
+      if (eventType === 'offensive_substitution') {
+        const rawDescription = ev.details?.description || ev.details?.call?.description || '';
+        items.push({
+          kind: 'offensive_substitution',
+          key: `offensive-sub-${play.about?.atBatIndex}-${eventIdx}`,
+          eventType,
+          title: 'Offensive Substitution',
+          description: formatSubstitutionDescription(rawDescription, 'Offensive Substitution'),
+          about: play.about,
+          sortTime: ev.startTime || play.about?.startTime || null,
+        });
+        return;
+      }
+
+      if (eventType === 'defensive_substitution' || eventType === 'defensive_switch') {
+        const rawDescription = ev.details?.description || ev.details?.call?.description || '';
+        const title = eventType === 'defensive_switch' ? 'Defensive Switch' : 'Defensive Substitution';
+        items.push({
+          kind: 'defensive_substitution',
+          key: `defensive-sub-${play.about?.atBatIndex}-${eventIdx}`,
+          eventType,
+          title,
+          description: formatSubstitutionDescription(rawDescription, title),
           about: play.about,
           sortTime: ev.startTime || play.about?.startTime || null,
         });
