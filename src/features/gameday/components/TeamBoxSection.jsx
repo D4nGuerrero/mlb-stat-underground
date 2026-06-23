@@ -37,6 +37,41 @@ const formatBoxRate = (value) => {
   return String(value).replace(/^0(?=\.)/, '');
 };
 
+function normalizePitchingNote(note) {
+  const text = String(note ?? '').trim();
+  if (!text) return null;
+  return text
+    .replace(/\)\s*\(/g, ') (')
+    .replace(/\(\s*/g, '(')
+    .replace(/\s*\)/g, ')')
+    .replace(/,\s*/g, ', ')
+    .replace(/\bSV\b/g, 'S');
+}
+
+function fallbackPitchingNote(playerId, seasonPitching, decisions) {
+  if (!playerId || !seasonPitching) return null;
+
+  if (decisions?.winner?.id === playerId) {
+    return `(W, ${seasonPitching.wins ?? 0}-${seasonPitching.losses ?? 0})`;
+  }
+  if (decisions?.loser?.id === playerId) {
+    return `(L, ${seasonPitching.wins ?? 0}-${seasonPitching.losses ?? 0})`;
+  }
+  if (decisions?.save?.id === playerId) {
+    return `(S, ${seasonPitching.saves ?? 0})`;
+  }
+  return null;
+}
+
+function getPitchingDecisionNote(player, decisions) {
+  const gamePitching = player?.stats?.pitching || {};
+  const seasonPitching = player?.seasonStats?.pitching || {};
+  return (
+    normalizePitchingNote(gamePitching.note) ||
+    fallbackPitchingNote(player?.person?.id, seasonPitching, decisions)
+  );
+}
+
 function ReservePlayersSection({
   players,
   title,
@@ -350,16 +385,10 @@ export default function TeamBoxSection({
             <tbody>
               {pitchers.map((player) => {
                 const pitching = player.stats?.pitching || {};
-                const seasonEra = player.seasonStats?.pitching?.era;
+                const seasonPitching = player.seasonStats?.pitching || {};
+                const seasonEra = seasonPitching.era;
                 const lastName = compactPlayerName(player.person, '');
-                const decMark =
-                  decisions?.winner?.id === player.person?.id
-                    ? 'W'
-                    : decisions?.loser?.id === player.person?.id
-                      ? 'L'
-                      : decisions?.save?.id === player.person?.id
-                        ? 'SV'
-                        : null;
+                const decisionNote = getPitchingDecisionNote(player, decisions);
 
                 return (
                   <tr
@@ -367,19 +396,19 @@ export default function TeamBoxSection({
                     className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                   >
                     <td className={`${stickyCell('bg-slate-900')} ${BOX_SCORE_LABEL_COL}`}>
-                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <div className="min-w-0">
                         <button
                           onClick={() => onPlayerSelect(player.person?.id)}
-                          className={`hover:text-${THEME_COLOR}-400 transition-colors text-slate-200`}
+                          className={`block max-w-full truncate hover:text-${THEME_COLOR}-400 transition-colors text-slate-200`}
                         >
                           <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
                           {!compact && (
                             <span className="hidden sm:inline">{player.person?.fullName}</span>
                           )}
                         </button>
-                        {decMark && (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-slate-700 text-slate-300 font-bold">
-                            {decMark}
+                        {decisionNote && (
+                          <span className="mt-0.5 block text-[9px] leading-tight font-semibold text-slate-500 break-words whitespace-normal">
+                            {decisionNote}
                           </span>
                         )}
                       </div>
