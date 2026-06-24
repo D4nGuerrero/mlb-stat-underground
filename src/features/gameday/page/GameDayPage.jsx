@@ -718,7 +718,7 @@ function LinescoreInningCell({ val }) {
   return <span className="text-slate-600">-</span>;
 }
 
-function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
+function LinescoreBoard({ ls, away, home, awayRuns, homeRuns, compact = false }) {
   const scrollRef = useRef(null);
   const inningNums = useMemo(() => getLinescoreInningNums(ls), [ls]);
 
@@ -742,11 +742,14 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
     [inningCount, hasExtras],
   );
 
-  const cellBase = 'text-center tabular-nums font-mono';
-  const headerCell = `h-8 flex items-center justify-center ${cellBase}`;
-  const bodyCell = `h-9 flex items-center justify-center border-t border-slate-700/40 ${cellBase}`;
-  const headerRow = 'h-8 flex items-center shrink-0';
-  const bodyRow = 'h-9 flex items-center shrink-0 border-t border-slate-700/40';
+  const cellBase = `text-center tabular-nums font-mono ${compact ? 'text-[13px]' : 'text-sm'}`;
+  const headerCell = `${compact ? 'h-7' : 'h-8'} flex items-center justify-center ${cellBase}`;
+  const bodyCell = `${compact ? 'h-8' : 'h-9'} flex items-center justify-center border-t border-slate-700/40 ${cellBase}`;
+  const headerRow = `${compact ? 'h-7' : 'h-8'} flex items-center shrink-0`;
+  const bodyRow = `${compact ? 'h-8' : 'h-9'} flex items-center shrink-0 border-t border-slate-700/40`;
+  const teamColWidth = compact ? 'w-11' : 'w-14';
+  const rheCellWidth = compact ? 'w-6' : 'w-8';
+  const outerPadding = compact ? 'px-1.5 py-2' : 'px-2 sm:px-6 py-3';
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -767,11 +770,11 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
 
   return (
     <div className="bg-slate-800/40 border-t border-slate-700/50">
-      <div className="flex text-sm px-2 sm:px-6 py-3">
-        <div className="flex-shrink-0 w-14">
+      <div className={`flex ${outerPadding}`}>
+        <div className={`flex-shrink-0 ${teamColWidth}`}>
           <div className={headerRow} />
           {sides.map(({ side, team }) => (
-            <div key={side} className={`${bodyRow} font-bold text-slate-200`}>
+            <div key={side} className={`${bodyRow} font-bold text-slate-200 ${compact ? 'text-[12px]' : ''}`}>
               {team.abbreviation}
             </div>
           ))}
@@ -779,11 +782,11 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
 
         <div ref={scrollRef} className="overflow-x-auto flex-1 min-w-0">
           <div
-            className={`grid min-w-full ${hasExtras ? 'sm:pr-6' : ''}`}
+            className={`grid min-w-full ${hasExtras ? compact ? 'pr-1' : 'sm:pr-6' : ''}`}
             style={inningGridStyle}
           >
             {inningNums.map((i) => (
-              <div key={`hdr-${i}`} className={`${headerCell} text-slate-500 text-xs`}>
+              <div key={`hdr-${i}`} className={`${headerCell} text-slate-500 ${compact ? 'text-[10px]' : 'text-xs'}`}>
                 {i}
               </div>
             ))}
@@ -791,7 +794,7 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
               inningNums.map((i) => {
                 const val = inningByNum[i]?.[side]?.runs;
                 return (
-                  <div key={`${side}-${i}`} className={`${bodyCell} text-slate-300 text-sm`}>
+                  <div key={`${side}-${i}`} className={`${bodyCell} ${compact ? 'text-slate-100 font-bold' : 'text-slate-300'}`}>
                     <LinescoreInningCell val={val} />
                   </div>
                 );
@@ -802,19 +805,19 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns }) {
 
         <div className="flex-shrink-0 border-l border-slate-600">
           <div className={`${headerRow} flex text-slate-500`}>
-            <div className="w-8 px-3 text-center font-bold">R</div>
-            <div className="w-8 px-2 text-center font-normal">H</div>
-            <div className="w-8 px-2 text-center font-normal">E</div>
+            <div className={`${rheCellWidth} ${compact ? 'px-1' : 'px-3'} text-center font-bold ${compact ? 'text-[10px]' : ''}`}>R</div>
+            <div className={`${rheCellWidth} ${compact ? 'px-1' : 'px-2'} text-center font-normal ${compact ? 'text-[10px]' : ''}`}>H</div>
+            <div className={`${rheCellWidth} ${compact ? 'px-1' : 'px-2'} text-center font-normal ${compact ? 'text-[10px]' : ''}`}>E</div>
           </div>
           {sides.map(({ side, runs }) => (
             <div key={side} className={`${bodyRow} flex`}>
-              <div className="w-8 px-3 text-center font-bold">
+              <div className={`${rheCellWidth} ${compact ? 'px-1' : 'px-3'} text-center font-bold ${compact ? 'text-[15px] text-white' : ''}`}>
                 {runs}
               </div>
-              <div className="w-8 px-2 text-center text-slate-400">
+              <div className={`${rheCellWidth} ${compact ? 'px-1' : 'px-2'} text-center ${compact ? 'text-[12px] text-slate-300 font-semibold' : 'text-slate-400'}`}>
                 {ls?.teams?.[side]?.hits ?? 0}
               </div>
-              <div className="w-8 px-2 text-center text-slate-500">
+              <div className={`${rheCellWidth} ${compact ? 'px-1' : 'px-2'} text-center ${compact ? 'text-[12px] text-slate-400 font-semibold' : 'text-slate-500'}`}>
                 {ls?.teams?.[side]?.errors ?? 0}
               </div>
             </div>
@@ -2162,6 +2165,27 @@ function GamePageContent({ gamePk, navigate, location }) {
     </div>
   ) : null;
 
+  const desktopBoxScoreRail = (
+    <div className="h-full min-h-0 flex flex-col gap-3 overflow-hidden">
+      {!isPreview && (
+        <div className="shrink-0 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900">
+          <LinescoreBoard
+            key={`desktop-linescore-${gamePk}`}
+            ls={ls}
+            away={away}
+            home={home}
+            awayRuns={awayRuns}
+            homeRuns={homeRuns}
+            compact
+          />
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {desktopLiveBoxScorePanel}
+      </div>
+    </div>
+  );
+
   const finalDesktopLayout = isFinal ? (
     <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_480px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:gap-8 xl:overflow-hidden">
       <section className="min-w-0 min-h-0 flex flex-col gap-6 overflow-hidden">
@@ -2525,7 +2549,7 @@ function GamePageContent({ gamePk, navigate, location }) {
               </div>
 
               <div className="hidden xl:order-3 xl:block xl:h-full xl:min-h-0 xl:overflow-hidden">
-                {desktopLiveBoxScorePanel}
+                {desktopBoxScoreRail}
               </div>
             </div>
           </div>
