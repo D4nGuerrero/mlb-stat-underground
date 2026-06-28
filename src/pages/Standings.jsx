@@ -593,8 +593,8 @@ export default function Standings() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto sm:px-6 py-6 sm:py-8 max-w-3xl">
-      <div className="mb-6 px-3 sm:px-0">
+    <div className="max-w-7xl mx-auto sm:px-6 py-0 sm:py-8 max-w-3xl">
+      <div className="mb-0 px-4 sm:px-0">
         <div className="flex items-center justify-between gap-3">
           <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
             {selectedLeague.shortLabel} Standings

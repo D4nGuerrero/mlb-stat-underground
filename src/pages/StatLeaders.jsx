@@ -21,6 +21,12 @@ import {
   BaseballSpinner,
 } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
+import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
+import {
+  LEAGUE_LEVEL_BY_VALUE,
+  LEAGUE_LEVEL_STORAGE_KEY,
+  LEAGUE_LEVEL_VALUES,
+} from '../constants/leagueLevels.js';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -214,6 +220,46 @@ const VALID_PLAYER_MODES = new Set(['cards', 'complete']);
 const VALID_POSITIONS = new Set(POSITION_OPTIONS.map((option) => option.value));
 const VALID_TEAM_MODES = new Set(['leaders', 'complete']);
 
+function loadLeadersLeague() {
+  try {
+    const saved = localStorage.getItem(LEAGUE_LEVEL_STORAGE_KEY);
+    return LEAGUE_LEVEL_VALUES.has(saved) ? saved : 'mlb';
+  } catch {
+    return 'mlb';
+  }
+}
+
+function leadersSportQuery(leagueLevel) {
+  const league = LEAGUE_LEVEL_BY_VALUE[leagueLevel] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
+  return league.sportQuery;
+}
+
+function completeStatsSportQuery(leagueLevel) {
+  return leadersSportQuery(leagueLevel).replace(/sportId=/g, 'sportIds=');
+}
+
+async function fetchTeamsForLevel(leagueLevel, seasonParam) {
+  if (leagueLevel === 'mlb') {
+    return mlbTeams.map((t) => ({
+      id: t.id,
+      name: t.name,
+      abbr: t.abbr,
+      leagueId: AL_TEAM_IDS.has(t.id) ? 103 : 104,
+    }));
+  }
+
+  const league = LEAGUE_LEVEL_BY_VALUE[leagueLevel] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/teams?${league.sportQuery}&season=${seasonParam}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.teams ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    abbr: t.abbreviation,
+    leagueId: t.league?.id,
+  }));
+}
+
 function defaultCategoryForGroup(group) {
   return (GROUP_CATS[group] ?? HITTING_CATS)[0].key;
 }
@@ -267,6 +313,8 @@ function parseStatLeadersState(searchParams) {
   const teamMode = VALID_TEAM_MODES.has(searchParams.get('tmode'))
     ? searchParams.get('tmode')
     : 'leaders';
+  const levelParam = searchParams.get('level');
+  const leadersLeague = LEAGUE_LEVEL_VALUES.has(levelParam) ? levelParam : loadLeadersLeague();
 
   return {
     playerOrTeam,
@@ -274,6 +322,7 @@ function parseStatLeadersState(searchParams) {
     category,
     season,
     leagueFilter,
+    leadersLeague,
     limit,
     positionFilter,
     playerSortCol,
@@ -294,6 +343,7 @@ function buildStatLeadersParams(state) {
   if (activeGroup !== 'hitting') params.set('group', activeGroup);
 
   if (state.season !== DEFAULT_SEASON) params.set('season', state.season);
+  if (state.leadersLeague && state.leadersLeague !== 'mlb') params.set('level', state.leadersLeague);
   if (state.leagueFilter !== 'all') params.set('league', state.leagueFilter);
 
   if (state.playerOrTeam === 'player') {
@@ -490,6 +540,7 @@ export default function StatLeaders() {
   const [leaders, setLeaders] = useState([]);
   const [completePlayerRows, setCompletePlayerRows] = useState([]);
   const [leagueFilter, setLeagueFilter] = useState(initial.leagueFilter);
+  const [leadersLeague, setLeadersLeague] = useState(initial.leadersLeague);
   const [positionFilter, setPositionFilter] = useState(initial.positionFilter);
   const [teamStats, setTeamStats] = useState([]);
   const [teamGroup, setTeamGroup] = useState(initial.teamGroup);
@@ -511,6 +562,7 @@ export default function StatLeaders() {
         category,
         season,
         leagueFilter,
+        leadersLeague,
         limit,
         positionFilter,
         playerSortCol,
@@ -530,6 +582,7 @@ export default function StatLeaders() {
     category,
     season,
     leagueFilter,
+    leadersLeague,
     limit,
     positionFilter,
     playerSortCol,
@@ -547,6 +600,8 @@ export default function StatLeaders() {
   const isTeam = playerOrTeam === 'team';
   const isCompletePlayer = !isTeam && playerMode === 'complete';
   const isCompleteTeam = isTeam && teamMode === 'complete';
+  const isMlbLevel = leadersLeague === 'mlb';
+  const selectedLeague = LEAGUE_LEVEL_BY_VALUE[leadersLeague] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
   const teamCols = TEAM_STAT_COLS[teamGroup] ?? TEAM_BATTING_COLS;
   const playerCols = PLAYER_STAT_COLS[group] ?? TEAM_BATTING_COLS;
   const allCats = GROUP_CATS[group] ?? HITTING_CATS;
@@ -556,8 +611,9 @@ export default function StatLeaders() {
     leaderCategory = category,
     season: seasonParam = season,
     resultLimit = limit,
+    leagueLevel = leadersLeague,
   } = {}) => {
-    const cacheKey = `player:${statGroup}:${leaderCategory}:${seasonParam}:${resultLimit}`;
+    const cacheKey = `player:${leagueLevel}:${statGroup}:${leaderCategory}:${seasonParam}:${resultLimit}`;
     if (cache.current[cacheKey]) {
       setLeaders(cache.current[cacheKey]);
       setError(null);
@@ -567,7 +623,7 @@ export default function StatLeaders() {
     setError(null);
     setLeaders([]);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${leaderCategory}&season=${seasonParam}&statGroup=${statGroup}&leaderGameTypes=R&limit=${resultLimit}&sportId=1&hydrate=person,team(league)`;
+      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${leaderCategory}&season=${seasonParam}&statGroup=${statGroup}&leaderGameTypes=R&limit=${resultLimit}&${leadersSportQuery(leagueLevel)}&hydrate=person,team(league)`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -584,8 +640,9 @@ export default function StatLeaders() {
   const fetchTeamStats = async ({
     statGroup = teamGroup,
     season: seasonParam = season,
+    leagueLevel = leadersLeague,
   } = {}) => {
-    const cacheKey = `team:${statGroup}:${seasonParam}`;
+    const cacheKey = `team:${leagueLevel}:${statGroup}:${seasonParam}`;
     if (cache.current[cacheKey]) {
       setTeamStats(cache.current[cacheKey]);
       setError(null);
@@ -595,8 +652,9 @@ export default function StatLeaders() {
     setError(null);
     setTeamStats([]);
     try {
+      const teams = await fetchTeamsForLevel(leagueLevel, seasonParam);
       const rows = await Promise.all(
-        mlbTeams.map(async (t) => {
+        teams.map(async (t) => {
           const res = await fetch(
             `https://statsapi.mlb.com/api/v1/teams/${t.id}/stats?stats=season&season=${seasonParam}&group=${statGroup}`,
           );
@@ -604,8 +662,8 @@ export default function StatLeaders() {
           const data = await res.json();
           const split = data.stats?.[0]?.splits?.[0];
           return {
-            team: { id: t.id, name: t.name, abbr: t.abbr },
-            leagueId: AL_TEAM_IDS.has(t.id) ? 103 : 104,
+            team: { id: t.id, name: t.name, abbr: t.abbr, abbreviation: t.abbr },
+            leagueId: t.leagueId,
             stat: split?.stat ?? {},
           };
         }),
@@ -642,6 +700,21 @@ export default function StatLeaders() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, leadersLeague);
+  }, [leadersLeague]);
+
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key !== LEAGUE_LEVEL_STORAGE_KEY) return;
+      if (!LEAGUE_LEVEL_VALUES.has(event.newValue)) return;
+      setLeadersLeague(event.newValue);
+      if (event.newValue !== 'mlb') setLeagueFilter('all');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  useEffect(() => {
     const handlePopState = () => {
       const next = parseStatLeadersState(new URLSearchParams(window.location.search));
 
@@ -650,6 +723,7 @@ export default function StatLeaders() {
       setCategory(next.category);
       setSeason(next.season);
       setLeagueFilter(next.leagueFilter);
+      setLeadersLeague(next.leadersLeague);
       setLimit(next.limit);
       setPositionFilter(next.positionFilter);
       setPlayerSortCol(next.playerSortCol);
@@ -661,15 +735,16 @@ export default function StatLeaders() {
       setPlayerMode(next.playerMode);
 
       if (next.playerOrTeam === 'team') {
-        fetchTeamStats({ statGroup: next.teamGroup, season: next.season });
+        fetchTeamStats({ statGroup: next.teamGroup, season: next.season, leagueLevel: next.leadersLeague });
       } else if (next.playerMode === 'complete') {
-        fetchCompletePlayerStats({ statGroup: next.group, season: next.season });
+        fetchCompletePlayerStats({ statGroup: next.group, season: next.season, leagueLevel: next.leadersLeague });
       } else {
         fetchLeaders({
           statGroup: next.group,
           leaderCategory: next.category,
           season: next.season,
           resultLimit: next.limit,
+          leagueLevel: next.leadersLeague,
         });
       }
     };
@@ -713,8 +788,9 @@ export default function StatLeaders() {
   const fetchCompletePlayerStats = async ({
     statGroup = group,
     season: seasonParam = season,
+    leagueLevel = leadersLeague,
   } = {}) => {
-    const cacheKey = `complete-player:${statGroup}:${seasonParam}`;
+    const cacheKey = `complete-player:${leagueLevel}:${statGroup}:${seasonParam}`;
     if (cache.current[cacheKey]) {
       setCompletePlayerRows(cache.current[cacheKey]);
       setError(null);
@@ -724,7 +800,7 @@ export default function StatLeaders() {
     setError(null);
     setCompletePlayerRows([]);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${statGroup}&season=${seasonParam}&sportIds=1&playerPool=all&limit=${COMPLETE_PLAYER_LIMIT}&hydrate=person,team(league)`;
+      const url = `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${statGroup}&season=${seasonParam}&${completeStatsSportQuery(leagueLevel)}&playerPool=all&limit=${COMPLETE_PLAYER_LIMIT}&hydrate=person,team(league)`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -786,6 +862,17 @@ export default function StatLeaders() {
   const handleLeagueChange = (league) => {
     setLeagueFilter(league);
     syncToUrl({ leagueFilter: league });
+  };
+
+  const handleLeadersLeagueChange = (level) => {
+    if (level === leadersLeague) return;
+    setLeadersLeague(level);
+    const nextLeagueFilter = level === 'mlb' ? leagueFilter : 'all';
+    if (level !== 'mlb') setLeagueFilter('all');
+    syncToUrl({ leadersLeague: level, leagueFilter: nextLeagueFilter });
+    if (isTeam) fetchTeamStats({ leagueLevel: level });
+    else if (playerMode === 'complete') fetchCompletePlayerStats({ leagueLevel: level });
+    else fetchLeaders({ leagueLevel: level });
   };
 
   const handlePositionChange = (pos) => {
@@ -857,7 +944,7 @@ export default function StatLeaders() {
 
   const currentCat = allCats.find((c) => c.key === category) ?? allCats[0];
   const filteredLeaders = leaders.filter((l) => {
-    if (leagueFilter === 'all') return true;
+    if (!isMlbLevel || leagueFilter === 'all') return true;
     const leagueId = l.team?.league?.id;
     if (leagueFilter === 'AL') return leagueId === 103;
     if (leagueFilter === 'NL') return leagueId === 104;
@@ -865,15 +952,15 @@ export default function StatLeaders() {
   });
 
   const filteredTeamStats = teamStats.filter((row) => {
-    if (leagueFilter === 'all') return true;
+    if (!isMlbLevel || leagueFilter === 'all') return true;
     if (leagueFilter === 'AL') return row.leagueId === 103;
     if (leagueFilter === 'NL') return row.leagueId === 104;
     return true;
   });
 
   const filteredCompletePlayers = completePlayerRows.filter((row) => {
-    if (leagueFilter === 'AL' && row.leagueId !== 103) return false;
-    if (leagueFilter === 'NL' && row.leagueId !== 104) return false;
+    if (isMlbLevel && leagueFilter === 'AL' && row.leagueId !== 103) return false;
+    if (isMlbLevel && leagueFilter === 'NL' && row.leagueId !== 104) return false;
     return positionMatches(row, positionFilter);
   });
 
@@ -889,13 +976,22 @@ export default function StatLeaders() {
 
   const teamGroupLabel = teamGroup === 'hitting' ? 'Batting' : teamGroup === 'pitching' ? 'Pitching' : 'Fielding';
   const playerGroupLabel = group === 'hitting' ? 'Batting' : group === 'pitching' ? 'Pitching' : 'Fielding';
-  const leagueLabel = leagueFilter === 'all' ? 'MLB' : leagueFilter;
+  const leagueLabel = isMlbLevel
+    ? (leagueFilter === 'all' ? 'MLB' : leagueFilter)
+    : selectedLeague.shortLabel;
 
   return (
-    <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isTeam || isCompletePlayer ? 'max-w-7xl' : 'max-w-4xl'}`}>
-      <div className="mb-6">
-        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
-          League Leaders
+    <div className={`mx-auto px-4 sm:px-6 py-0 sm:py-8 ${isTeam || isCompletePlayer ? 'max-w-7xl' : 'max-w-4xl'}`}>
+      <div className="">
+        <div className="flex items-center justify-between gap-3">
+          <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
+            League Leaders
+          </div>
+          <LeagueLevelPicker
+            value={leadersLeague}
+            onChange={handleLeadersLeagueChange}
+            ariaLabel="Change league leaders level"
+          />
         </div>
         {/* <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stat Leaders</h1>
         <p className="text-slate-400 mt-1 text-sm">
@@ -958,17 +1054,19 @@ export default function StatLeaders() {
             />
           </div>
 
-          <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-            <SegmentedControl
-              value={leagueFilter}
-              onChange={handleLeagueChange}
-              options={[
-                { value: 'all', label: 'MLB' },
-                { value: 'AL', label: 'AL' },
-                { value: 'NL', label: 'NL' },
-              ]}
-            />
-          </div>
+          {isMlbLevel && (
+            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+              <SegmentedControl
+                value={leagueFilter}
+                onChange={handleLeagueChange}
+                options={[
+                  { value: 'all', label: 'MLB' },
+                  { value: 'AL', label: 'AL' },
+                  { value: 'NL', label: 'NL' },
+                ]}
+              />
+            </div>
+          )}
 
           <Select value={season} onChange={handleSeasonChange} options={SEASON_OPTIONS} />
 
@@ -1015,7 +1113,15 @@ export default function StatLeaders() {
           </div>
 
           <div className="flex items-center gap-3 flex-shrink-0">
-            <LeagueLogo filter={leagueFilter} />
+            {isMlbLevel ? (
+              <LeagueLogo filter={leagueFilter} />
+            ) : (
+              <img
+                src={selectedLeague.logo}
+                alt=""
+                className="w-8 h-8 object-contain flex-shrink-0"
+              />
+            )}
             {isLoading && <BaseballSpinner size="sm" inline />}
           </div>
         </div>
