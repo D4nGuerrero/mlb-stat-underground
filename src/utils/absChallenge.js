@@ -19,13 +19,60 @@ function collectChallengeText(value, depth = 0, out = []) {
 
 export function getAbsChallengeOutcome(event) {
   const haystack = collectChallengeText(event).join(' ').toLowerCase();
-  if (!/(abs|automated\s*ball|ball.?strike|challenge|challenged|review)/i.test(haystack)) return null;
   if (/overturn|overturned|reversed|changed|successful/.test(haystack)) return 'Overturned';
   if (/upheld|confirmed|stands|unsuccessful/.test(haystack)) return 'Upheld';
+  if (!/(abs|automated\s*ball|ball.?strike|challenge|challenged|review)/i.test(haystack)) return null;
   return null;
 }
 
+function compactTimerLabel(eventType = '', text = '') {
+  const haystack = `${eventType} ${text}`.toLowerCase();
+  if (/batter[_\s-]?timeout|batter[_\s-]?timer|timer violation.*batter|batter.*timer violation|auto(?:matic)? strike/.test(haystack)) {
+    return 'Batter Timer Violation';
+  }
+  if (/pitch(?:er)?[_\s-]?timer|timer violation.*pitch|pitch(?:er)?.*timer violation|auto(?:matic)? ball/.test(haystack)) {
+    return 'Pitcher Timer Violation';
+  }
+  if (/timer|clock/.test(haystack)) return 'Timer Violation';
+  return null;
+}
+
+export function getAutomaticPitchTimerCall(event) {
+  const eventType = String(event?.details?.eventType || event?.type || '').trim();
+  const description = String(event?.details?.description || event?.details?.call?.description || '').trim();
+  const haystack = `${eventType} ${description}`.toLowerCase();
+
+  if (
+    /automatic strike|auto strike|timer violation.*batter|batter.*timer violation|batter[_\s-]?timeout|batter[_\s-]?timer/.test(haystack)
+  ) {
+    return {
+      label: 'Automatic Strike',
+      detail: compactTimerLabel(eventType, description) ?? 'Batter Timer Violation',
+    };
+  }
+
+  if (
+    /automatic ball|auto ball|timer violation.*pitch|pitch(?:er)?.*timer violation|pitch(?:er)?[_\s-]?timer/.test(haystack)
+  ) {
+    return {
+      label: 'Automatic Ball',
+      detail: compactTimerLabel(eventType, description) ?? 'Pitcher Timer Violation',
+    };
+  }
+
+  return null;
+}
+
+export function formatAutomaticPitchTimerCall(event, fallback = '') {
+  const automaticCall = getAutomaticPitchTimerCall(event);
+  if (!automaticCall) return fallback || '';
+  return `${automaticCall.label} (${automaticCall.detail})`;
+}
+
 export function formatPitchDescriptionWithAbs(description, event) {
+  const automaticCall = formatAutomaticPitchTimerCall(event);
+  if (automaticCall) return automaticCall;
+
   const text = description || 'Pitch';
   if (/\((overturned|upheld)\)$/i.test(text)) return text;
   const outcome = getAbsChallengeOutcome(event);
@@ -43,6 +90,9 @@ export function getAbsChallengeOutcomeForPitch(playEvents = [], pitchEventIndex 
 }
 
 export function formatPitchDescriptionWithAbsContext(description, event, playEvents, pitchEventIndex) {
+  const automaticCall = formatAutomaticPitchTimerCall(event);
+  if (automaticCall) return automaticCall;
+
   const text = description || 'Pitch';
   if (/\((overturned|upheld)\)$/i.test(text)) return text;
   const outcome =

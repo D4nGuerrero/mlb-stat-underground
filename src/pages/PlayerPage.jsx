@@ -2432,7 +2432,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                   {playerInfo.fullName}
                 </h1>
                 <div className="text-slate-100 text-sm font-medium" style={HERO_TEXT_SHADOW}>
-                  {playerInfo.primaryPosition?.name || '—'}
+                  {playerInfo.primaryPosition?.name || '—'}         {playerInfo.primaryNumber ? ` · #${playerInfo.primaryNumber}` : ''}
                 </div>
                 <div
                   className={`text-[11px] text-${THEME_COLOR}-300 font-semibold uppercase tracking-widest truncate`}
@@ -2448,7 +2448,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                   ) : (
                     displayTeam?.name || '—'
                   )}
-                  {playerInfo.primaryNumber ? ` · #${playerInfo.primaryNumber}` : ''}
+               
                 </div>
               </div>
             </div>

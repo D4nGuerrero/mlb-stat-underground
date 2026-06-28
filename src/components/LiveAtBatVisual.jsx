@@ -3,7 +3,10 @@ import PitchCanvas from './PitchCanvas';
 import { AT_BAT_STRIKE_ZONE_CLIP } from '../pitchfx/atBatPitchFx';
 import LivePitchToast from './LivePitchToast';
 import { getPitchResultKind } from '../utils/liveRecentPlays';
-import { formatPitchDescriptionWithAbsContext } from '../utils/absChallenge';
+import {
+  formatAutomaticPitchTimerCall,
+  formatPitchDescriptionWithAbsContext,
+} from '../utils/absChallenge';
 import {
   stadiumExteriorUrl,
   stadiumInfieldUrl,
@@ -70,12 +73,13 @@ function buildLiveToastItem(playEvents, currentPlay) {
   }
 
   const eventType = last.details?.eventType || last.details?.code || '';
-  const description = last.details?.description || last.details?.event || 'Game Event';
+  const automaticPitchCall = formatAutomaticPitchTimerCall(last);
+  const description = automaticPitchCall || last.details?.description || last.details?.event || 'Game Event';
   return {
     id: `event-${currentPlay?.about?.atBatIndex ?? ''}-${last.playId ?? ''}-${last.endTime ?? last.startTime ?? events.length}`,
-    title: last.details?.event || eventType.replace(/_/g, ' ') || 'Game Event',
-    subtitle: description,
-    resultKind: classifyPlayToast(eventType),
+    title: automaticPitchCall || last.details?.event || eventType.replace(/_/g, ' ') || 'Game Event',
+    subtitle: automaticPitchCall ? null : description,
+    resultKind: automaticPitchCall ? getPitchResultKind(automaticPitchCall, false) : classifyPlayToast(eventType),
   };
 }
 

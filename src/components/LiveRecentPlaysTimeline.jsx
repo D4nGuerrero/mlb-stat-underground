@@ -48,7 +48,7 @@ function IconAvatar({ children, className = '' }) {
 function PitchNumberAvatar({ number, resultKind }) {
   return (
     <div
-      className={`${PITCH_SIZE} rounded-full ${PITCH_RESULT_COLORS[resultKind]} flex items-center justify-center text-[11px] font-bold text-white shadow-sm`}
+      className={`h-10 w-10 rounded-full ${PITCH_RESULT_COLORS[resultKind]} flex items-center justify-center text-lg font-extrabold text-white border-2 border-white/85 shadow-sm`}
       aria-hidden
     >
       {number}
@@ -170,17 +170,25 @@ function LiveRecentPlayRow({
           <PitchNumberAvatar number={row.pitchNumber} resultKind={resultKind} />
         )}
       >
-        <p className="text-sm text-slate-200 leading-snug">{row.description}</p>
-        {(row.pitchType || row.mph != null) && (
-          <p className="text-xs text-slate-500 mt-0.5">
-            {[row.pitchType, row.mph != null ? `${Math.round(row.mph)} mph` : null].filter(Boolean).join(' · ')}
-          </p>
-        )}
-        {row.balls != null && row.strikes != null && (
-          <p className="text-[10px] text-slate-600 font-mono mt-0.5">
-            Count {row.balls}-{row.strikes}
-          </p>
-        )}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-extrabold text-slate-100 leading-tight">{row.description}</p>
+            {(row.pitchType || row.mph != null) && (
+              <p className="mt-0.5 text-sm text-white leading-tight">
+                {row.mph != null && <span className="font-extrabold">{Math.round(row.mph)} mph</span>}
+                {row.mph != null && row.pitchType && <span className="text-white/80"> </span>}
+                {row.pitchType && <span className="text-white/90">{row.pitchType}</span>}
+              </p>
+            )}
+          </div>
+          {row.balls != null && row.strikes != null && (
+            <div className="min-w-[3rem] flex-shrink-0 text-right">
+              <p className="text-2xl font-extrabold tabular-nums leading-none text-white">
+                {row.balls} - {row.strikes}
+              </p>
+            </div>
+          )}
+        </div>
       </LiveTimelineRow>
     );
   }
@@ -195,7 +203,37 @@ function LiveRecentPlayRow({
           </IconAvatar>
         )}
       >
-        <p className="text-sm text-slate-300 leading-snug">Batter Timeout</p>
+        <p className="text-sm text-slate-300 leading-snug">{row.description || 'Batter Timeout'}</p>
+      </LiveTimelineRow>
+    );
+  }
+
+  if (row.kind === 'automatic_pitch') {
+    const resultKind = getPitchResultKind(row.description, false);
+    return (
+      <LiveTimelineRow
+        avatarScale="pitch"
+        avatar={(
+          <div
+            className={`h-10 w-10 rounded-full ${PITCH_RESULT_COLORS[resultKind]} flex items-center justify-center text-base font-extrabold text-white border-2 border-white/85 shadow-sm`}
+            aria-hidden
+          >
+            A
+          </div>
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-extrabold text-slate-100 leading-tight">{row.description}</p>
+          </div>
+          {row.balls != null && row.strikes != null && (
+            <div className="min-w-[3rem] flex-shrink-0 text-right">
+              <p className="text-2xl font-extrabold tabular-nums leading-none text-white">
+                {row.balls} - {row.strikes}
+              </p>
+            </div>
+          )}
+        </div>
       </LiveTimelineRow>
     );
   }

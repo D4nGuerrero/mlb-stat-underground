@@ -15,7 +15,10 @@ import {
   toIndicatorBases,
 } from './playSituation';
 import { compactPlayerName } from './mlbHelpers';
-import { formatPitchDescriptionWithAbsContext } from './absChallenge';
+import {
+  formatAutomaticPitchTimerCall,
+  formatPitchDescriptionWithAbsContext,
+} from './absChallenge';
 
 const LIVE_EXTRA_EVENT_TYPES = new Set([
   'mound_visit',
@@ -259,11 +262,25 @@ function pushActiveAtBatEventRows(rows, play, ordinals, allPlays, { includePicko
 
     pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays);
 
+    const automaticPitchCall = formatAutomaticPitchTimerCall(ev);
+    if (automaticPitchCall) {
+      rows.push({
+        kind: 'automatic_pitch',
+        key: `automatic-pitch-${play.about?.atBatIndex}-${eventIdx}`,
+        description: automaticPitchCall,
+        balls: ev.count?.balls,
+        strikes: ev.count?.strikes,
+        ...meta,
+        sortTime: ev.endTime || ev.startTime || play.about?.startTime || new Date().toISOString(),
+      });
+      return;
+    }
+
     if (ev.details?.eventType === 'batter_timeout') {
       rows.push({
         kind: 'batter_timeout',
         key: `batter-timeout-${play.about?.atBatIndex}-${eventIdx}`,
-        description: 'Batter Timeout',
+        description: ev.details?.description || 'Batter Timeout',
         ...meta,
         sortTime: ev.endTime || ev.startTime || play.about?.startTime || new Date().toISOString(),
       });

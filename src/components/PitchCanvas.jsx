@@ -256,10 +256,10 @@ export default function PitchCanvas({
   const pitches = useMemo(() => {
     const list = [];
     let n = 0;
-    for (const ev of playEvents) {
+    for (const [eventIdx, ev] of playEvents.entries()) {
       if (!ev.isPitch || !hasRenderablePitchData(ev.pitchData)) continue;
       n += 1;
-      const pitch = buildPitchFromEvent(ev, n);
+      const pitch = buildPitchFromEvent(ev, n, null, playEvents, eventIdx);
       if (pitch) {
         pitch.playScored = Boolean(
           ev.__playScored ||

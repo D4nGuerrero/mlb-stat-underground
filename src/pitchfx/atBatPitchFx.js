@@ -4,7 +4,7 @@
  */
 
 import { getPitchResultKind } from '../utils/liveRecentPlays';
-import { formatPitchDescriptionWithAbs } from '../utils/absChallenge';
+import { formatPitchDescriptionWithAbsContext } from '../utils/absChallenge';
 
 const BASE_FOOT = 12;
 const PIXEL_FOOT = 75;
@@ -360,7 +360,7 @@ export function inferPitchResult(event) {
   return { isBall: false, isStrike: true, isInPlay: false };
 }
 
-export function buildPitchFromEvent(event, pitchNumber, batter = null) {
+export function buildPitchFromEvent(event, pitchNumber, batter = null, playEvents = [], pitchEventIndex = -1) {
   const pitchData = event.pitchData;
   if (!pitchData?.coordinates) return null;
 
@@ -392,7 +392,12 @@ export function buildPitchFromEvent(event, pitchNumber, batter = null) {
     type: details.type?.code || '',
     trailColor: details.trailColor || null,
     ballColor: details.ballColor || null,
-    result: formatPitchDescriptionWithAbs(details.description || '', event),
+    result: formatPitchDescriptionWithAbsContext(
+      details.description || details.call?.description || '',
+      event,
+      playEvents,
+      pitchEventIndex,
+    ),
   };
 }
 
