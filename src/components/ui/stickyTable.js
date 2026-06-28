@@ -130,12 +130,21 @@ export function stickyRankCell(bg = 'bg-slate-900', opts = {}) {
 /** Sticky team column after a w-6 rank column — offset + team width */
 export const STICKY_AFTER_RANK = 'left-7';
 
-export function stickyTeamHeadAfterRank(bg = 'bg-slate-900') {
-  return stickyTeamHead(bg, { left: STICKY_AFTER_RANK });
+export function stickyTeamHeadAfterRank(bg = 'bg-slate-900', opts = {}) {
+  return stickyTeamHead(bg, { left: STICKY_AFTER_RANK, ...opts });
 }
 
 export function stickyTeamCellAfterRank(bg = 'bg-slate-900', opts = {}) {
   return stickyTeamCell(bg, { left: STICKY_AFTER_RANK, ...opts });
+}
+
+/** Sticky player/name column after a rank column */
+export function stickyPlayerHeadAfterRank(bg = 'bg-slate-900', opts = {}) {
+  return stickyPlayerHead(bg, { left: STICKY_AFTER_RANK, ...opts });
+}
+
+export function stickyPlayerCellAfterRank(bg = 'bg-slate-900', opts = {}) {
+  return stickyPlayerCell(bg, { left: STICKY_AFTER_RANK, ...opts });
 }
 
 /** Narrow abbr team column after rank — stat leaders, stats center */

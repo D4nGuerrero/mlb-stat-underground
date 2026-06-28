@@ -3,13 +3,17 @@ import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { restoreListScroll, saveListScroll } from '../utils/listScrollRestore';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
+import TeamAbbrCell from '../components/TeamAbbrCell';
+import TeamLogoImg from '../components/TeamLogoImg';
 import {
   SegmentedControl,
   Select,
-  stickyTeamAbbrHeadAfterRank,
-  stickyTeamAbbrCellAfterRank,
   stickyRankHead,
   stickyRankCell,
+  stickyTeamHeadAfterRank,
+  stickyTeamCellAfterRank,
+  stickyPlayerHeadAfterRank,
+  stickyPlayerCellAfterRank,
   scrollStatHead,
   scrollStatCell,
   TABLE_SCROLL_BODY,
@@ -17,7 +21,6 @@ import {
   BaseballSpinner,
 } from '../components/ui';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
-import TeamAbbrCell from '../components/TeamAbbrCell';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -32,6 +35,22 @@ const LIMIT_OPTIONS = [
   { value: 10, label: 'Top 10' },
   { value: 25, label: 'Top 25' },
   { value: 50, label: 'Top 50' },
+];
+const COMPLETE_PLAYER_LIMIT = 5000;
+
+const POSITION_OPTIONS = [
+  { value: 'all', label: 'All Positions' },
+  { value: 'P', label: 'Pitcher' },
+  { value: 'C', label: 'Catcher' },
+  { value: '1B', label: 'First Base' },
+  { value: '2B', label: 'Second Base' },
+  { value: '3B', label: 'Third Base' },
+  { value: 'SS', label: 'Shortstop' },
+  { value: 'LF', label: 'Left Field' },
+  { value: 'CF', label: 'Center Field' },
+  { value: 'RF', label: 'Right Field' },
+  { value: 'OF', label: 'Outfield' },
+  { value: 'DH', label: 'Designated Hitter' },
 ];
 
 const LEAGUE_LOGOS = {
@@ -139,17 +158,61 @@ const TEAM_STAT_COLS = {
   fielding: TEAM_FIELDING_COLS,
 };
 
+const PLAYER_STAT_COLS = TEAM_STAT_COLS;
+
+const STAT_FULL_LABELS = {
+  gamesPlayed: 'Games Played',
+  gamesStarted: 'Games Started',
+  atBats: 'At Bats',
+  runs: 'Runs',
+  hits: 'Hits',
+  doubles: 'Doubles',
+  triples: 'Triples',
+  homeRuns: 'Home Runs',
+  rbi: 'RBI',
+  totalBases: 'Total Bases',
+  baseOnBalls: 'Walks',
+  strikeOuts: 'Strikeouts',
+  stolenBases: 'Stolen Bases',
+  avg: 'Batting Average',
+  obp: 'On-Base Percentage',
+  slg: 'Slugging Percentage',
+  ops: 'OPS',
+  wins: 'Wins',
+  losses: 'Losses',
+  era: 'ERA',
+  saves: 'Saves',
+  completeGames: 'Complete Games',
+  shutouts: 'Shutouts',
+  inningsPitched: 'Innings Pitched',
+  earnedRuns: 'Earned Runs',
+  whip: 'WHIP',
+  putOuts: 'Putouts',
+  assists: 'Assists',
+  errors: 'Errors',
+  fielding: 'Fielding Percentage',
+  doublePlays: 'Double Plays',
+  chances: 'Total Chances',
+};
+
+const statFullLabel = (col) => STAT_FULL_LABELS[col.key] ?? col.label;
+
 const TEAM_SORT_DEFAULTS = {
   hitting: { col: 'homeRuns', dir: 'desc' },
   pitching: { col: 'era', dir: 'asc' },
   fielding: { col: 'fielding', dir: 'desc' },
 };
 
+const PLAYER_SORT_DEFAULTS = TEAM_SORT_DEFAULTS;
+
 const STAT_LEADERS_SCROLL_KEY = 'stat-leaders';
 const DEFAULT_SEASON = '2026';
 const DEFAULT_LIMIT = 25;
 const VALID_GROUPS = new Set(['hitting', 'pitching', 'fielding']);
 const VALID_LEAGUES = new Set(['all', 'AL', 'NL']);
+const VALID_PLAYER_MODES = new Set(['cards', 'complete']);
+const VALID_POSITIONS = new Set(POSITION_OPTIONS.map((option) => option.value));
+const VALID_TEAM_MODES = new Set(['leaders', 'complete']);
 
 function defaultCategoryForGroup(group) {
   return (GROUP_CATS[group] ?? HITTING_CATS)[0].key;
@@ -170,6 +233,12 @@ function parseStatLeadersState(searchParams) {
 
   const limitRaw = Number(searchParams.get('limit'));
   const limit = LIMIT_OPTIONS.some((o) => o.value === limitRaw) ? limitRaw : DEFAULT_LIMIT;
+  const playerMode = VALID_PLAYER_MODES.has(searchParams.get('mode'))
+    ? searchParams.get('mode')
+    : 'cards';
+  const positionFilter = VALID_POSITIONS.has(searchParams.get('pos'))
+    ? searchParams.get('pos')
+    : 'all';
 
   const playerGroup = playerOrTeam === 'player' ? activeGroup : 'hitting';
   const cats = GROUP_CATS[playerGroup] ?? HITTING_CATS;
@@ -177,6 +246,16 @@ function parseStatLeadersState(searchParams) {
   const category = cats.some((c) => c.key === categoryParam)
     ? categoryParam
     : defaultCategoryForGroup(playerGroup);
+  const playerDefaults = PLAYER_SORT_DEFAULTS[playerGroup] ?? PLAYER_SORT_DEFAULTS.hitting;
+  const playerCols = PLAYER_STAT_COLS[playerGroup] ?? TEAM_BATTING_COLS;
+  const playerSortParam = searchParams.get('psort');
+  const playerSortCol = playerCols.some((c) => c.key === playerSortParam)
+    ? playerSortParam
+    : playerDefaults.col;
+  const playerDirParam = searchParams.get('pdir');
+  const playerSortDir = playerDirParam === 'asc' || playerDirParam === 'desc'
+    ? playerDirParam
+    : playerDefaults.dir;
 
   const teamGroup = playerOrTeam === 'team' ? activeGroup : 'hitting';
   const teamDefaults = TEAM_SORT_DEFAULTS[teamGroup] ?? TEAM_SORT_DEFAULTS.hitting;
@@ -185,6 +264,9 @@ function parseStatLeadersState(searchParams) {
   const teamSortCol = teamCols.some((c) => c.key === sortParam) ? sortParam : teamDefaults.col;
   const dirParam = searchParams.get('dir');
   const teamSortDir = dirParam === 'asc' || dirParam === 'desc' ? dirParam : teamDefaults.dir;
+  const teamMode = VALID_TEAM_MODES.has(searchParams.get('tmode'))
+    ? searchParams.get('tmode')
+    : 'leaders';
 
   return {
     playerOrTeam,
@@ -193,9 +275,14 @@ function parseStatLeadersState(searchParams) {
     season,
     leagueFilter,
     limit,
+    positionFilter,
+    playerSortCol,
+    playerSortDir,
     teamGroup,
     teamSortCol,
     teamSortDir,
+    teamMode,
+    playerMode,
   };
 }
 
@@ -210,11 +297,19 @@ function buildStatLeadersParams(state) {
   if (state.leagueFilter !== 'all') params.set('league', state.leagueFilter);
 
   if (state.playerOrTeam === 'player') {
+    if (state.playerMode === 'complete') params.set('mode', 'complete');
+    if (state.positionFilter && state.positionFilter !== 'all') params.set('pos', state.positionFilter);
     if (state.category !== defaultCategoryForGroup(state.group)) {
       params.set('category', state.category);
     }
     if (state.limit !== DEFAULT_LIMIT) params.set('limit', String(state.limit));
+    if (state.playerMode === 'complete') {
+      const defaults = PLAYER_SORT_DEFAULTS[state.group] ?? PLAYER_SORT_DEFAULTS.hitting;
+      if (state.playerSortCol !== defaults.col) params.set('psort', state.playerSortCol);
+      if (state.playerSortDir !== defaults.dir) params.set('pdir', state.playerSortDir);
+    }
   } else {
+    if (state.teamMode === 'leaders') params.set('tmode', 'leaders');
     const defaults = TEAM_SORT_DEFAULTS[state.teamGroup] ?? TEAM_SORT_DEFAULTS.hitting;
     if (state.teamSortCol !== defaults.col) params.set('sort', state.teamSortCol);
     if (state.teamSortDir !== defaults.dir) params.set('dir', state.teamSortDir);
@@ -273,6 +368,103 @@ const rankTeams = (rows, sortCol, sortDir) => {
   });
 };
 
+const rankRowsByStat = (rows, sortCol, sortDir) => {
+  const sorted = [...rows].sort((a, b) => {
+    const av = parseSortValue(a.stat, sortCol);
+    const bv = parseSortValue(b.stat, sortCol);
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+
+  let rank = 0;
+  let prevVal = null;
+  return sorted.map((row, i) => {
+    const val = parseSortValue(row.stat, sortCol);
+    if (i === 0 || val !== prevVal) {
+      rank = i + 1;
+      prevVal = val;
+    }
+    return { ...row, rank };
+  });
+};
+
+const getPlayerPosition = (row) =>
+  row.player?.primaryPosition?.abbreviation ??
+  row.person?.primaryPosition?.abbreviation ??
+  row.position?.abbreviation ??
+  row.position?.code ??
+  '';
+
+const positionMatches = (row, positionFilter) => {
+  if (positionFilter === 'all') return true;
+  const pos = getPlayerPosition(row);
+  if (positionFilter === 'OF') return ['LF', 'CF', 'RF', 'OF'].includes(pos);
+  return pos === positionFilter;
+};
+
+function compactPlayerName(name = '') {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return name || '—';
+  return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+}
+
+function TeamIdentity({ team, onClick }) {
+  const content = (
+    <>
+      {team?.id && (
+        <img
+          src={teamLogoUrl(team.id)}
+          alt=""
+          className="h-7 w-7 flex-shrink-0 object-contain"
+          onError={(e) => (e.target.style.display = 'none')}
+        />
+      )}
+      <span className="font-mono text-[10px] font-black uppercase tracking-wide text-slate-400">
+        {team?.abbr ?? '—'}
+      </span>
+      <span className="truncate font-semibold text-slate-200">{team?.name ?? '—'}</span>
+    </>
+  );
+
+  if (!onClick) {
+    return <div className="flex min-w-0 items-center gap-2">{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!team?.id}
+      className="flex min-w-0 items-center gap-2 text-left transition-colors hover:text-white disabled:pointer-events-none"
+    >
+      {content}
+    </button>
+  );
+}
+
+function PlayerIdentity({ player, team, onPlayerClick, onTeamClick }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {team?.id && (
+        <button
+          type="button"
+          onClick={onTeamClick}
+          className="flex-shrink-0 transition-opacity hover:opacity-80"
+          title={team?.name}
+        >
+          <TeamLogoImg teamId={team.id} className="h-5 w-5 object-contain" />
+        </button>
+      )}
+      <Link
+        to={`/player/${player?.id}`}
+        onClick={onPlayerClick}
+        className={`min-w-0 truncate font-semibold text-slate-200 transition-colors hover:text-${THEME_COLOR}-400`}
+      >
+        {compactPlayerName(player?.fullName)}
+      </Link>
+    </div>
+  );
+}
+
 function LeagueLogo({ filter }) {
   const logo = LEAGUE_LOGOS[filter] ?? LEAGUE_LOGOS.all;
   return (
@@ -296,16 +488,22 @@ export default function StatLeaders() {
   const [category, setCategory] = useState(initial.category);
   const [season, setSeason] = useState(initial.season);
   const [leaders, setLeaders] = useState([]);
+  const [completePlayerRows, setCompletePlayerRows] = useState([]);
   const [leagueFilter, setLeagueFilter] = useState(initial.leagueFilter);
+  const [positionFilter, setPositionFilter] = useState(initial.positionFilter);
   const [teamStats, setTeamStats] = useState([]);
   const [teamGroup, setTeamGroup] = useState(initial.teamGroup);
+  const [playerSortCol, setPlayerSortCol] = useState(initial.playerSortCol);
+  const [playerSortDir, setPlayerSortDir] = useState(initial.playerSortDir);
   const [teamSortCol, setTeamSortCol] = useState(initial.teamSortCol);
   const [teamSortDir, setTeamSortDir] = useState(initial.teamSortDir);
+  const [teamMode, setTeamMode] = useState(initial.teamMode);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [limit, setLimit] = useState(initial.limit);
+  const [playerMode, setPlayerMode] = useState(initial.playerMode);
 
-  const syncToUrl = useCallback((overrides = {}) => {
+  const syncToUrl = useCallback((overrides = {}, options = {}) => {
     setSearchParams(
       buildStatLeadersParams({
         playerOrTeam,
@@ -314,12 +512,17 @@ export default function StatLeaders() {
         season,
         leagueFilter,
         limit,
+        positionFilter,
+        playerSortCol,
+        playerSortDir,
         teamGroup,
         teamSortCol,
         teamSortDir,
+        teamMode,
+        playerMode,
         ...overrides,
       }),
-      { replace: true },
+      { replace: options.replace ?? true },
     );
   }, [
     playerOrTeam,
@@ -328,16 +531,24 @@ export default function StatLeaders() {
     season,
     leagueFilter,
     limit,
+    positionFilter,
+    playerSortCol,
+    playerSortDir,
     teamGroup,
     teamSortCol,
     teamSortDir,
+    teamMode,
+    playerMode,
     setSearchParams,
   ]);
 
   const saveScroll = () => saveListScroll(STAT_LEADERS_SCROLL_KEY);
 
   const isTeam = playerOrTeam === 'team';
+  const isCompletePlayer = !isTeam && playerMode === 'complete';
+  const isCompleteTeam = isTeam && teamMode === 'complete';
   const teamCols = TEAM_STAT_COLS[teamGroup] ?? TEAM_BATTING_COLS;
+  const playerCols = PLAYER_STAT_COLS[group] ?? TEAM_BATTING_COLS;
   const allCats = GROUP_CATS[group] ?? HITTING_CATS;
 
   const fetchLeaders = async ({
@@ -414,6 +625,11 @@ export default function StatLeaders() {
         statGroup: initial.teamGroup,
         season: initial.season,
       });
+    } else if (initial.playerMode === 'complete') {
+      fetchCompletePlayerStats({
+        statGroup: initial.group,
+        season: initial.season,
+      });
     } else {
       fetchLeaders({
         statGroup: initial.group,
@@ -426,11 +642,50 @@ export default function StatLeaders() {
   }, []);
 
   useEffect(() => {
+    const handlePopState = () => {
+      const next = parseStatLeadersState(new URLSearchParams(window.location.search));
+
+      setPlayerOrTeam(next.playerOrTeam);
+      setGroup(next.group);
+      setCategory(next.category);
+      setSeason(next.season);
+      setLeagueFilter(next.leagueFilter);
+      setLimit(next.limit);
+      setPositionFilter(next.positionFilter);
+      setPlayerSortCol(next.playerSortCol);
+      setPlayerSortDir(next.playerSortDir);
+      setTeamGroup(next.teamGroup);
+      setTeamSortCol(next.teamSortCol);
+      setTeamSortDir(next.teamSortDir);
+      setTeamMode(next.teamMode);
+      setPlayerMode(next.playerMode);
+
+      if (next.playerOrTeam === 'team') {
+        fetchTeamStats({ statGroup: next.teamGroup, season: next.season });
+      } else if (next.playerMode === 'complete') {
+        fetchCompletePlayerStats({ statGroup: next.group, season: next.season });
+      } else {
+        fetchLeaders({
+          statGroup: next.group,
+          leaderCategory: next.category,
+          season: next.season,
+          resultLimit: next.limit,
+        });
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (isLoading) return;
-    if (!isTeam && leaders.length === 0 && !error) return;
+    if (isCompletePlayer && completePlayerRows.length === 0 && !error) return;
+    if (!isTeam && !isCompletePlayer && leaders.length === 0 && !error) return;
     if (isTeam && teamStats.length === 0 && !error) return;
     restoreListScroll(STAT_LEADERS_SCROLL_KEY);
-  }, [isLoading, isTeam, leaders.length, teamStats.length, error]);
+  }, [completePlayerRows.length, error, isCompletePlayer, isLoading, isTeam, leaders.length, teamStats.length]);
 
   const handlePlayerOrTeamChange = (opt) => {
     setPlayerOrTeam(opt);
@@ -439,26 +694,72 @@ export default function StatLeaders() {
       setTeamGroup('hitting');
       setTeamSortCol(defaults.col);
       setTeamSortDir(defaults.dir);
+      setTeamMode('leaders');
       syncToUrl({
         playerOrTeam: opt,
         teamGroup: 'hitting',
         teamSortCol: defaults.col,
         teamSortDir: defaults.dir,
+        teamMode: 'leaders',
       });
       fetchTeamStats({ statGroup: 'hitting' });
     } else {
-      syncToUrl({ playerOrTeam: opt });
+      setPlayerMode('cards');
+      syncToUrl({ playerOrTeam: opt, playerMode: 'cards' });
       fetchLeaders();
+    }
+  };
+
+  const fetchCompletePlayerStats = async ({
+    statGroup = group,
+    season: seasonParam = season,
+  } = {}) => {
+    const cacheKey = `complete-player:${statGroup}:${seasonParam}`;
+    if (cache.current[cacheKey]) {
+      setCompletePlayerRows(cache.current[cacheKey]);
+      setError(null);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setCompletePlayerRows([]);
+    try {
+      const url = `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${statGroup}&season=${seasonParam}&sportIds=1&playerPool=all&limit=${COMPLETE_PLAYER_LIMIT}&hydrate=person,team(league)`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const rows = (data.stats?.[0]?.splits ?? []).map((split) => ({
+        ...split,
+        player: split.player ?? split.person,
+        person: split.person ?? split.player,
+        leagueId: split.team?.league?.id,
+        stat: split.stat ?? {},
+      }));
+      cache.current[cacheKey] = rows;
+      setCompletePlayerRows(rows);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleGroupChange = (g) => {
     const cats = GROUP_CATS[g] ?? HITTING_CATS;
     const nextCategory = cats[0].key;
+    const defaults = PLAYER_SORT_DEFAULTS[g] ?? PLAYER_SORT_DEFAULTS.hitting;
     setGroup(g);
     setCategory(nextCategory);
-    syncToUrl({ group: g, category: nextCategory });
-    fetchLeaders({ statGroup: g, leaderCategory: nextCategory });
+    setPlayerSortCol(defaults.col);
+    setPlayerSortDir(defaults.dir);
+    syncToUrl({
+      group: g,
+      category: nextCategory,
+      playerSortCol: defaults.col,
+      playerSortDir: defaults.dir,
+    });
+    if (playerMode === 'complete') fetchCompletePlayerStats({ statGroup: g });
+    else fetchLeaders({ statGroup: g, leaderCategory: nextCategory });
   };
 
   const handleTeamGroupChange = (g) => {
@@ -478,6 +779,7 @@ export default function StatLeaders() {
     setSeason(s);
     syncToUrl({ season: s });
     if (isTeam) fetchTeamStats({ season: s });
+    else if (playerMode === 'complete') fetchCompletePlayerStats({ season: s });
     else fetchLeaders({ season: s });
   };
 
@@ -486,9 +788,15 @@ export default function StatLeaders() {
     syncToUrl({ leagueFilter: league });
   };
 
+  const handlePositionChange = (pos) => {
+    setPositionFilter(pos);
+    syncToUrl({ positionFilter: pos });
+  };
+
   const handleCategoryChange = (cat) => {
     setCategory(cat);
-    syncToUrl({ category: cat });
+    setPlayerMode('cards');
+    syncToUrl({ category: cat, playerMode: 'cards' });
     fetchLeaders({ leaderCategory: cat });
   };
 
@@ -496,6 +804,35 @@ export default function StatLeaders() {
     setLimit(n);
     syncToUrl({ limit: n });
     fetchLeaders({ resultLimit: n });
+  };
+
+  const showCompletePlayerTable = () => {
+    saveScroll();
+    setPlayerMode('complete');
+    syncToUrl({ playerMode: 'complete' }, { replace: false });
+    fetchCompletePlayerStats();
+  };
+
+  const showPlayerCards = () => {
+    saveScroll();
+    setPlayerMode('cards');
+    setLimit(DEFAULT_LIMIT);
+    syncToUrl({ playerMode: 'cards', limit: DEFAULT_LIMIT }, { replace: false });
+    fetchLeaders({ resultLimit: DEFAULT_LIMIT });
+  };
+
+  const handlePlayerSort = (col) => {
+    if (playerSortCol === col) {
+      const nextDir = playerSortDir === 'asc' ? 'desc' : 'asc';
+      setPlayerSortDir(nextDir);
+      syncToUrl({ playerSortDir: nextDir });
+      return;
+    }
+    const meta = playerCols.find((c) => c.key === col);
+    const nextDir = meta?.lowerBetter ? 'asc' : 'desc';
+    setPlayerSortCol(col);
+    setPlayerSortDir(nextDir);
+    syncToUrl({ playerSortCol: col, playerSortDir: nextDir });
   };
 
   const handleTeamSort = (col) => {
@@ -510,6 +847,12 @@ export default function StatLeaders() {
     setTeamSortCol(col);
     setTeamSortDir(nextDir);
     syncToUrl({ teamSortCol: col, teamSortDir: nextDir });
+  };
+
+  const handleTeamModeChange = (mode) => {
+    if (mode !== teamMode) saveScroll();
+    setTeamMode(mode);
+    syncToUrl({ teamMode: mode }, { replace: mode !== teamMode ? false : true });
   };
 
   const currentCat = allCats.find((c) => c.key === category) ?? allCats[0];
@@ -528,13 +871,28 @@ export default function StatLeaders() {
     return true;
   });
 
+  const filteredCompletePlayers = completePlayerRows.filter((row) => {
+    if (leagueFilter === 'AL' && row.leagueId !== 103) return false;
+    if (leagueFilter === 'NL' && row.leagueId !== 104) return false;
+    return positionMatches(row, positionFilter);
+  });
+
   const rankedTeamStats = rankTeams(filteredTeamStats, teamSortCol, teamSortDir);
+  const rankedCompletePlayers = rankRowsByStat(filteredCompletePlayers, playerSortCol, playerSortDir);
+  const teamLeaderCards = teamCols
+    .filter((col) => !['gamesPlayed', 'gamesStarted', 'atBats'].includes(col.key))
+    .map((col) => {
+      const ranked = rankTeams(filteredTeamStats, col.key, col.lowerBetter ? 'asc' : 'desc');
+      return { col, leaders: ranked.slice(0, 5) };
+    })
+    .filter((item) => item.leaders.length > 0);
 
   const teamGroupLabel = teamGroup === 'hitting' ? 'Batting' : teamGroup === 'pitching' ? 'Pitching' : 'Fielding';
+  const playerGroupLabel = group === 'hitting' ? 'Batting' : group === 'pitching' ? 'Pitching' : 'Fielding';
   const leagueLabel = leagueFilter === 'all' ? 'MLB' : leagueFilter;
 
   return (
-    <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isTeam ? 'max-w-7xl' : 'max-w-4xl'}`}>
+    <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isTeam || isCompletePlayer ? 'max-w-7xl' : 'max-w-4xl'}`}>
       <div className="mb-6">
         <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
           League Leaders
@@ -559,6 +917,35 @@ export default function StatLeaders() {
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
+          {!isTeam && (
+            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+              <SegmentedControl
+                value={playerMode}
+                onChange={(mode) => {
+                  if (mode === 'complete') showCompletePlayerTable();
+                  else showPlayerCards();
+                }}
+                options={[
+                  { value: 'cards', label: 'Stat Leaders' },
+                  { value: 'complete', label: 'Complete Leaders' },
+                ]}
+              />
+            </div>
+          )}
+
+          {isTeam && (
+            <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
+              <SegmentedControl
+                value={teamMode}
+                onChange={handleTeamModeChange}
+                options={[
+                  { value: 'leaders', label: 'League Leaders' },
+                  { value: 'complete', label: 'Complete Leaders' },
+                ]}
+              />
+            </div>
+          )}
+
           <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
             <SegmentedControl
               value={isTeam ? teamGroup : group}
@@ -585,12 +972,17 @@ export default function StatLeaders() {
 
           <Select value={season} onChange={handleSeasonChange} options={SEASON_OPTIONS} />
 
-          {/* {!isTeam && (
-            <Select value={limit} onChange={handleLimitChange} options={LIMIT_OPTIONS} />
-          )} */}
+          {isCompletePlayer && (
+            <Select
+              value={positionFilter}
+              onChange={handlePositionChange}
+              options={POSITION_OPTIONS}
+              className="w-44"
+            />
+          )}
         </div>
 
-        {!isTeam && (
+        {!isTeam && playerMode !== 'complete' && (
           <SegmentedControl
             value={category}
             onChange={handleCategoryChange}
@@ -607,14 +999,18 @@ export default function StatLeaders() {
           <div>
             <h2 className="font-semibold text-base sm:text-lg">
               {isTeam
-                ? `${leagueLabel} Team ${teamGroupLabel} Stats ${season}`
-                : `${currentCat.label} Leaders`}
+                ? `${leagueLabel} Team ${teamGroupLabel} ${teamMode === 'complete' ? 'Complete Leaders' : 'League Leaders'} ${season}`
+                : playerMode === 'complete'
+                  ? `${leagueLabel} Player ${playerGroupLabel} Complete Leaders ${season}`
+                  : `${currentCat.label} Leaders`}
             </h2>
             <div className="text-xs text-slate-500 mt-0.5">
               {season} Regular Season
               {isTeam
-                ? ` · ${teamGroupLabel}`
-                : ` · ${group} · Top ${limit}`}
+                ? ` · ${teamGroupLabel} · ${teamMode === 'complete' ? 'full table' : 'quick view'}`
+                : playerMode === 'complete'
+                  ? ` · ${playerGroupLabel} · ${POSITION_OPTIONS.find((option) => option.value === positionFilter)?.label ?? 'All Positions'}`
+                  : ` · ${group} · quick view`}
             </div>
           </div>
 
@@ -628,13 +1024,88 @@ export default function StatLeaders() {
           <div className="p-8 text-center text-red-400 text-sm">{error}</div>
         )}
 
-        {isTeam && !isLoading && !error && rankedTeamStats.length > 0 && (
+        {isTeam && teamMode === 'leaders' && !isLoading && !error && teamLeaderCards.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-3 sm:p-4">
+            {teamLeaderCards.map(({ col, leaders }) => {
+              const leader = leaders[0];
+              const nextLeaders = leaders.slice(1);
+              return (
+              <button
+                key={col.key}
+                type="button"
+                onClick={() => {
+                  const nextDir = col.lowerBetter ? 'asc' : 'desc';
+                  saveScroll();
+                  setTeamSortCol(col.key);
+                  setTeamSortDir(nextDir);
+                  setTeamMode('complete');
+                  syncToUrl(
+                    { teamSortCol: col.key, teamSortDir: nextDir, teamMode: 'complete' },
+                    { replace: false },
+                  );
+                }}
+                className="group relative overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:bg-slate-800/80"
+              >
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_45%)] opacity-0 transition-opacity group-hover:opacity-100" />
+                <div className="relative flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xl sm:text-2xl font-black tracking-tight text-white">{statFullLabel(col)}</div>
+                    <div className="mt-3 font-display text-5xl leading-none text-emerald-300 tabular-nums">
+                      {formatValue(leader.stat?.[col.key], col.format)}
+                    </div>
+                  </div>
+                  {leader.team?.id && (
+                    <img
+                      src={teamLogoUrl(leader.team.id)}
+                      alt=""
+                      className="h-16 w-16 flex-shrink-0 object-contain"
+                      onError={(e) => (e.target.style.display = 'none')}
+                    />
+                  )}
+                </div>
+                <div className="relative mt-4">
+                  <TeamIdentity team={leader.team} />
+                </div>
+                {nextLeaders.length > 0 && (
+                  <div className="relative mt-4 space-y-2 border-t border-slate-800/80 pt-3">
+                    {nextLeaders.map((row) => (
+                      <div key={row.team?.id} className="flex items-center justify-between gap-3 text-xs">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="w-5 flex-shrink-0 font-mono text-[10px] text-slate-600">#{row.rank}</span>
+                          {row.team?.id && (
+                            <img
+                              src={teamLogoUrl(row.team.id)}
+                              alt=""
+                              className="h-5 w-5 flex-shrink-0 object-contain"
+                              onError={(e) => (e.target.style.display = 'none')}
+                            />
+                          )}
+                          <span className="font-mono text-[10px] font-black text-slate-500">{row.team?.abbr ?? '—'}</span>
+                          <span className="truncate font-semibold text-slate-300">{row.team?.name ?? '—'}</span>
+                        </div>
+                        <span className="flex-shrink-0 font-mono font-bold text-slate-300 tabular-nums">
+                          {formatValue(row.stat?.[col.key], col.format)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="relative mt-4 inline-flex items-center gap-2 text-xs font-bold text-emerald-300">
+                  Complete Leaders
+                  <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover:translate-x-0.5" aria-hidden />
+                </div>
+              </button>
+            )})}
+          </div>
+        )}
+
+        {isCompleteTeam && !isLoading && !error && rankedTeamStats.length > 0 && (
           <div className={TABLE_SCROLL_BODY}>
             <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/40">
                   <th className={`${stickyRankHead('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>RK</th>
-                  <th className={`${stickyTeamAbbrHeadAfterRank('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>Team</th>
+                  <th className={`${stickyTeamHeadAfterRank('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>Team</th>
                   {teamCols.map((col) => (
                     <th
                       key={col.key}
@@ -663,8 +1134,13 @@ export default function StatLeaders() {
                     }}
                   >
                     <td className={`${stickyRankCell('bg-slate-900')} font-mono text-xs text-slate-500`}>{row.rank}</td>
-                    <td className={stickyTeamAbbrCellAfterRank('bg-slate-900')}>
-                      <TeamAbbrCell team={row.team} abbrOnly size="sm" abbrClassName="text-[10px] font-medium" />
+                    <td className={stickyTeamCellAfterRank('bg-slate-900')}>
+                      <TeamAbbrCell
+                        team={row.team}
+                        size="sm"
+                        abbrClassName="text-[10px] font-black uppercase tracking-wide text-slate-400"
+                        nameClassName="font-semibold text-slate-200"
+                      />
                     </td>
                     {teamCols.map((col) => (
                       <td
@@ -681,23 +1157,97 @@ export default function StatLeaders() {
           </div>
         )}
 
-        {isTeam && !isLoading && !error && (
+        {isCompleteTeam && !isLoading && !error && (
           <div className="px-5 sm:px-6 py-3 border-t border-slate-800 text-[11px] text-slate-500">
             Click column headers to sort · Statistics updated from MLB Stats API
           </div>
         )}
 
-        {isTeam && !isLoading && !error && rankedTeamStats.length === 0 && (
+        {isTeam && !isLoading && !error && (
+          teamMode === 'leaders' ? teamLeaderCards.length === 0 : rankedTeamStats.length === 0
+        ) && (
           <div className="p-12 text-center text-slate-500 text-sm">No team data available.</div>
         )}
 
-        {!isTeam && !isLoading && !error && leaders.length === 0 && (
+        {!isTeam && !isCompletePlayer && !isLoading && !error && leaders.length === 0 && (
           <div className="p-12 text-center text-slate-500 text-sm">
             No data available for this category / season combination.
           </div>
         )}
 
-        {!isTeam && filteredLeaders.map((leader, i) => {
+        {isCompletePlayer && !isLoading && !error && rankedCompletePlayers.length === 0 && (
+          <div className="p-12 text-center text-slate-500 text-sm">
+            No complete player stats available for this selection.
+          </div>
+        )}
+
+        {isCompletePlayer && !isLoading && !error && rankedCompletePlayers.length > 0 && (
+          <div className={TABLE_SCROLL_BODY}>
+            <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
+              <thead>
+                <tr className="border-b border-slate-700 bg-slate-800/40">
+                  <th className={`${stickyRankHead('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>RK</th>
+                  <th className={`${stickyPlayerHeadAfterRank('bg-slate-900', { stickTop: true })} font-semibold text-slate-400`}>
+                    Name
+                  </th>
+                  <th className={scrollStatHead('text-center font-semibold text-slate-400', { stickTop: true, bg: 'bg-slate-900' })}>POS</th>
+                  {playerCols.map((col) => (
+                    <th
+                      key={col.key}
+                      className={scrollStatHead(
+                        `font-semibold cursor-pointer select-none transition-colors ${playerSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`,
+                        { stickTop: true, bg: 'bg-slate-900' },
+                      )}
+                      onClick={() => handlePlayerSort(col.key)}
+                    >
+                      {col.label}
+                      {playerSortCol === col.key && (
+                        <span className="ml-0.5">{playerSortDir === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rankedCompletePlayers.map((row) => (
+                  <tr
+                    key={`${row.player?.id ?? row.person?.id}-${row.team?.id ?? 'team'}-${row.season ?? season}`}
+                    className="group border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors"
+                  >
+                    <td className={`${stickyRankCell('bg-slate-900')} font-mono text-xs text-slate-500`}>
+                      {row.rank}
+                    </td>
+                    <td className={stickyPlayerCellAfterRank('bg-slate-900')}>
+                      <PlayerIdentity
+                        player={row.player ?? row.person}
+                        team={row.team}
+                        onPlayerClick={saveScroll}
+                        onTeamClick={(e) => {
+                          e.stopPropagation();
+                          saveScroll();
+                          navigate(`/team/${row.team?.id}`);
+                        }}
+                      />
+                    </td>
+                    <td className={scrollStatCell('text-center text-slate-500', { align: 'text-center' })}>
+                      {getPlayerPosition(row) || '—'}
+                    </td>
+                    {playerCols.map((col) => (
+                      <td
+                        key={col.key}
+                        className={scrollStatCell(playerSortCol === col.key ? `text-${THEME_COLOR}-300` : '')}
+                      >
+                        {formatValue(row.stat?.[col.key], col.format)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!isTeam && playerMode !== 'complete' && filteredLeaders.map((leader, i) => {
           const isTop3 = i < 3;
           return (
             <div
@@ -727,7 +1277,7 @@ export default function StatLeaders() {
                   onClick={saveScroll}
                   className={`font-semibold hover:text-${THEME_COLOR}-400 transition-colors truncate block text-sm sm:text-base`}
                 >
-                  {leader.person?.fullName ?? '—'}
+                  {compactPlayerName(leader.person?.fullName)}
                 </Link>
                 <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
                   {leader.team?.id && (
