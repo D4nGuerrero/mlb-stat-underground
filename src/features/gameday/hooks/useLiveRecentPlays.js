@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildLiveRecentPlaysFeed,
   dueUpFromOffense,
@@ -28,20 +28,56 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
 
   const liveRecentRows = liveRecentFeed.displayRows;
   const liveFirstPitch = liveRecentFeed.firstPitch;
+  const knownPitchRowKeysRef = useRef(null);
+  const [revealedPitchRowKeys, setRevealedPitchRowKeys] = useState(() => new Set());
 
-  // Pitch sequence is operational data: show it as soon as the feed has it.
-  // The timeline component can still animate inserted rows, but this hook no
-  // longer withholds pitch rows while the ball/toast animation catches up.
-  const revealLiveRecentRow = useCallback(() => {}, []);
+  useEffect(() => {
+    const pitchRowKeys = liveRecentRows
+      .filter((row) => row.kind === 'live_pitch')
+      .map((row) => row.key);
+
+    if (knownPitchRowKeysRef.current == null) {
+      knownPitchRowKeysRef.current = new Set(pitchRowKeys);
+      setRevealedPitchRowKeys(new Set(pitchRowKeys));
+      return;
+    }
+
+    knownPitchRowKeysRef.current = new Set(pitchRowKeys);
+    setRevealedPitchRowKeys((prev) => {
+      const next = new Set();
+      pitchRowKeys.forEach((key) => {
+        if (prev.has(key)) next.add(key);
+      });
+      return next;
+    });
+  }, [liveRecentRows]);
+
+  const revealLiveRecentRow = useCallback((rowKey) => {
+    if (!rowKey) return;
+    setRevealedPitchRowKeys((prev) => {
+      if (prev.has(rowKey)) return prev;
+      const next = new Set(prev);
+      next.add(rowKey);
+      return next;
+    });
+  }, []);
+
+  const visibleLiveRecentRows = useMemo(
+    () =>
+      liveRecentRows.filter((row) => (
+        row.kind !== 'live_pitch' || revealedPitchRowKeys.has(row.key)
+      )),
+    [liveRecentRows, revealedPitchRowKeys],
+  );
 
   const liveRecentGroups = useMemo(
     () =>
-      groupLiveRecentRows(liveRecentRows, {
+      groupLiveRecentRows(visibleLiveRecentRows, {
         isLive,
         currentInning: linescore?.currentInning,
         currentHalf: linescore?.inningHalf === 'Top' ? 'top' : 'bottom',
       }),
-    [liveRecentRows, isLive, linescore?.currentInning, linescore?.inningHalf],
+    [visibleLiveRecentRows, isLive, linescore?.currentInning, linescore?.inningHalf],
   );
 
   const isBetweenHalfInnings =
@@ -61,7 +97,7 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
     dueUpInningOrdinal,
     liveFirstPitch,
     liveRecentGroups,
-    liveRecentRows,
+    liveRecentRows: visibleLiveRecentRows,
     revealLiveRecentRow,
     showDueUpMatchup,
   };
