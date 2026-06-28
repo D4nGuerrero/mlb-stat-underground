@@ -64,12 +64,23 @@ const LMB_FIELD_BACKGROUND_URL = 'https://lmb.com.mx/_next/image?url=%2Fimages%2
 const milbStadiumTopUrl = (timeOfDay = 'day') =>
   `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/default-milb@2x.jpg`;
 
-async function fetchLiveGameFeed(gamePk) {
-  const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (!isValidLiveFeed(data)) throw new Error('Invalid live feed');
-  return data;
+async function fetchLiveGameFeed(gamePk, { retries = 2 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!isValidLiveFeed(data)) throw new Error('Invalid live feed');
+      return data;
+    } catch (err) {
+      lastErr = err;
+      const isTransient = err?.message === 'Failed to fetch' || err?.name === 'TypeError';
+      if (!isTransient || attempt >= retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 const PLAY_BADGE = {
@@ -1397,6 +1408,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [feed, setFeed] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [wsReconnectKey, setWsReconnectKey] = useState(0);
   const [selectedPlay, setSelectedPlay] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState(() => location.state?.activeTab ?? 'live');
@@ -1465,6 +1477,20 @@ function GamePageContent({ gamePk, navigate, location }) {
     void goToGamedayDate(addDaysToDateString(officialDate, days));
   }, [goToGamedayDate, officialDate]);
 
+  const refreshLiveFeed = useCallback(async ({ allowSetError = false } = {}) => {
+    if (!gamePk) return false;
+    try {
+      const data = await fetchLiveGameFeed(gamePk);
+      feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
+      setFeed(data);
+      setError(null);
+      return true;
+    } catch (err) {
+      if (allowSetError) setError(err.message);
+      return false;
+    }
+  }, [gamePk]);
+
   useEffect(() => {
     if (!gamePk) return undefined;
 
@@ -1475,6 +1501,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         if (cancelled) return;
         feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
         setFeed(data);
+        setError(null);
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -1491,6 +1518,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     gamePk ? parseInt(gamePk) : null,
     feed?.gameData?.status?.abstractGameState,
     feed?.metaData?.timeStamp,
+    wsReconnectKey,
   );
 
   const applyFeedPatch = useCallback((patch) => {
@@ -1516,17 +1544,9 @@ function GamePageContent({ gamePk, navigate, location }) {
     if (lastUpdate.data) {
       applyFeedPatch(lastUpdate.data);
     } else {
-      (async () => {
-        try {
-          const data = await fetchLiveGameFeed(gamePk);
-          feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
-          setFeed(data);
-        } catch (err) {
-          setError(err.message);
-        }
-      })();
+      void refreshLiveFeed();
     }
-  }, [lastUpdate, applyFeedPatch, gamePk]);
+  }, [lastUpdate, applyFeedPatch, refreshLiveFeed]);
 
   useEffect(() => {
     if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Live') return;
@@ -1552,20 +1572,37 @@ function GamePageContent({ gamePk, navigate, location }) {
 
   useEffect(() => {
     if (!gamePk || feed?.gameData?.status?.abstractGameState !== 'Live') return undefined;
-    const pollFullFeed = async () => {
-      try {
-        const data = await fetchLiveGameFeed(gamePk);
-        feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
-        setFeed(data);
-      } catch (err) {
-        setError(err.message);
-      }
+
+    void refreshLiveFeed();
+    const id = setInterval(() => { void refreshLiveFeed(); }, LIVE_FULL_FEED_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [gamePk, feed?.gameData?.status?.abstractGameState, refreshLiveFeed]);
+
+  useEffect(() => {
+    if (!gamePk) return undefined;
+
+    const reconnectAndRefresh = () => {
+      setWsReconnectKey((key) => key + 1);
+      void refreshLiveFeed();
     };
 
-    void pollFullFeed();
-    const id = setInterval(pollFullFeed, LIVE_FULL_FEED_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [gamePk, feed?.gameData?.status?.abstractGameState]);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') reconnectAndRefresh();
+    };
+
+    const onPageShow = (event) => {
+      if (event.persisted) reconnectAndRefresh();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('online', reconnectAndRefresh);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('online', reconnectAndRefresh);
+    };
+  }, [gamePk, refreshLiveFeed]);
 
   useEffect(() => {
     const saveScroll = () => {
@@ -1697,22 +1734,36 @@ function GamePageContent({ gamePk, navigate, location }) {
     );
   }
 
-  if (error || !feed || !isValidLiveFeed(feed)) {
+  if (!feed || !isValidLiveFeed(feed)) {
     return (
       <div className="max-w-xl mx-auto px-4 py-16 text-center">
         <div className="text-4xl mb-4">⚾</div>
         <div className="text-red-400 font-semibold mb-2">
           Failed to load game
         </div>
-        <div className="text-slate-500 text-sm mb-6">{error}</div>
-        <button
-          onClick={() =>
-            navigate('/', { state: { returnDate: location.state?.returnDate } })
-          }
-          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl text-sm transition-all"
-        >
-          ← Back to Game Day
-        </button>
+        <div className="text-slate-500 text-sm mb-6">{error ?? 'Unable to load game data.'}</div>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              void refreshLiveFeed({ allowSetError: true }).finally(() => setLoading(false));
+            }}
+            className="px-5 py-2.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 rounded-2xl text-sm text-emerald-300 transition-all"
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              navigate('/', { state: { returnDate: location.state?.returnDate } })
+            }
+            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl text-sm transition-all"
+          >
+            ← Back to Game Day
+          </button>
+        </div>
       </div>
     );
   }

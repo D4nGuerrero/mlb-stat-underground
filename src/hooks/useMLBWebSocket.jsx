@@ -23,7 +23,7 @@ function formatTimecode(ts) {
   }
 }
 
-export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
+export function useMLBWebSocket(gamePk, gameState, initialTimecode, reconnectKey = 0) {
   const [status, setStatus] = useState('disconnected');
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
@@ -183,7 +183,7 @@ export function useMLBWebSocket(gamePk, gameState, initialTimecode) {
 
     openSocket();
     return cleanup;
-  }, [gamePk, gameState]);
+  }, [gamePk, gameState, reconnectKey]);
 
   return {
     status,
