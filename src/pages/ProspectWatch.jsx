@@ -60,14 +60,21 @@ const TEAM_OPTIONS = mlbTeams.map((team) => ({
 
 const miniStatCell = 'px-1.5 py-1 text-right tabular-nums';
 
+function toLocalIsoDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalIsoDate(new Date());
 }
 
 function shiftDate(isoDate, days) {
   const date = new Date(`${isoDate}T12:00:00`);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return toLocalIsoDate(date);
 }
 
 function prettyDate(isoDate) {
@@ -1144,7 +1151,10 @@ export default function ProspectWatch() {
               <button
                 key={mode.value}
                 type="button"
-                onClick={() => setFormMode(mode.value)}
+                onClick={() => {
+                  setFormMode(mode.value);
+                  if (mode.value === 'today') setDate(todayIso());
+                }}
                 className={[
                   'rounded-2xl border px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap',
                   formMode === mode.value
