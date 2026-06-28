@@ -32,6 +32,26 @@ export const SPLIT_DISPLAY_COLS = [
   { key: 'ops', label: 'OPS' },
 ];
 
+export const PITCHING_SPLIT_DISPLAY_COLS = [
+  { key: 'gamesPlayed', label: 'G' },
+  { key: 'inningsPitched', label: 'IP' },
+  { key: 'battersFaced', label: 'BF' },
+  { key: 'hits', label: 'H' },
+  { key: 'homeRuns', label: 'HR' },
+  { key: 'baseOnBalls', label: 'BB' },
+  { key: 'strikeOuts', label: 'K' },
+  { key: 'avg', label: 'AVG' },
+  { key: 'obp', label: 'OBP' },
+  { key: 'slg', label: 'SLG' },
+  { key: 'ops', label: 'OPS' },
+  { key: 'whip', label: 'WHIP' },
+  { key: 'numberOfPitches', label: 'P' },
+  { key: 'strikePercentage', label: 'S%' },
+  { key: 'strikeoutWalkRatio', label: 'K/BB' },
+  { key: 'strikeoutsPer9Inn', label: 'K/9' },
+  { key: 'walksPer9Inn', label: 'BB/9' },
+];
+
 const BREAKDOWN_ROWS = [
   { code: 'vl', label: 'vs. Left' },
   { code: 'vr', label: 'vs. Right' },
@@ -77,6 +97,12 @@ const STAT_SPLIT_CODES = [
   ...BATTING_ORDER_ROWS,
 ].map((r) => r.code).join(',');
 
+const PITCHING_STAT_SPLIT_CODES = [
+  ...BREAKDOWN_ROWS,
+  ...SITUATION_ROWS,
+  ...COUNT_ROWS,
+].map((r) => r.code).join(',');
+
 function formatDate(d) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -89,31 +115,50 @@ async function fetchJson(url) {
   return res.json();
 }
 
-function splitHasActivity(stat) {
+function numberValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function splitHasActivity(stat, group = 'hitting') {
   if (!stat) return false;
+  if (group === 'pitching') {
+    return (
+      numberValue(stat.gamesPlayed) > 0 ||
+      numberValue(stat.gamesStarted) > 0 ||
+      numberValue(stat.inningsPitched) > 0 ||
+      numberValue(stat.battersFaced) > 0 ||
+      numberValue(stat.numberOfPitches) > 0 ||
+      numberValue(stat.strikeOuts) > 0 ||
+      numberValue(stat.hits) > 0 ||
+      numberValue(stat.baseOnBalls) > 0
+    );
+  }
   return (stat.atBats ?? 0) > 0 || (stat.plateAppearances ?? 0) > 0;
 }
 
-function mapStatRow(label, stat, id) {
-  if (!splitHasActivity(stat)) return null;
+function mapStatRow(label, stat, id, group = 'hitting') {
+  if (!splitHasActivity(stat, group)) return null;
   return { id: id ?? label, label, stat, ...stat };
 }
 
-function mapCodeRows(rows, splitMap) {
+function mapCodeRows(rows, splitMap, group = 'hitting') {
   return rows
     .map((row) => {
       const sp = splitMap.get(row.code);
-      return mapStatRow(row.label, sp?.stat, row.code);
+      return mapStatRow(row.label, sp?.stat, row.code, group);
     })
     .filter(Boolean);
 }
 
-export async function fetchPlayerSplitSections(playerId, season, level = 'mlb') {
+export async function fetchPlayerSplitSections(playerId, season, level = 'mlb', group = 'hitting') {
+  const safeGroup = group === 'pitching' ? 'pitching' : 'hitting';
   const sportParam = level === 'mlb' ? '&sportId=1' : '';
   const base = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats`;
+  const splitCodes = safeGroup === 'pitching' ? PITCHING_STAT_SPLIT_CODES : STAT_SPLIT_CODES;
 
-  const statSplitsUrl = `${base}?stats=statSplits&sitCodes=${STAT_SPLIT_CODES}&season=${season}&group=hitting&gameType=R${sportParam}`;
-  const byMonthUrl = `${base}?stats=byMonth&season=${season}&group=hitting&gameType=R${sportParam}`;
+  const statSplitsUrl = `${base}?stats=statSplits&sitCodes=${splitCodes}&season=${season}&group=${safeGroup}&gameType=R${sportParam}`;
+  const byMonthUrl = `${base}?stats=byMonth&season=${season}&group=${safeGroup}&gameType=R${sportParam}`;
 
   const today = new Date();
   const ranges = [7, 15, 30].map((days) => {
@@ -122,7 +167,7 @@ export async function fetchPlayerSplitSections(playerId, season, level = 'mlb') 
     return {
       days,
       label: `Last ${days} Days`,
-      url: `${base}?stats=byDateRange&group=hitting&startDate=${formatDate(start)}&endDate=${formatDate(today)}&gameType=R${sportParam}`,
+      url: `${base}?stats=byDateRange&group=${safeGroup}&startDate=${formatDate(start)}&endDate=${formatDate(today)}&gameType=R${sportParam}`,
     };
   });
 
@@ -139,7 +184,7 @@ export async function fetchPlayerSplitSections(playerId, season, level = 'mlb') 
     .map((sp) => {
       const monthNum = sp.month ?? sp.split?.month;
       const label = MONTH_NAMES[monthNum] ?? `Month ${monthNum}`;
-      return mapStatRow(label, sp.stat, `month-${monthNum}`);
+      return mapStatRow(label, sp.stat, `month-${monthNum}`, safeGroup);
     })
     .filter(Boolean)
     .sort((a, b) => {
@@ -152,15 +197,20 @@ export async function fetchPlayerSplitSections(playerId, season, level = 'mlb') 
     ...monthRows,
     ...ranges.map((r, i) => {
       const stat = rangeData[i]?.stats?.[0]?.splits?.[0]?.stat;
-      return mapStatRow(r.label, stat, `last-${r.days}`);
+      return mapStatRow(r.label, stat, `last-${r.days}`, safeGroup);
     }).filter(Boolean),
   ];
 
-  return [
-    { title: 'Breakdown', rows: mapCodeRows(BREAKDOWN_ROWS, splitMap) },
+  const sections = [
+    { title: 'Breakdown', rows: mapCodeRows(BREAKDOWN_ROWS, splitMap, safeGroup) },
     { title: 'DAY/MONTH', rows: dayMonthRows },
-    { title: 'COUNT', rows: mapCodeRows(COUNT_ROWS, splitMap) },
-    { title: 'BATTING ORDER', rows: mapCodeRows(BATTING_ORDER_ROWS, splitMap) },
-    { title: 'SITUATION', rows: mapCodeRows(SITUATION_ROWS, splitMap) },
-  ].filter((section) => section.rows.length > 0);
+    { title: 'COUNT', rows: mapCodeRows(COUNT_ROWS, splitMap, safeGroup) },
+    { title: 'SITUATION', rows: mapCodeRows(SITUATION_ROWS, splitMap, safeGroup) },
+  ];
+
+  if (safeGroup === 'hitting') {
+    sections.splice(3, 0, { title: 'BATTING ORDER', rows: mapCodeRows(BATTING_ORDER_ROWS, splitMap, safeGroup) });
+  }
+
+  return sections.filter((section) => section.rows.length > 0);
 }

@@ -5,7 +5,7 @@ import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackground
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
-import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
+import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS, PITCHING_SPLIT_DISPLAY_COLS } from '../utils/playerSplits';
 import { computeCareerTotalsRow, computeSeasonTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
 import { useWatchlist } from '../hooks/useWatchlist';
@@ -112,6 +112,7 @@ function freshPlayerViewState() {
     logGroup: 'hitting',
     logSeason: CURRENT_YEAR,
     splitLevel: 'mlb',
+    splitGroup: 'hitting',
     splitSeason: CURRENT_YEAR,
   };
 }
@@ -1413,14 +1414,14 @@ function StatsTable({
   );
 }
 
-function SplitColumnHeaders({ as = 'th', splitLabel = 'Split', className = '' }) {
+function SplitColumnHeaders({ as = 'th', splitLabel = 'Split', className = '', cols = SPLIT_DISPLAY_COLS }) {
   const Cell = as;
   return (
     <tr className={`text-slate-500 border-b border-slate-700/60 ${className}`}>
       <Cell className={`${scrollStickyHead('bg-[#121827]', { stickTop: true })} font-normal`}>
         {splitLabel}
       </Cell>
-      {SPLIT_DISPLAY_COLS.map((c) => (
+      {cols.map((c) => (
         <Cell key={c.key} className={`${scrollStatHead('text-center font-normal', { align: 'text-center', stickTop: true })}`}>
           {c.label}
         </Cell>
@@ -1429,7 +1430,7 @@ function SplitColumnHeaders({ as = 'th', splitLabel = 'Split', className = '' })
   );
 }
 
-function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
+function SplitsTable({ sections, cols = SPLIT_DISPLAY_COLS, emptyMessage = 'No splits available' }) {
   const hasRows = sections?.some((s) => s.rows?.length);
   if (!hasRows) {
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
@@ -1439,26 +1440,26 @@ function SplitsTable({ sections, emptyMessage = 'No splits available' }) {
     <div className={TABLE_SCROLL_BODY}>
       <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
         <thead>
-          <SplitColumnHeaders className="text-slate-400" />
+          <SplitColumnHeaders cols={cols} className="text-slate-400" />
         </thead>
         <tbody>
           {sections.map((section) => (
             <Fragment key={section.title}>
               <tr className="bg-slate-800/50">
                 <td
-                  colSpan={SPLIT_DISPLAY_COLS.length + 1}
+                  colSpan={cols.length + 1}
                   className="py-2 px-3 text-[10px] font-bold text-slate-300 uppercase tracking-widest bg-slate-800/95 border-y border-slate-700/50"
                 >
                   {section.title}
                 </td>
               </tr>
-              <SplitColumnHeaders as="td" splitLabel="" className="text-[10px] text-slate-600" />
+              <SplitColumnHeaders as="td" splitLabel="" cols={cols} className="text-[10px] text-slate-600" />
               {section.rows.map((row, i) => (
                 <tr key={row.id ?? `${section.title}-${i}`} className="group border-b border-slate-800/60 hover:bg-slate-800/20">
                   <td className={`${scrollStickyCell('bg-[#121827]')} z-[1] pl-4 text-slate-200`}>
                     {row.label}
                   </td>
-                  {SPLIT_DISPLAY_COLS.map((c) => (
+                  {cols.map((c) => (
                     <td key={c.key} className={scrollStatCell('', { align: 'text-center' })}>
                       {formatCell(row[c.key] ?? row.stat?.[c.key], c.format, row)}
                     </td>
@@ -2070,17 +2071,18 @@ function PlayerGameLogsPanel({
   );
 }
 
-function PlayerSplitsPanel({ playerId, playerInfo, isPitcher, splitLevel, splitSeason }) {
+function PlayerSplitsPanel({ playerId, playerInfo, splitLevel, splitGroup, splitSeason }) {
   const [sections, setSections] = useState([]);
-  const [loading, setLoading] = useState(!isPitcher);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!playerId || !playerInfo || isPitcher) return undefined;
+    if (!playerId || !playerInfo) return undefined;
 
     let cancelled = false;
+    setLoading(true);
     const loadSplits = async () => {
       try {
-        const nextSections = await fetchPlayerSplitSections(playerId, splitSeason, splitLevel);
+        const nextSections = await fetchPlayerSplitSections(playerId, splitSeason, splitLevel, splitGroup);
         if (!cancelled) setSections(nextSections);
       } catch {
         if (!cancelled) setSections([]);
@@ -2093,24 +2095,20 @@ function PlayerSplitsPanel({ playerId, playerInfo, isPitcher, splitLevel, splitS
     return () => {
       cancelled = true;
     };
-  }, [isPitcher, playerId, playerInfo, splitLevel, splitSeason]);
-
-  if (isPitcher) {
-    return (
-      <div className="text-slate-500 text-sm text-center py-12">
-        Splits breakdown is available for hitters only.
-      </div>
-    );
-  }
+  }, [playerId, playerInfo, splitGroup, splitLevel, splitSeason]);
 
   if (loading) {
     return <LoadingSpinner size="md" py="py-12" />;
   }
 
+  const cols = splitGroup === 'pitching' ? PITCHING_SPLIT_DISPLAY_COLS : SPLIT_DISPLAY_COLS;
+  const label = splitGroup === 'pitching' ? 'pitching' : 'batting';
+
   return (
     <SplitsTable
+      cols={cols}
       sections={sections}
-      emptyMessage={`No splits for ${splitSeason} regular season.`}
+      emptyMessage={`No ${label} splits for ${splitSeason} regular season.`}
     />
   );
 }
@@ -2135,6 +2133,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const [logSeason, setLogSeason] = useState(initialViewState.logSeason);
 
   const [splitLevel, setSplitLevel] = useState(initialViewState.splitLevel);
+  const [splitGroup, setSplitGroup] = useState(initialViewState.splitGroup ?? 'hitting');
   const [splitSeason, setSplitSeason] = useState(initialViewState.splitSeason);
   const [activeTab, setActiveTab] = useState(initialViewState.activeTab);
   const { watchlist, isWatching, removeFromWatchlist, upsertWatchlistEntry } = useWatchlist();
@@ -2167,6 +2166,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
       logGroup,
       logSeason,
       splitLevel,
+      splitGroup,
       splitSeason,
     });
   }, [
@@ -2179,6 +2179,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
     logGroup,
     logSeason,
     splitLevel,
+    splitGroup,
     splitSeason,
   ]);
 
@@ -2192,8 +2193,8 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
       ? seasonOptionsFromYearByYear(yearByYearByLevel[logLevel], logGroup)
       : fallbackSeasonOptions;
   const splitSeasonOptions =
-    seasonOptionsFromYearByYear(yearByYearByLevel[splitLevel], 'hitting').length
-      ? seasonOptionsFromYearByYear(yearByYearByLevel[splitLevel], 'hitting')
+    seasonOptionsFromYearByYear(yearByYearByLevel[splitLevel], splitGroup).length
+      ? seasonOptionsFromYearByYear(yearByYearByLevel[splitLevel], splitGroup)
       : fallbackSeasonOptions;
   const resolvedLogSeason = resolveSeasonValue(logSeason, logSeasonOptions);
   const resolvedSplitSeason = resolveSeasonValue(splitSeason, splitSeasonOptions);
@@ -2234,6 +2235,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
         const pitcher = isPitcherPosition(player?.primaryPosition?.abbreviation);
         setCareerGroup(pitcher ? 'pitching' : 'hitting');
         setLogGroup(pitcher ? 'pitching' : 'hitting');
+        setSplitGroup(pitcher ? 'pitching' : 'hitting');
       } catch (error) {
         if (!cancelled && error?.name !== 'AbortError') {
           setError('Failed to load player data.');
@@ -2308,6 +2310,10 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   const handleLogGroupChange = useCallback((nextGroup) => {
     setLogGroup(nextGroup);
+  }, []);
+
+  const handleSplitGroupChange = useCallback((nextGroup) => {
+    setSplitGroup(nextGroup);
   }, []);
 
   const getYearByYearSplits = (group) =>
@@ -2558,14 +2564,16 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                         season={resolvedSplitSeason}
                         onSeasonChange={setSplitSeason}
                         seasonOptions={splitSeasonOptions}
+                        group={splitGroup}
+                        onGroupChange={handleSplitGroupChange}
                         hidePeriod
                       />
                       <PlayerSplitsPanel
-                        key={`${playerId}:${splitLevel}:${resolvedSplitSeason}:${isPitcher ? 'pitcher' : 'hitter'}`}
+                        key={`${playerId}:${splitLevel}:${splitGroup}:${resolvedSplitSeason}`}
                         playerId={playerId}
                         playerInfo={playerInfo}
-                        isPitcher={isPitcher}
                         splitLevel={splitLevel}
+                        splitGroup={splitGroup}
                         splitSeason={resolvedSplitSeason}
                       />
                     </>
