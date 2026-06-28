@@ -18,6 +18,10 @@ function collectChallengeText(value, depth = 0, out = []) {
 }
 
 export function getAbsChallengeOutcome(event) {
+  if (typeof event?.reviewDetails?.isOverturned === 'boolean') {
+    return event.reviewDetails.isOverturned ? 'Overturned' : 'Upheld';
+  }
+
   const haystack = collectChallengeText(event).join(' ').toLowerCase();
   if (/overturn|overturned|reversed|changed|successful/.test(haystack)) return 'Overturned';
   if (/upheld|confirmed|stands|unsuccessful/.test(haystack)) return 'Upheld';
@@ -27,10 +31,10 @@ export function getAbsChallengeOutcome(event) {
 
 function compactTimerLabel(eventType = '', text = '') {
   const haystack = `${eventType} ${text}`.toLowerCase();
-  if (/batter[_\s-]?timeout|batter[_\s-]?timer|timer violation.*batter|batter.*timer violation|auto(?:matic)? strike/.test(haystack)) {
+  if (/timer violation.*batter|batter.*timer violation|pitch clock violation.*batter|batter.*pitch clock violation|automatic strike|auto strike|batter[_\s-]?timer[_\s-]?violation/.test(haystack)) {
     return 'Batter Timer Violation';
   }
-  if (/pitch(?:er)?[_\s-]?timer|timer violation.*pitch|pitch(?:er)?.*timer violation|auto(?:matic)? ball/.test(haystack)) {
+  if (/timer violation.*pitch|pitch(?:er)?.*timer violation|pitch clock violation.*pitch|pitch(?:er)?.*pitch clock violation|automatic ball|auto ball|pitch(?:er)?[_\s-]?timer[_\s-]?violation/.test(haystack)) {
     return 'Pitcher Timer Violation';
   }
   if (/timer|clock/.test(haystack)) return 'Timer Violation';
@@ -43,7 +47,7 @@ export function getAutomaticPitchTimerCall(event) {
   const haystack = `${eventType} ${description}`.toLowerCase();
 
   if (
-    /automatic strike|auto strike|timer violation.*batter|batter.*timer violation|batter[_\s-]?timeout|batter[_\s-]?timer/.test(haystack)
+    /automatic strike|auto strike|timer violation.*batter|batter.*timer violation|pitch clock violation.*batter|batter.*pitch clock violation|batter[_\s-]?timer[_\s-]?violation/.test(haystack)
   ) {
     return {
       label: 'Automatic Strike',
@@ -52,7 +56,7 @@ export function getAutomaticPitchTimerCall(event) {
   }
 
   if (
-    /automatic ball|auto ball|timer violation.*pitch|pitch(?:er)?.*timer violation|pitch(?:er)?[_\s-]?timer/.test(haystack)
+    /automatic ball|auto ball|timer violation.*pitch|pitch(?:er)?.*timer violation|pitch clock violation.*pitch|pitch(?:er)?.*pitch clock violation|pitch(?:er)?[_\s-]?timer[_\s-]?violation/.test(haystack)
   ) {
     return {
       label: 'Automatic Ball',

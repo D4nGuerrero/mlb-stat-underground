@@ -352,21 +352,6 @@ function pushCompletedPlayRows(rows, play, ordinals, allPlays) {
   pushRunnersRow(rows, play, play.about?.atBatIndex, meta, sortTime, allPlays);
 }
 
-function removeCompletedAtBatResultPitch(rows, play) {
-  if (!play.about?.isComplete || !play.result?.event) return;
-  const atBatIndex = play.about?.atBatIndex;
-  if (atBatIndex == null) return;
-
-  const lastPitchEventIndex = (play.playEvents ?? []).reduce((lastIdx, ev, eventIdx) => (
-    ev?.isPitch ? eventIdx : lastIdx
-  ), -1);
-  if (lastPitchEventIndex < 0) return;
-
-  const finalPitchKey = `live-pitch-${atBatIndex}-${lastPitchEventIndex}`;
-  const idx = rows.findIndex((row) => row.key === finalPitchKey);
-  if (idx >= 0) rows.splice(idx, 1);
-}
-
 /**
  * Build chronological live recent-plays rows (oldest → newest).
  * Caller reverses for display and pins first pitch at the bottom.
@@ -396,7 +381,6 @@ export function buildLiveRecentPlaysRows({
         includePickoffAttempts: !play.about?.isComplete,
       });
       if (play.about?.isComplete) {
-        removeCompletedAtBatResultPitch(rows, play);
         pushCompletedPlayRows(rows, play, ordinals, allPlays);
       }
       activeAtBatEmitted = true;
@@ -418,7 +402,6 @@ export function buildLiveRecentPlaysRows({
       includePickoffAttempts: !currentPlay.about?.isComplete,
     });
     if (currentPlay.about?.isComplete) {
-      removeCompletedAtBatResultPitch(rows, currentPlay);
       pushCompletedPlayRows(rows, currentPlay, ordinals, allPlays);
     }
   }
