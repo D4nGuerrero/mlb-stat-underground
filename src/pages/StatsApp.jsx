@@ -117,6 +117,23 @@ function saveStatsReturnState(state) {
   }
 }
 
+function sortMoversByChange(players) {
+  return [...players].sort((a, b) => {
+    const changeDiff = (b.deltaScore ?? 0) - (a.deltaScore ?? 0);
+    if (changeDiff !== 0) return changeDiff;
+    return (b.currentValue ?? 0) - (a.currentValue ?? 0);
+  });
+}
+
+function restoredArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function restoredNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 // sportId    Level     Common Leagues1
 // 1        Triple-A    AAA
 // 12       Double-A    AA
@@ -558,7 +575,7 @@ function WatchlistSection({ watchlist, watchAnimId, onToggleWatch, onClear }) {
   );
 }
 
-function MoverPlayerCard({ player }) {
+function MoverPlayerCard({ player, onPlayerClick }) {
   const heroStats = EXODUS_HERO_STATS[player.group] || EXODUS_HERO_STATS.hitting;
   const tone = SCORE_TONE_STYLES[player.scoreTone] || SCORE_TONE_STYLES.neutral;
 
@@ -583,6 +600,7 @@ function MoverPlayerCard({ player }) {
               <div className="min-w-0">
                 <Link
                   to={`/player/${player.playerId}`}
+                  onClick={onPlayerClick}
                   className="text-base sm:text-lg font-bold text-white truncate block hover:text-emerald-400 transition-colors"
                 >
                   {player.fullName}
@@ -740,7 +758,7 @@ export default function StatsApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState(initialReturnState?.activeTab ?? 'search');
-  const [rosterImpactView, setRosterImpactView] = useState('exodus');
+  const [rosterImpactView, setRosterImpactView] = useState(initialReturnState?.rosterImpactView ?? 'exodus');
 
   const [watchlist, setWatchlist] = useState(() => {
     try {
@@ -751,12 +769,12 @@ export default function StatsApp() {
   });
   const [watchAnimId, setWatchAnimId] = useState(null);
 
-  const [formerTeamId, setFormerTeamId] = useState(140);
-  const [exodusResults, setExodusResults] = useState([]);
+  const [formerTeamId, setFormerTeamId] = useState(() => restoredNumber(initialReturnState?.formerTeamId, 140));
+  const [exodusResults, setExodusResults] = useState(() => restoredArray(initialReturnState?.exodusResults));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const [acquisitionTeamId, setAcquisitionTeamId] = useState(140);
-  const [acquisitionResults, setAcquisitionResults] = useState([]);
+  const [acquisitionTeamId, setAcquisitionTeamId] = useState(() => restoredNumber(initialReturnState?.acquisitionTeamId, 140));
+  const [acquisitionResults, setAcquisitionResults] = useState(() => restoredArray(initialReturnState?.acquisitionResults));
 
   const [hotPlayers, setHotPlayers] = useState([]);
   const [coldPlayers, setColdPlayers] = useState([]);
@@ -767,7 +785,7 @@ export default function StatsApp() {
   const [isHotColdLoading, setIsHotColdLoading] = useState(false);
   const [shouldRestoreStatsScroll, setShouldRestoreStatsScroll] = useState(Boolean(initialReturnState?.restoreScroll));
 
-  const [impactRankings, setImpactRankings] = useState([]);
+  const [impactRankings, setImpactRankings] = useState(() => restoredArray(initialReturnState?.impactRankings));
   const [isRankingLoading, setIsRankingLoading] = useState(false);
   const [impactProgress, setImpactProgress] = useState({
     current: 0,
@@ -893,8 +911,7 @@ export default function StatsApp() {
         .filter(Boolean);
 
       const scored = await enrichMoversWithDeltaScores(movers);
-      scored.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
-      setExodusResults(scored);
+      setExodusResults(sortMoversByChange(scored));
     } catch (err) {
       console.error(err);
     } finally {
@@ -938,8 +955,7 @@ export default function StatsApp() {
         .filter(Boolean);
 
       const scored = await enrichMoversWithDeltaScores(acquired);
-      scored.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
-      setAcquisitionResults(scored);
+      setAcquisitionResults(sortMoversByChange(scored));
     } catch (err) {
       console.error(err);
     } finally {
@@ -1118,6 +1134,12 @@ export default function StatsApp() {
       activeTab,
       hotColdScope,
       hotColdDays,
+      rosterImpactView,
+      formerTeamId,
+      acquisitionTeamId,
+      exodusResults,
+      acquisitionResults,
+      impactRankings,
       restoreScroll: true,
     });
   };
@@ -1159,9 +1181,12 @@ export default function StatsApp() {
 
       <TabBar
         className="mb-6"
+        variant="page"
+        listClassName="bg-slate-950/40 rounded-t-2xl px-1 pt-1"
+        tabClassName="font-semibold"
         tabs={[
           { key: 'search', label: 'Player Search' },
-          { key: 'hotcold', label: '🔥 Hot & Cold ❄️' },
+          { key: 'hotcold', label: 'Hot & Cold' },
           { key: 'roster-impact', label: 'Roster Impact' },
         ]}
         activeKey={activeTab}
@@ -1410,7 +1435,7 @@ export default function StatsApp() {
           {exodusResults.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {exodusResults.map((player) => (
-                <MoverPlayerCard key={player.playerId} player={player} />
+                <MoverPlayerCard key={player.playerId} player={player} onPlayerClick={handleStatsPlayerNavigate} />
               ))}
             </div>
           )}
@@ -1455,7 +1480,7 @@ export default function StatsApp() {
           {acquisitionResults.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {acquisitionResults.map((player) => (
-                <MoverPlayerCard key={player.playerId} player={player} />
+                <MoverPlayerCard key={player.playerId} player={player} onPlayerClick={handleStatsPlayerNavigate} />
               ))}
             </div>
           )}
