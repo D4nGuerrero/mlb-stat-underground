@@ -405,6 +405,13 @@ const rangeYears = (startYear, endYear = CURRENT_YEAR) => {
   return Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => String(start + i));
 };
 
+const statsSeasonOptions = (firstYearOfPlay) => [
+  { value: 'all', label: 'All' },
+  ...rangeYears(firstYearOfPlay, CURRENT_YEAR)
+    .reverse()
+    .map((year) => ({ value: year, label: year })),
+];
+
 async function mapLimit(items, limit, mapper) {
   const results = [];
   for (let i = 0; i < items.length; i += limit) {
@@ -426,6 +433,20 @@ function countHistoricalPlayerSeasons(seasonSplits) {
     seasonsByPlayer.set(playerId, seasons);
   }
   return seasonsByPlayer;
+}
+
+function teamStatsPlayerName(person, fallback = '—') {
+  const fullName = String(person?.fullName ?? person?.name ?? '').trim();
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return fullName || fallback;
+
+  const suffixes = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']);
+  const suffix = suffixes.has(parts.at(-1).toLowerCase()) ? parts.pop() : null;
+  const lastName = parts.pop();
+  const firstInitial = parts[0]?.charAt(0);
+  if (!firstInitial || !lastName) return fullName || fallback;
+
+  return `${firstInitial}. ${lastName}${suffix ? ` ${suffix}` : ''}`;
 }
 
 // ─── Sortable table ───────────────────────────────────────────────────────────
@@ -509,7 +530,7 @@ function SortableTable({
                       onClick={onNavigateAway}
                       className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block truncate`}
                     >
-                      {person?.[nameKey] ?? person?.fullName ?? '—'}
+                      {teamStatsPlayerName(person, person?.[nameKey] ?? person?.fullName ?? '—')}
                     </Link>
                     {pos && <span className="text-[10px] text-slate-500">{pos}</span>}
                   </div>
@@ -534,22 +555,23 @@ function SortableTable({
 // ─── Stats Tab ────────────────────────────────────────────────────────────────
 function StatsTab({
   teamId,
-  season,
   sub,
   setSub,
-  mode,
-  setMode,
+  statsSeason,
+  setStatsSeason,
   teamName,
   firstYearOfPlay,
   onNavigateAway,
 }) {
-  const [data, setData] = useState({ batting: null, pitching: null, fielding: null });
+  const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const isHistorical = statsSeason === 'all';
+  const dataKey = `${statsSeason}:${sub}`;
 
   useEffect(() => {
-    if (mode !== 'current') return;
-    if (data[sub] != null) return;
+    if (isHistorical) return;
+    if (data[dataKey] != null) return;
 
     let cancelled = false;
     const controller = new AbortController();
@@ -562,7 +584,7 @@ function StatsTab({
           query: {
             stats: 'season',
             group: TEAM_STATS_GROUP_MAP[sub],
-            season,
+            season: statsSeason,
             teamId,
             playerPool: 'all',
             sportId: 1,
@@ -575,7 +597,7 @@ function StatsTab({
         });
         if (!cancelled) {
           const splits = json.stats?.[0]?.splits ?? [];
-          setData((prev) => ({ ...prev, [sub]: splits }));
+          setData((prev) => ({ ...prev, [dataKey]: splits }));
         }
       } catch (e) {
         if (!cancelled && e?.name !== 'AbortError') {
@@ -591,7 +613,7 @@ function StatsTab({
       cancelled = true;
       controller.abort();
     };
-  }, [data, mode, season, sub, teamId]);
+  }, [data, dataKey, isHistorical, statsSeason, sub, teamId]);
 
   // top leader in each key category
   const leaderStats = sub === 'batting'
@@ -614,7 +636,7 @@ function StatsTab({
       ]
     : [];
 
-  const rows = data[sub] ?? [];
+  const rows = data[dataKey] ?? [];
   const teamGames = getTeamGamesPlayed(rows);
 
   const battingRateQualify = (row) => qualifiesBattingRate(row, teamGames);
@@ -635,20 +657,17 @@ function StatsTab({
             ]}
           />
         </div>
-        <div className="flex bg-slate-800 border border-slate-700 rounded-2xl p-1">
-          <SegmentedControl
-            value={mode}
-            onChange={setMode}
-            size="sm"
-            options={[
-              { value: 'current', label: 'Current' },
-              { value: 'historical', label: 'Historical' },
-            ]}
-          />
-        </div>
+        <Select
+          value={statsSeason}
+          onChange={setStatsSeason}
+          options={statsSeasonOptions(firstYearOfPlay)}
+          size="sm"
+          className="w-28 sm:w-32"
+          buttonClassName="border-slate-600 py-2"
+        />
       </div>
 
-      {mode === 'historical' && (
+      {isHistorical && (
         <HistoricalStatsPanel
           teamId={teamId}
           teamName={teamName}
@@ -658,7 +677,7 @@ function StatsTab({
         />
       )}
 
-      {mode === 'current' && (
+      {!isHistorical && (
         <>
       {leaderStats.length > 0 && rows.length > 0 && (
         <TeamLeadersCarousel
@@ -673,11 +692,16 @@ function StatsTab({
       {error && <div className="py-8 text-center text-red-400 text-sm">{error}</div>}
       {!loading && !error && rows.length > 0 && (
         <div className="border border-slate-700/60 rounded-2xl overflow-hidden">
-          <SortableTable cols={TEAM_STATS_COLS_MAP[sub]} rows={rows} onNavigateAway={onNavigateAway} />
+          <SortableTable
+            cols={TEAM_STATS_COLS_MAP[sub]}
+            rows={rows}
+            onNavigateAway={onNavigateAway}
+            playerColClass="w-24 min-w-[6rem] sm:w-28 sm:min-w-[7rem]"
+          />
         </div>
       )}
-      {!loading && !error && rows.length === 0 && data[sub] != null && (
-        <div className="py-12 text-center text-slate-500 text-sm">No stats available for {season}.</div>
+      {!loading && !error && rows.length === 0 && data[dataKey] != null && (
+        <div className="py-12 text-center text-slate-500 text-sm">No stats available for {statsSeason}.</div>
       )}
         </>
       )}
@@ -844,7 +868,7 @@ function HistoricalStatsPanel({ teamId, teamName, firstYearOfPlay, group, onNavi
                   onNavigateAway={onNavigateAway}
                   defaultSortKey={defaultSortKey}
                   defaultSortDir="desc"
-                  playerColClass="w-28 min-w-[7rem] sm:w-36 sm:min-w-[9rem]"
+                  playerColClass="w-24 min-w-[6rem] sm:w-28 sm:min-w-[7rem]"
                   visibleLimit={visibleCount}
                   sortQualifier={(key) => historicalSortQualifier(group, key)}
                   onSortChange={(sort) => {
@@ -1649,7 +1673,7 @@ function readTeamPageDefaults(teamId) {
     activeTab: saved?.activeTab ?? 'stats',
     season: saved?.season ?? String(CURRENT_YEAR),
     statsSub: saved?.statsSub ?? 'batting',
-    statsMode: saved?.statsMode ?? 'current',
+    statsSeason: saved?.statsSeason ?? (saved?.statsMode === 'historical' ? 'all' : String(CURRENT_YEAR)),
     scheduleView: saved?.scheduleView ?? 'month',
     scheduleMonth: normalizeScheduleMonth(saved?.scheduleMonth),
   };
@@ -1663,7 +1687,7 @@ function TeamPageContent({ teamId }) {
   const [season, setSeason] = useState(defaults.season);
   const [activeTab, setActiveTab] = useState(defaults.activeTab);
   const [statsSub, setStatsSub] = useState(defaults.statsSub);
-  const [statsMode, setStatsMode] = useState(defaults.statsMode);
+  const [statsSeason, setStatsSeason] = useState(defaults.statsSeason);
   const [scheduleView, setScheduleView] = useState(defaults.scheduleView);
   const [scheduleMonth, setScheduleMonth] = useState(defaults.scheduleMonth);
   const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
@@ -1739,20 +1763,20 @@ function TeamPageContent({ teamId }) {
       activeTab,
       season,
       statsSub,
-      statsMode,
+      statsSeason,
       scheduleView,
       scheduleMonth,
     });
-  }, [teamId, activeTab, season, statsSub, statsMode, scheduleView, scheduleMonth]);
+  }, [teamId, activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth]);
 
   const teamPageSnapshot = useMemo(() => ({
     activeTab,
     season,
     statsSub,
-    statsMode,
+    statsSeason,
     scheduleView,
     scheduleMonth,
-  }), [activeTab, season, statsSub, statsMode, scheduleView, scheduleMonth]);
+  }), [activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth]);
 
   const onNavigateAway = useCallback((overrides = {}) => {
     persistTeamPageLeave(teamId, { ...teamPageSnapshot, ...overrides });
@@ -1866,11 +1890,10 @@ function TeamPageContent({ teamId }) {
                   <StatsTab
                     key={`${teamId}:${season}`}
                     teamId={teamId}
-                    season={season}
                     sub={statsSub}
                     setSub={setStatsSub}
-                    mode={statsMode}
-                    setMode={setStatsMode}
+                    statsSeason={statsSeason}
+                    setStatsSeason={setStatsSeason}
                     teamName={teamInfo?.name}
                     firstYearOfPlay={teamInfo?.firstYearOfPlay}
                     onNavigateAway={onNavigateAway}
