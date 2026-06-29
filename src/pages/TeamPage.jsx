@@ -1580,6 +1580,8 @@ function ScheduleTab({
       <Modal
         open={Boolean(gamePicker)}
         onClose={() => setGamePicker(null)}
+        backDismiss
+        historyKey="teamGamePicker"
         title={gamePicker ? `${fmtDate(gamePicker.dateKey)} · Doubleheader` : 'Doubleheader'}
         size="sm"
       >
@@ -2068,6 +2070,8 @@ function TeamTradeDetailModal({ txn, tradeBundle, tradeLoading, onClose, onNavig
     <Modal
       open={Boolean(txn)}
       onClose={onClose}
+      backDismiss
+      historyKey="teamTradeDetail"
       size="lg"
       panelClassName="max-h-[90vh] sm:max-h-[85vh] overflow-y-auto bg-[#0d1520] border-slate-700/70"
     >
@@ -2201,6 +2205,8 @@ function TradeAnalysisModal({ open, onClose, loading, error, analysis, progress 
     <Modal
       open={open}
       onClose={onClose}
+      backDismiss
+      historyKey="teamTradeAnalysis"
       size="full"
       title="Trade Analysis"
       className="px-3 sm:px-6"

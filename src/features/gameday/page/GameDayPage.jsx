@@ -497,6 +497,8 @@ function PitchCountByInningSheet({ open, onClose, allPlays, away, home }) {
     <Modal
       open={open}
       onClose={onClose}
+      backDismiss
+      historyKey="pitchCountByInning"
       align="bottom"
       size="lg"
       panelClassName="max-h-[82vh] bg-[#101827] border-slate-700/70"

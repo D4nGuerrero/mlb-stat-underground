@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogBackdrop,
@@ -17,7 +17,50 @@ export default function Modal({
   align = 'center',
   className = '',
   panelClassName = '',
+  backDismiss = false,
+  historyKey = 'appModal',
 }) {
+  const historyActiveRef = useRef(false);
+  const suppressNextPopRef = useRef(false);
+
+  useEffect(() => {
+    if (!backDismiss) return undefined;
+
+    const onPopState = () => {
+      if (suppressNextPopRef.current) {
+        suppressNextPopRef.current = false;
+        return;
+      }
+      if (!open || !historyActiveRef.current) return;
+      historyActiveRef.current = false;
+      onClose?.();
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [backDismiss, onClose, open]);
+
+  useEffect(() => {
+    if (!backDismiss) return;
+
+    const stateKey = `__${historyKey}`;
+    if (open && !historyActiveRef.current) {
+      if (window.history.state?.[stateKey]) {
+        historyActiveRef.current = true;
+        return;
+      }
+      window.history.pushState({ ...(window.history.state ?? {}), [stateKey]: true }, '');
+      historyActiveRef.current = true;
+      return;
+    }
+
+    if (!open && historyActiveRef.current) {
+      historyActiveRef.current = false;
+      suppressNextPopRef.current = true;
+      window.history.back();
+    }
+  }, [backDismiss, historyKey, open]);
+
   const maxWidth = {
     sm: 'max-w-sm',
     md: 'max-w-lg',

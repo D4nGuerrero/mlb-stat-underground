@@ -728,6 +728,8 @@ function ProspectPreviewModal({ player, open, onClose, isWatched, onToggleWatch,
     <Modal
       open={open}
       onClose={onClose}
+      backDismiss
+      historyKey="prospectPreview"
       size="lg"
       align="bottom"
       panelClassName="bg-[#0d1520] border-slate-700/70 max-h-[88vh] overflow-y-auto"
@@ -824,6 +826,8 @@ function FavoritesModal({ open, onClose, players, onSelectPlayer, onToggleWatch 
     <Modal
       open={open}
       onClose={onClose}
+      backDismiss
+      historyKey="prospectFavorites"
       size="lg"
       align="bottom"
       panelClassName="bg-[#0d1520] border-slate-700/70 max-h-[88vh] overflow-y-auto"
