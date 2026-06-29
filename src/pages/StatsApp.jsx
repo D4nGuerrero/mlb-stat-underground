@@ -11,22 +11,111 @@ import {
 import { TabBar, Select, SegmentedControl, BaseballSpinner, LoadingSpinner, stickyTeamAbbrHeadAfterRank, stickyTeamAbbrCellAfterRank, stickyRankHead, stickyRankCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../components/ui';
 import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import TeamAbbrCell from '../components/TeamAbbrCell';
+import { restoreListScroll, saveListScroll } from '../utils/listScrollRestore';
 import {
   enrichMoversWithDeltaScores,
   formatDeltaScore,
 } from '../utils/playerDeltaScore';
+
+const STATS_APP_RETURN_KEY = 'stats-center:return';
+const STATS_APP_SCROLL_KEY = 'stats-center';
 
 const TEAM_OPTIONS = mlbTeams.map((t) => ({
   value: t.id,
   label: `${t.name} (${t.abbr})`,
 }));
 const MLB_TEAM_ID_SET = new Set(mlbTeams.map((t) => t.id));
+const AL_TEAM_IDS = new Set([108, 110, 111, 114, 116, 117, 118, 133, 136, 139, 140, 141, 142, 145, 147]);
+const MLB_SCOPE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg';
+const AL_SCOPE_LOGO = 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg';
+const NL_SCOPE_LOGO = 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg';
+
+const HOT_COLD_SCOPE_OPTIONS = [
+  { value: 'all', label: 'All Teams', icon: MLB_SCOPE_LOGO },
+  { value: 'AL', label: 'American League', icon: AL_SCOPE_LOGO },
+  { value: 'NL', label: 'National League', icon: NL_SCOPE_LOGO },
+  ...mlbTeams.map((t) => ({
+    value: String(t.id),
+    label: `${t.name} (${t.abbr})`,
+    icon: teamLogoUrl(t.id),
+  })),
+];
 
 const HOT_COLD_DAY_OPTIONS = [
   { value: 10, label: 'Last 10 Days' },
   { value: 15, label: 'Last 15 Days' },
   { value: 30, label: 'Last 30 Days' },
 ];
+
+function filterHotColdPlayers(players, scope) {
+  if (scope === 'all') return players;
+
+  return players.filter((split) => {
+    const teamId = Number(split.team?.id);
+    if (!teamId) return false;
+    if (scope === 'AL') return AL_TEAM_IDS.has(teamId);
+    if (scope === 'NL') return MLB_TEAM_ID_SET.has(teamId) && !AL_TEAM_IDS.has(teamId);
+    return teamId === Number(scope);
+  });
+}
+
+function isHotColdTeamScope(scope) {
+  return !['all', 'AL', 'NL'].includes(scope);
+}
+
+function sortHotColdByOps(players) {
+  return [...players].sort((a, b) => (Number(b.stat?.ops) || 0) - (Number(a.stat?.ops) || 0));
+}
+
+function buildHotColdLists(rawPlayers, scope) {
+  const minPlateAppearances = isHotColdTeamScope(scope) ? 1 : 15;
+  const eligible = rawPlayers.filter((s) => (Number(s.stat?.plateAppearances) || 0) >= minPlateAppearances);
+  const scoped = sortHotColdByOps(filterHotColdPlayers(eligible, scope));
+
+  return {
+    scoped,
+    hot: scoped.slice(0, 10),
+    cold: [...scoped].reverse().slice(0, 10),
+  };
+}
+
+function opsToneClass(ops) {
+  const value = Number(ops) || 0;
+  if (value >= 1) return 'text-red-400 drop-shadow-[0_0_12px_rgba(248,113,113,0.35)]';
+  if (value >= 0.9) return 'text-orange-400 drop-shadow-[0_0_12px_rgba(251,146,60,0.28)]';
+  if (value >= 0.8) return 'text-amber-300';
+  if (value >= 0.73) return 'text-lime-200';
+  if (value >= 0.68) return 'text-slate-200';
+  if (value >= 0.6) return 'text-cyan-200';
+  return 'text-sky-200 drop-shadow-[0_0_14px_rgba(186,230,253,0.35)]';
+}
+
+function opsRowToneClass(ops) {
+  const value = Number(ops) || 0;
+  if (value >= 1) return 'from-red-500/16 via-orange-500/6';
+  if (value >= 0.9) return 'from-orange-500/14 via-amber-500/5';
+  if (value >= 0.8) return 'from-amber-500/10 via-slate-800/0';
+  if (value >= 0.73) return 'from-lime-500/7 via-slate-800/0';
+  if (value >= 0.68) return 'from-slate-700/20 via-slate-800/0';
+  if (value >= 0.6) return 'from-cyan-500/8 via-slate-800/0';
+  return 'from-sky-300/12 via-cyan-300/5';
+}
+
+function loadStatsReturnState() {
+  try {
+    return JSON.parse(sessionStorage.getItem(STATS_APP_RETURN_KEY) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveStatsReturnState(state) {
+  try {
+    sessionStorage.setItem(STATS_APP_RETURN_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 // sportId    Level     Common Leagues1
 // 1        Triple-A    AAA
@@ -301,7 +390,7 @@ function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch })
   );
 }
 
-function HotColdPlayerRow({ player, team, ops, rank, accentClass, days = 10 }) {
+function HotColdPlayerRow({ player, team, ops, rank, accentClass, days = 10, onPlayerClick }) {
   const playerId = player?.id;
   const className = 'flex items-center gap-3 px-4 pt-4 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer block w-full';
   const content = (
@@ -378,7 +467,63 @@ function HotColdPlayerRow({ player, team, ops, rank, accentClass, days = 10 }) {
   }
 
   return (
-    <Link to={`/player/${playerId}`} className={className}>
+    <Link to={`/player/${playerId}`} className={className} onClick={onPlayerClick}>
+      {content}
+    </Link>
+  );
+}
+
+function TeamHotColdPlayerRow({ split, rank, days = 10, onPlayerClick }) {
+  const player = split?.player;
+  const team = split?.team;
+  const stat = split?.stat ?? {};
+  const playerId = player?.id;
+  const ops = stat.ops ?? split?.value;
+  const rowTone = opsRowToneClass(ops);
+  const statTone = opsToneClass(ops);
+  const className = `group flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 bg-gradient-to-r to-transparent hover:bg-slate-800/25 transition-colors cursor-pointer w-full ${rowTone}`;
+  const content = (
+    <>
+      <span className="w-9 text-center flex-shrink-0 font-black text-2xl italic text-white leading-none select-none">
+        {rank}
+      </span>
+      <div className="relative w-14 h-14 flex-shrink-0 overflow-hidden">
+        {team?.id && (
+          <img
+            src={teamLogoUrl(team.id)}
+            alt=""
+            className="absolute top-8 left-6 w-24 h-24 max-w-none -translate-x-1/2 -translate-y-1/2 opacity-35 object-contain pointer-events-none"
+            onError={(e) => (e.target.style.display = 'none')}
+          />
+        )}
+        <img
+          src={playerHeadshotUrl(playerId)}
+          alt=""
+          className="relative z-10 w-14 h-14 object-cover"
+          onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className={`font-semibold text-sm truncate group-hover:text-${THEME_COLOR}-400 transition-colors`}>
+          {player?.fullName ?? '—'}
+        </div>
+        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+          <span>{team?.name ?? '—'}</span>
+          <span>{Number(stat.plateAppearances) || 0} PA</span>
+          <span>{stat.homeRuns ?? 0} HR</span>
+          <span>{stat.rbi ?? 0} RBI</span>
+        </div>
+      </div>
+      <div className="text-right flex-shrink-0">
+        <div className={`font-display text-2xl tabular-nums ${statTone}`}>{ops ?? '—'}</div>
+        <div className="text-[10px] text-slate-500">OPS ({days}d)</div>
+      </div>
+    </>
+  );
+
+  if (!playerId) return <div className={className}>{content}</div>;
+  return (
+    <Link to={`/player/${playerId}`} className={className} onClick={onPlayerClick}>
       {content}
     </Link>
   );
@@ -589,11 +734,12 @@ function MoverPlayerCard({ player }) {
 
 // ─── Main component ───────────────────────────────────────────────────────
 export default function StatsApp() {
+  const [initialReturnState] = useState(() => loadStatsReturnState());
   const [playerName, setPlayerName] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('search');
+  const [activeTab, setActiveTab] = useState(initialReturnState?.activeTab ?? 'search');
   const [rosterImpactView, setRosterImpactView] = useState('exodus');
 
   const [watchlist, setWatchlist] = useState(() => {
@@ -614,8 +760,12 @@ export default function StatsApp() {
 
   const [hotPlayers, setHotPlayers] = useState([]);
   const [coldPlayers, setColdPlayers] = useState([]);
-  const [hotColdDays, setHotColdDays] = useState(10);
+  const [hotColdSourcePlayers, setHotColdSourcePlayers] = useState([]);
+  const [hotColdTeamPlayers, setHotColdTeamPlayers] = useState([]);
+  const [hotColdScope, setHotColdScope] = useState(initialReturnState?.hotColdScope ?? 'all');
+  const [hotColdDays, setHotColdDays] = useState(initialReturnState?.hotColdDays ?? 10);
   const [isHotColdLoading, setIsHotColdLoading] = useState(false);
+  const [shouldRestoreStatsScroll, setShouldRestoreStatsScroll] = useState(Boolean(initialReturnState?.restoreScroll));
 
   const [impactRankings, setImpactRankings] = useState([]);
   const [isRankingLoading, setIsRankingLoading] = useState(false);
@@ -801,6 +951,8 @@ export default function StatsApp() {
     setIsHotColdLoading(true);
     setHotPlayers([]);
     setColdPlayers([]);
+    setHotColdSourcePlayers([]);
+    setHotColdTeamPlayers([]);
     try {
       const today = new Date();
       const startDate = new Date(today);
@@ -816,15 +968,12 @@ export default function StatsApp() {
       const data = await res.json();
       const splits = data.stats?.[0]?.splits ?? [];
 
-      // Filter out tiny samples so the lists feel sane.
-      const eligible = splits.filter((s) => (Number(s.stat?.plateAppearances) || 0) >= 15);
-      eligible.sort((a, b) => (Number(b.stat?.ops) || 0) - (Number(a.stat?.ops) || 0));
+      const { scoped, hot, cold } = buildHotColdLists(splits, hotColdScope);
 
-
-     
-      
-      setHotPlayers(eligible.slice(0, 10));
-      setColdPlayers([...eligible].reverse().slice(0, 10));
+      setHotColdSourcePlayers(splits);
+      setHotColdTeamPlayers(isHotColdTeamScope(hotColdScope) ? scoped : []);
+      setHotPlayers(hot);
+      setColdPlayers(cold);
     } catch (err) {
       console.error(err);
     } finally {
@@ -948,17 +1097,57 @@ export default function StatsApp() {
     fetchHotCold(days);
   };
 
+  const handleHotColdScopeChange = (scope) => {
+    setHotColdScope(scope);
+    const { scoped, hot, cold } = buildHotColdLists(hotColdSourcePlayers, scope);
+    setHotColdTeamPlayers(isHotColdTeamScope(scope) ? scoped : []);
+    setHotPlayers(hot);
+    setColdPlayers(cold);
+  };
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    if (tab === 'hotcold' && hotPlayers.length === 0 && !isHotColdLoading) {
+    if (tab === 'hotcold' && hotColdSourcePlayers.length === 0 && !isHotColdLoading) {
       fetchHotCold(hotColdDays);
     }
   };
+
+  const handleStatsPlayerNavigate = () => {
+    saveListScroll(STATS_APP_SCROLL_KEY);
+    saveStatsReturnState({
+      activeTab,
+      hotColdScope,
+      hotColdDays,
+      restoreScroll: true,
+    });
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'hotcold') return;
+    if (hotColdSourcePlayers.length > 0 || isHotColdLoading) return;
+    fetchHotCold(hotColdDays);
+    // Intentionally runs on mount/return only; filter changes recalc from loaded source rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!shouldRestoreStatsScroll || isHotColdLoading) return;
+    if (activeTab === 'hotcold' && hotColdSourcePlayers.length === 0) return;
+    restoreListScroll(STATS_APP_SCROLL_KEY);
+    setShouldRestoreStatsScroll(false);
+    try {
+      sessionStorage.removeItem(STATS_APP_RETURN_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, [activeTab, hotColdSourcePlayers.length, isHotColdLoading, shouldRestoreStatsScroll]);
 
   const impactProgressPercent = impactProgress.total
     ? Math.round((impactProgress.current / impactProgress.total) * 100)
     : 0;
   const impactBaseballPercent = Math.min(98, Math.max(2, impactProgressPercent));
+  const isHotColdTeamView = isHotColdTeamScope(hotColdScope);
+  const hotColdSelectedScope = HOT_COLD_SCOPE_OPTIONS.find((option) => option.value === hotColdScope);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -1053,26 +1242,67 @@ export default function StatsApp() {
       {/* HOT & COLD TAB */}
       {activeTab === 'hotcold' && (
         <div>
-          <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
               <h3 className="font-semibold text-lg">Who's Hot & Who's Cold</h3>
               <p className="text-sm text-slate-400 mt-0.5">
                 Based on OPS over the last {hotColdDays} days
               </p>
             </div>
-            <Select
-              value={hotColdDays}
-              onChange={handleHotColdDaysChange}
-              options={HOT_COLD_DAY_OPTIONS}
-              size="sm"
-              className="w-32 flex-shrink-0 "
-              buttonClassName="border-slate-600 py-2"
-            />
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <Select
+                value={hotColdScope}
+                onChange={handleHotColdScopeChange}
+                options={HOT_COLD_SCOPE_OPTIONS}
+                size="sm"
+                className="w-full sm:w-56 flex-shrink-0"
+                buttonClassName="border-slate-600 py-2"
+              />
+              <Select
+                value={hotColdDays}
+                onChange={handleHotColdDaysChange}
+                options={HOT_COLD_DAY_OPTIONS}
+                size="sm"
+                className="w-full sm:w-32 flex-shrink-0 "
+                buttonClassName="border-slate-600 py-2"
+              />
+            </div>
           </div>
 
           {isHotColdLoading && <LoadingSpinner size="lg" py="py-16" />}
 
-          {!isHotColdLoading && (
+          {!isHotColdLoading && isHotColdTeamView && (
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden pb-2">
+              <div className="px-5 py-4 border-b border-slate-800 bg-gradient-to-r from-red-500/10 via-slate-900 to-sky-300/10">
+                <div className="font-semibold text-lg flex items-center gap-2">
+                  <span className="text-red-300">Hottest</span>
+                  <span className="text-slate-600">→</span>
+                  <span className="text-sky-200">Coldest</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-0.5">
+                  {hotColdSelectedScope?.label ?? 'Selected team'} hitters · sorted by OPS · Last {hotColdDays} days
+                </div>
+              </div>
+
+              {hotColdTeamPlayers.map((split, i) => (
+                <TeamHotColdPlayerRow
+                  key={split.player?.id ?? i}
+                  split={split}
+                  rank={i + 1}
+                  days={hotColdDays}
+                  onPlayerClick={handleStatsPlayerNavigate}
+                />
+              ))}
+
+              {hotColdTeamPlayers.length === 0 && (
+                <div className="px-5 py-10 text-sm text-slate-500 text-center">
+                  No team hitters recorded a plate appearance for this date range.
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isHotColdLoading && !isHotColdTeamView && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 ">
               <div className="bg-slate-900 border border-orange-500/30 rounded-3xl overflow-hidden pb-4">
                 <div className="px-5 py-4 border-b border-slate-800 bg-gradient-to-r from-orange-500/10 to-transparent ">
@@ -1090,8 +1320,14 @@ export default function StatsApp() {
                     rank={i + 1}
                     accentClass="text-orange-400"
                     days={hotColdDays}
+                    onPlayerClick={handleStatsPlayerNavigate}
                   />
                 ))}
+                {hotPlayers.length === 0 && (
+                  <div className="px-5 py-8 text-sm text-slate-500 text-center">
+                    No qualified hot hitters for this filter.
+                  </div>
+                )}
               </div>
 
               <div className="bg-slate-900 border border-blue-500/30 rounded-3xl overflow-hidden pb-4">
@@ -1110,8 +1346,14 @@ export default function StatsApp() {
                     rank={i + 1}
                     accentClass="text-blue-400"
                     days={hotColdDays}
+                    onPlayerClick={handleStatsPlayerNavigate}
                   />
                 ))}
+                {coldPlayers.length === 0 && (
+                  <div className="px-5 py-8 text-sm text-slate-500 text-center">
+                    No qualified cold hitters for this filter.
+                  </div>
+                )}
               </div>
             </div>
           )}

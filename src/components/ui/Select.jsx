@@ -28,7 +28,17 @@ export default function Select({
             buttonClassName,
           ].join(' ')}
         >
-          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <span className="flex items-center gap-2 min-w-0">
+            {selected?.icon && (
+              <img
+                src={selected.icon}
+                alt=""
+                className="w-4 h-4 object-contain flex-shrink-0"
+                onError={(e) => (e.target.style.display = 'none')}
+              />
+            )}
+            <span className="truncate">{selected?.label ?? placeholder}</span>
+          </span>
           <ChevronDown size={14} className="text-slate-500 flex-shrink-0" aria-hidden />
         </ListboxButton>
 
@@ -59,7 +69,17 @@ export default function Select({
             >
               {({ selected }) => (
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate">{opt.label}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {opt.icon && (
+                      <img
+                        src={opt.icon}
+                        alt=""
+                        className="w-5 h-5 object-contain flex-shrink-0"
+                        onError={(e) => (e.target.style.display = 'none')}
+                      />
+                    )}
+                    <span className="truncate">{opt.label}</span>
+                  </span>
                   {selected && <Check size={14} className={`text-${THEME_COLOR}-400 flex-shrink-0`} />}
                 </div>
               )}
