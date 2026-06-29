@@ -246,6 +246,10 @@ function extractPlayStatNumber(text) {
   return match?.[1] ?? null;
 }
 
+function extractHighlightStatNumbers(highlight) {
+  return [...rawHighlightText(highlight).matchAll(/\((\d+)\)/g)].map((match) => match[1]);
+}
+
 function eventTypeMatchesHighlight(item, highlight) {
   const eventType = item?.eventType ?? '';
   const text = highlightText(highlight);
@@ -313,10 +317,12 @@ function isReliableHighlightMatch(item, highlight, { priorBatterScoringCount = 0
   if (headlineOrdinalMismatch(item, highlight, priorBatterScoringCount)) return false;
 
   const itemStatNumber = extractPlayStatNumber(item.description);
+  const highlightStatNumbers = extractHighlightStatNumbers(highlight);
   if (
     item?.eventType === 'home_run' &&
     itemStatNumber &&
-    !rawHighlightText(highlight).includes(`(${itemStatNumber})`)
+    highlightStatNumbers.length > 0 &&
+    !highlightStatNumbers.includes(itemStatNumber)
   ) {
     return false;
   }

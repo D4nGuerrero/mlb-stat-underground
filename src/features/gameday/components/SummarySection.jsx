@@ -156,6 +156,11 @@ function VideoShareMenu({ video }) {
   const videoUrl = getHighlightVideoUrl(video);
   const pageUrl = getHighlightShareUrl(video);
   const canNativeShare = typeof navigator !== 'undefined' && Boolean(navigator.share);
+  const downloadName = `${(video?.headline || video?.id || 'mlb-highlight')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'mlb-highlight'}.mp4`;
 
   const handleNativeShare = async (e, close) => {
     e.preventDefault();
@@ -169,6 +174,31 @@ function VideoShareMenu({ video }) {
     e.stopPropagation();
     close?.();
     if (videoUrl) copyHighlightLink(video);
+  };
+
+  const handleDownload = async (e, close) => {
+    e.preventDefault();
+    e.stopPropagation();
+    close?.();
+    if (!videoUrl || typeof document === 'undefined') return;
+
+    try {
+      const res = await fetch(videoUrl);
+      if (!res.ok) return;
+
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = downloadName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // Cross-origin video hosts may block blob downloads. Don't open a new tab.
+    }
   };
 
   if (!videoUrl && !pageUrl && !canNativeShare) return null;
@@ -213,6 +243,20 @@ function VideoShareMenu({ video }) {
               >
                 <i className="fa-solid fa-link text-xs w-4 text-center" aria-hidden />
                 Copy link
+              </button>
+            )}
+          </MenuItem>
+        )}
+        {videoUrl && (
+          <MenuItem>
+            {({ focus, close }) => (
+              <button
+                type="button"
+                onClick={(e) => handleDownload(e, close)}
+                className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
+              >
+                <i className="fa-solid fa-download text-xs w-4 text-center" aria-hidden />
+                Download video
               </button>
             )}
           </MenuItem>
