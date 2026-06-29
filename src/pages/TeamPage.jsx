@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { compactPlayerName, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
+import { compactPlayerName, mlbTeams, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
@@ -2244,53 +2244,133 @@ function TeamTradeDetailModal({ txn, tradeBundle, tradeLoading, onClose, onNavig
   );
 }
 
-function TradeAnalysisModal({ open, onClose, loading, error, analysis, progress }) {
-  const renderTrade = (trade, tone) => (
-    <div
-      key={`${trade.date}-${trade.id}`}
-      className={`rounded-3xl border p-4 ${
-        tone === 'best'
-          ? 'border-emerald-500/25 bg-emerald-500/5'
-          : 'border-red-500/25 bg-red-500/5'
-      }`}
+function TradeAnalysisModal({ open, onClose, loading, error, analysis, progress, teamId, teamName }) {
+  const displayTeamName = teamName ?? mlbTeams.find((team) => Number(team.id) === Number(teamId))?.name ?? 'Team';
+
+  const playerValueRow = (player, tone) => (
+    <Link
+      key={`${player.person?.id ?? player.person?.fullName}-${player.teamId}`}
+      to={player.person?.id ? `/player/${player.person.id}` : '#'}
+      className="group flex items-center gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/35 px-2.5 py-2 transition-colors hover:bg-slate-800/50"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold text-slate-100">{fmtDateWithYear(trade.date)}</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Acquired {trade.acquiredPlayers.length || 0} · Lost {trade.lostPlayers.length || 0}
-          </div>
+      <img
+        src={playerHeadshotUrl(player.person?.id)}
+        alt=""
+        className="h-9 w-9 rounded-full bg-slate-800 object-cover"
+        onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-bold text-slate-200 group-hover:text-white">
+          {player.person?.fullName ?? 'Unknown player'}
         </div>
-        <div className={`font-display text-3xl tabular-nums ${trade.net >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-          {trade.net >= 0 ? '+' : ''}{trade.net.toFixed(1)}
-        </div>
-      </div>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-emerald-300">Value In</div>
-          <div className="space-y-1">
-            {trade.acquiredPlayers.length ? trade.acquiredPlayers.map((p) => (
-              <div key={p.person.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate text-slate-300">{p.person.fullName}</span>
-                <span className="font-mono text-slate-500">{p.score.toFixed(1)}</span>
-              </div>
-            )) : <div className="text-xs text-slate-600">No tracked MLB value</div>}
-          </div>
-        </div>
-        <div>
-          <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-red-300">Value Out</div>
-          <div className="space-y-1">
-            {trade.lostPlayers.length ? trade.lostPlayers.map((p) => (
-              <div key={p.person.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate text-slate-300">{p.person.fullName}</span>
-                <span className="font-mono text-slate-500">{p.score.toFixed(1)}</span>
-              </div>
-            )) : <div className="text-xs text-slate-600">No tracked MLB value</div>}
-          </div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-500">
+          {player.teamId && <img src={teamLogoUrl(player.teamId)} alt="" className="h-4 w-4 object-contain" />}
+          <span>{player.seasons || 0} yr</span>
+          <span>·</span>
+          <span>{player.games || 0} G</span>
         </div>
       </div>
+      <div className={`font-mono text-sm font-black tabular-nums ${tone === 'in' ? 'text-emerald-300' : 'text-red-200'}`}>
+        {player.score.toFixed(1)}
+      </div>
+    </Link>
+  );
+
+  const teamLogoStack = (teams, tone) => (
+    <div className="flex -space-x-2">
+      {teams.slice(0, 4).map((team) => (
+        <span
+          key={`${tone}-${team.id ?? team.name}`}
+          className="grid h-9 w-9 place-items-center rounded-full border border-slate-800 bg-slate-950 shadow-lg"
+          title={team.name}
+        >
+          {team.id ? (
+            <img src={teamLogoUrl(team.id)} alt="" className="h-7 w-7 object-contain" />
+          ) : (
+            <span className="text-[10px] font-black text-slate-500">{team.abbreviation ?? '?'}</span>
+          )}
+        </span>
+      ))}
+      {teams.length > 4 && (
+        <span className="grid h-9 w-9 place-items-center rounded-full border border-slate-800 bg-slate-950 text-[10px] font-black text-slate-400">
+          +{teams.length - 4}
+        </span>
+      )}
     </div>
   );
+
+  const renderTrade = (trade, tone) => {
+    const positive = trade.net >= 0;
+    const cardTone = tone === 'best'
+      ? 'border-emerald-400/25 from-emerald-500/15 via-slate-900/80 to-slate-950/80'
+      : 'border-red-400/25 from-red-500/15 via-slate-900/80 to-slate-950/80';
+    return (
+      <div
+        key={`${trade.date}-${trade.id}`}
+        className={`overflow-hidden rounded-[2rem] border bg-gradient-to-br p-4 shadow-2xl shadow-black/20 ${cardTone}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <img src={teamLogoUrl(teamId)} alt="" className="h-10 w-10 object-contain" />
+              <div className="min-w-0">
+                <div className="text-sm font-black text-slate-100">{fmtDateWithYear(trade.date)}</div>
+                <div className="truncate text-[11px] font-semibold text-slate-500">
+                  {displayTeamName} trade impact
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className={`font-display text-4xl leading-none tabular-nums ${positive ? 'text-emerald-300' : 'text-red-300'}`}>
+              {positive ? '+' : ''}{trade.net.toFixed(1)}
+            </div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-slate-500">Net Value</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-3xl border border-slate-800/70 bg-slate-950/30 px-3 py-3">
+          <div className="min-w-0">
+            <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Acquired</div>
+            <div className="flex items-center gap-2">
+              <img src={teamLogoUrl(teamId)} alt="" className="h-8 w-8 object-contain" />
+              <div className="truncate text-xs font-bold text-slate-200">{trade.acquiredPlayers.length} players</div>
+            </div>
+          </div>
+          <i className="fa-solid fa-right-left text-slate-600" aria-hidden />
+          <div className="min-w-0 text-right">
+            <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-300">Trade Partners</div>
+            <div className="flex justify-end">{teamLogoStack(trade.partnerTeams, tone)}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Value In</div>
+              <div className="font-mono text-xs font-bold text-emerald-200">{trade.acquiredValue.toFixed(1)}</div>
+            </div>
+            <div className="space-y-2">
+              {trade.acquiredPlayers.length
+                ? trade.acquiredPlayers.map((p) => playerValueRow(p, 'in'))
+                : <div className="rounded-2xl border border-slate-800/70 bg-slate-950/35 px-3 py-3 text-xs text-slate-600">No tracked MLB value</div>}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-red-300">Value Out</div>
+              <div className="font-mono text-xs font-bold text-red-200">{trade.lostValue.toFixed(1)}</div>
+            </div>
+            <div className="space-y-2">
+              {trade.lostPlayers.length
+                ? trade.lostPlayers.map((p) => playerValueRow(p, 'out'))
+                : <div className="rounded-2xl border border-slate-800/70 bg-slate-950/35 px-3 py-3 text-xs text-slate-600">No tracked MLB value</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Modal
@@ -2378,10 +2458,20 @@ async function analyzeTeamTrades(teamId, trades, onProgress) {
     ));
     const acquiredValue = acquiredPlayers.reduce((sum, player) => sum + player.score, 0);
     const lostValue = lostPlayers.reduce((sum, player) => sum + player.score, 0);
+    const partnerTeams = [...rows
+      .flatMap((row) => [row.fromTeam, row.toTeam])
+      .filter((team) => team && Number(team.id) !== Number(teamId))
+      .reduce((map, team) => {
+        const key = team.id ?? team.name;
+        if (!map.has(key)) map.set(key, team);
+        return map;
+      }, new Map())
+      .values()];
 
     const result = {
       id: rows[0]?.id ?? key,
       date: rows[0]?.date,
+      partnerTeams,
       acquiredPlayers: acquiredPlayers.sort((a, b) => b.score - a.score),
       lostPlayers: lostPlayers.sort((a, b) => b.score - a.score),
       acquiredValue,
@@ -2611,6 +2701,7 @@ function TransactionsTab({ teamId, onNavigateAway }) {
       error={analysisError}
       analysis={analysis}
       progress={analysisProgress}
+      teamId={teamId}
     />
     </>
   );
