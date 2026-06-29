@@ -163,12 +163,58 @@ function tokenize(text) {
     .filter((w) => w.length > 3);
 }
 
+const HEADLINE_ORDINALS = [
+  ['second', 2],
+  ['third', 3],
+  ['fourth', 4],
+];
+
+function playSlugCandidates(item) {
+  const play = item?.play;
+  const description = item?.description ?? play?.result?.description ?? '';
+  const pitcher = play?.matchup?.pitcher?.fullName;
+  const batter = play?.matchup?.batter?.fullName ?? item?.batterName;
+  return [
+    slugifyMiLBVideoPart(description, 120),
+    slugifyMiLBVideoPart(description, 73),
+    pitcher && batter ? slugifyMiLBVideoPart(`${pitcher} In play, run(s) to ${batter}`, 80) : null,
+  ].filter(Boolean);
+}
+
+function slugHighlightScore(item, highlight) {
+  const highlightId = String(highlight?.id ?? '');
+  if (!highlightId) return 0;
+
+  let best = 0;
+  for (const candidate of playSlugCandidates(item)) {
+    if (highlightId === candidate) return 100;
+    if (highlightId.startsWith(candidate) || candidate.startsWith(highlightId)) {
+      best = Math.max(best, 45);
+      continue;
+    }
+    const parts = candidate.split('-').filter((part) => part.length > 3);
+    const overlap = parts.filter((part) => highlightId.includes(part)).length;
+    if (overlap >= 5) best = Math.max(best, 18 + overlap);
+    else if (overlap >= 3) best = Math.max(best, 10 + overlap);
+  }
+  return best;
+}
+
+function headlineOrdinalMismatch(item, highlight, priorBatterScoringCount = 0) {
+  const headline = (highlight?.headline ?? '').toLowerCase();
+  for (const [word, ordinal] of HEADLINE_ORDINALS) {
+    if (!headline.includes(word)) continue;
+    if (priorBatterScoringCount !== ordinal - 1) return true;
+  }
+  return false;
+}
+
 function scoreHighlightMatch(item, highlight) {
   const desc = normalizeSearchText(item.description);
   const headline = normalizeSearchText(highlight.headline);
   const highlightDescription = normalizeSearchText(highlight.description);
   const tokens = tokenize(desc);
-  let score = 0;
+  let score = slugHighlightScore(item, highlight);
   for (const t of tokens) {
     if (headline.includes(t)) score += 2;
     if (highlightDescription.includes(t)) score += 1;
@@ -253,7 +299,7 @@ function playerIdentityMatches(item, highlight) {
   return highlightIncludesAnyPlayer(highlight, itemParticipantIds(item));
 }
 
-function isReliableHighlightMatch(item, highlight) {
+function isReliableHighlightMatch(item, highlight, { priorBatterScoringCount = 0 } = {}) {
   if (!item?.isScoring || !highlight) return false;
   if (!highlight.mp4Url && !highlight.hlsUrl) return false;
 
@@ -264,6 +310,7 @@ function isReliableHighlightMatch(item, highlight) {
   // the batter plus runners who scored on the play.
   if (!playerIdentityMatches(item, highlight)) return false;
   if (!eventTypeMatchesHighlight(item, highlight)) return false;
+  if (headlineOrdinalMismatch(item, highlight, priorBatterScoringCount)) return false;
 
   const itemStatNumber = extractPlayStatNumber(item.description);
   if (
@@ -303,13 +350,18 @@ export function matchHighlightForItem(item, highlights) {
 export function buildHighlightMap(summaryItems, highlights) {
   const map = {};
   const used = new Set();
+  const batterScoringCount = new Map();
 
   const scoringItems = summaryItems.filter((i) => i.isScoring);
   for (const item of scoringItems) {
+    const batterId = Number(item?.batterId);
+    const priorBatterScoringCount = batterId ? (batterScoringCount.get(batterId) ?? 0) : 0;
+    const matchContext = { priorBatterScoringCount };
+
     const candidates = highlights
       .filter((h) => !used.has(h.id))
       .map((h) => ({ h, score: scoreHighlightMatch(item, h) }))
-      .filter(({ h, score }) => score >= 7 && isReliableHighlightMatch(item, h))
+      .filter(({ h, score }) => score >= 7 && isReliableHighlightMatch(item, h, matchContext))
       .sort((a, b) => b.score - a.score);
 
     const pick = candidates[0]?.h;
@@ -317,6 +369,8 @@ export function buildHighlightMap(summaryItems, highlights) {
       map[item.key] = pick;
       used.add(pick.id);
     }
+
+    if (batterId) batterScoringCount.set(batterId, priorBatterScoringCount + 1);
   }
 
   return map;
