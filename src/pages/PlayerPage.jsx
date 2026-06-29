@@ -10,6 +10,7 @@ import { computeCareerTotalsRow, computeSeasonTotalsRow } from '../utils/careerT
 import SeasonYearLabel from '../components/SeasonYearLabel';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { fetchStatsApiJson } from '../lib/mlb/client';
+import { countryFlagUrl } from '../utils/countryFlags';
 import {
   SegmentedControl,
   Select,
@@ -435,11 +436,12 @@ function formatDraftPick(draftPick, draftYear) {
 function buildPlayerBioRows(playerInfo, draftPick) {
   if (!playerInfo) return { base: [], expanded: [] };
 
+  const birthplace = [playerInfo.birthCity, playerInfo.birthStateProvince, playerInfo.birthCountry].filter(Boolean).join(', ') || '—';
   const base = [
     { label: 'Bats / Throws', value: `${playerInfo.batSide?.code || '—'} / ${playerInfo.pitchHand?.code || '—'}` },
     { label: 'Height / Weight', value: `${playerInfo.height || '—'} / ${playerInfo.weight ? `${playerInfo.weight} lb` : '—'}` },
     { label: 'Born', value: formatBornWithAge(playerInfo) },
-    { label: 'Birthplace', value: [playerInfo.birthCity, playerInfo.birthStateProvince, playerInfo.birthCountry].filter(Boolean).join(', ') || '—' },
+    { label: 'Birthplace', value: birthplace, format: 'birthplace', country: playerInfo.birthCountry },
   ];
 
   const college = joinEducation(playerInfo.education?.colleges);
@@ -488,7 +490,7 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
         )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-        {visibleRows.map(({ label, value, format }) => (
+        {visibleRows.map(({ label, value, format, country }) => (
           <div key={label} className={label === 'Drafted' || label === 'Relationships' ? 'col-span-2 sm:col-span-4' : ''}>
             <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
             {format === 'relationships' ? (
@@ -503,6 +505,19 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
                     {relative.relation && <span className="text-slate-500 font-medium">({relative.relation})</span>}
                   </Link>
                 ))}
+              </div>
+            ) : format === 'birthplace' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200 leading-snug">
+                {countryFlagUrl(country) && (
+                  <img
+                    src={countryFlagUrl(country)}
+                    alt={`${country} flag`}
+                    title={country}
+                    className="h-3.5 w-5 rounded-[2px] object-cover shadow-sm ring-1 ring-white/10 flex-shrink-0"
+                    onError={(e) => (e.target.style.display = 'none')}
+                  />
+                )}
+                <span>{value}</span>
               </div>
             ) : (
               <div className="text-sm font-semibold text-slate-200 leading-snug">{value}</div>
@@ -1699,6 +1714,7 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
 function PlayerTransactionsTab({ playerId, playerInfo }) {
   const navigate = useNavigate();
   const restoredTxnRef = useRef(null);
+  const txnSheetHistoryRef = useRef(false);
   const savedTxnReturn = useMemo(() => readTxnSheetReturn(playerId), [playerId]);
   const [txns, setTxns] = useState([]);
   const [usingProfileTransactions, setUsingProfileTransactions] = useState(false);
@@ -1712,7 +1728,20 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const [tradeBundle, setTradeBundle] = useState([]);
   const [tradeLoading, setTradeLoading] = useState(false);
 
+  const pushTransactionSheetHistory = useCallback(() => {
+    if (txnSheetHistoryRef.current) return;
+
+    if (window.history.state?.transactionSheet) {
+      txnSheetHistoryRef.current = true;
+      return;
+    }
+
+    window.history.pushState({ ...(window.history.state ?? {}), transactionSheet: true }, '');
+    txnSheetHistoryRef.current = true;
+  }, []);
+
   const openTransaction = useCallback(async (txn) => {
+    pushTransactionSheetHistory();
     setSelectedTxn(txn);
     if (!isTradeTransaction(txn)) {
       setTradeBundle([txn]);
@@ -1724,7 +1753,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
     const bundle = await fetchTradeBundle(txn);
     setTradeBundle(bundle);
     setTradeLoading(false);
-  }, []);
+  }, [pushTransactionSheetHistory]);
 
   useEffect(() => {
     if (!playerId) return undefined;
@@ -1781,7 +1810,24 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const closeTransaction = () => {
     clearTxnSheetReturn(playerId);
     setSelectedTxn(null);
+
+    if (txnSheetHistoryRef.current) {
+      txnSheetHistoryRef.current = false;
+      window.history.back();
+    }
   };
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (!selectedTxn) return;
+      txnSheetHistoryRef.current = false;
+      clearTxnSheetReturn(playerId);
+      setSelectedTxn(null);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [playerId, selectedTxn]);
 
   const handlePlayerClick = (id) => {
     writeTxnSheetReturn(playerId, selectedTxn, yearsBack);

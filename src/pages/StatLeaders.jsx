@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { restoreListScroll, saveListScroll } from '../utils/listScrollRestore';
@@ -16,7 +16,6 @@ import {
   stickyPlayerCellAfterRank,
   scrollStatHead,
   scrollStatCell,
-  TABLE_SCROLL_BODY,
   TABLE_BASE,
   BaseballSpinner,
 } from '../components/ui';
@@ -27,22 +26,27 @@ import {
   LEAGUE_LEVEL_STORAGE_KEY,
   LEAGUE_LEVEL_VALUES,
 } from '../constants/leagueLevels.js';
+import { countryFlagUrl, normalizeCountryName } from '../utils/countryFlags';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
-const SEASON_OPTIONS = Array.from(
-  { length: CURRENT_YEAR - 2003 + 1 },
-  (_, i) => CURRENT_YEAR - i
-).map((year) => ({
-  value: String(year),
-  label: `${year} Season`,
-}));
+const SEASON_OPTIONS = [
+  { value: 'all', label: 'All Time' },
+  ...Array.from(
+    { length: CURRENT_YEAR - 2003 + 1 },
+    (_, i) => CURRENT_YEAR - i
+  ).map((year) => ({
+    value: String(year),
+    label: `${year} Season`,
+  })),
+];
 const LIMIT_OPTIONS = [
   { value: 10, label: 'Top 10' },
   { value: 25, label: 'Top 25' },
   { value: 50, label: 'Top 50' },
 ];
 const COMPLETE_PLAYER_LIMIT = 5000;
+const COMPLETE_PLAYER_ROWS_STEP = 250;
 
 const POSITION_OPTIONS = [
   { value: 'all', label: 'All Positions' },
@@ -58,6 +62,8 @@ const POSITION_OPTIONS = [
   { value: 'OF', label: 'Outfield' },
   { value: 'DH', label: 'Designated Hitter' },
 ];
+
+const ALL_COUNTRIES_OPTION = { value: 'all', label: 'All Countries' };
 
 const LEAGUE_LOGOS = {
   all: { src: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg', alt: 'MLB' },
@@ -203,6 +209,20 @@ const STAT_FULL_LABELS = {
 
 const statFullLabel = (col) => STAT_FULL_LABELS[col.key] ?? col.label;
 
+const QUALIFIED_PLAYER_SORT_COLS = new Set([
+  'avg',
+  'obp',
+  'slg',
+  'ops',
+  'era',
+  'whip',
+  'fielding',
+  'strikeoutsPer9Inn',
+  'strikeoutWalkRatio',
+  'walksPer9Inn',
+  'hitsPer9Inn',
+]);
+
 const TEAM_SORT_DEFAULTS = {
   hitting: { col: 'homeRuns', dir: 'desc' },
   pitching: { col: 'era', dir: 'asc' },
@@ -212,7 +232,8 @@ const TEAM_SORT_DEFAULTS = {
 const PLAYER_SORT_DEFAULTS = TEAM_SORT_DEFAULTS;
 
 const STAT_LEADERS_SCROLL_KEY = 'stat-leaders';
-const DEFAULT_SEASON = '2026';
+const COMPLETE_LEADERS_TABLE_SCROLL = '-mx-1 max-h-[calc(100vh-10rem)] overflow-auto rounded-xl border border-slate-800/60 scrollbar-thin';
+const DEFAULT_SEASON = String(CURRENT_YEAR);
 const DEFAULT_LIMIT = 25;
 const VALID_GROUPS = new Set(['hitting', 'pitching', 'fielding']);
 const VALID_LEAGUES = new Set(['all', 'AL', 'NL']);
@@ -249,7 +270,8 @@ async function fetchTeamsForLevel(leagueLevel, seasonParam) {
   }
 
   const league = LEAGUE_LEVEL_BY_VALUE[leagueLevel] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
-  const res = await fetch(`https://statsapi.mlb.com/api/v1/teams?${league.sportQuery}&season=${seasonParam}`);
+  const teamSeason = seasonParam === 'all' ? String(CURRENT_YEAR) : seasonParam;
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/teams?${league.sportQuery}&season=${teamSeason}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return (data.teams ?? []).map((t) => ({
@@ -285,6 +307,7 @@ function parseStatLeadersState(searchParams) {
   const positionFilter = VALID_POSITIONS.has(searchParams.get('pos'))
     ? searchParams.get('pos')
     : 'all';
+  const countryFilter = searchParams.get('country') || 'all';
 
   const playerGroup = playerOrTeam === 'player' ? activeGroup : 'hitting';
   const cats = GROUP_CATS[playerGroup] ?? HITTING_CATS;
@@ -325,6 +348,7 @@ function parseStatLeadersState(searchParams) {
     leadersLeague,
     limit,
     positionFilter,
+    countryFilter,
     playerSortCol,
     playerSortDir,
     teamGroup,
@@ -349,6 +373,7 @@ function buildStatLeadersParams(state) {
   if (state.playerOrTeam === 'player') {
     if (state.playerMode === 'complete') params.set('mode', 'complete');
     if (state.positionFilter && state.positionFilter !== 'all') params.set('pos', state.positionFilter);
+    if (state.countryFilter && state.countryFilter !== 'all') params.set('country', state.countryFilter);
     if (state.category !== defaultCategoryForGroup(state.group)) {
       params.set('category', state.category);
     }
@@ -374,6 +399,15 @@ const GROUP_CATS = {
   fielding: FIELDING_CATS,
 };
 
+const LEADER_CATEGORY_STAT_KEYS = {
+  battingAverage: 'avg',
+  earnedRunAverage: 'era',
+  onBasePercentage: 'obp',
+  onBasePlusSlugging: 'ops',
+  sluggingPercentage: 'slg',
+  strikeouts: 'strikeOuts',
+};
+
 const MEDAL = ['🥇', '🥈', '🥉'];
 
 const formatValue = (val, fmt) => {
@@ -387,6 +421,17 @@ const formatValue = (val, fmt) => {
   return String(val);
 };
 
+const normalizeStatKeys = (stat = {}) => ({
+  ...stat,
+  // Stats API leaders accepts "walks", but full stat rows expose the same stat as baseOnBalls.
+  walks: stat.walks ?? stat.baseOnBalls,
+  strikeouts: stat.strikeouts ?? stat.strikeOuts,
+  earnedRunAverage: stat.earnedRunAverage ?? stat.era,
+  onBasePercentage: stat.onBasePercentage ?? stat.obp,
+  onBasePlusSlugging: stat.onBasePlusSlugging ?? stat.ops,
+  sluggingPercentage: stat.sluggingPercentage ?? stat.slg,
+});
+
 const parseSortValue = (stat, key) => {
   const raw = stat?.[key];
   if (raw == null || raw === '') return 0;
@@ -397,6 +442,14 @@ const parseSortValue = (stat, key) => {
   }
   const n = parseFloat(String(raw).replace(/^\./, '0.'));
   return Number.isNaN(n) ? 0 : n;
+};
+
+const statKeyForLeaderCategory = (categoryKey) => LEADER_CATEGORY_STAT_KEYS[categoryKey] ?? categoryKey;
+
+const leaderCategoryLowerBetter = (categoryKey) => {
+  const statKey = statKeyForLeaderCategory(categoryKey);
+  return [...TEAM_BATTING_COLS, ...TEAM_PITCHING_COLS, ...TEAM_FIELDING_COLS]
+    .some((col) => col.key === statKey && col.lowerBetter);
 };
 
 const rankTeams = (rows, sortCol, sortDir) => {
@@ -449,6 +502,27 @@ const positionMatches = (row, positionFilter) => {
   const pos = getPlayerPosition(row);
   if (positionFilter === 'OF') return ['LF', 'CF', 'RF', 'OF'].includes(pos);
   return pos === positionFilter;
+};
+
+const playerCountry = (row) => row.person?.birthCountry ?? row.player?.birthCountry ?? '';
+
+const countryMatches = (row, countryFilter) => {
+  if (!countryFilter || countryFilter === 'all') return true;
+  return normalizeCountryName(playerCountry(row)) === countryFilter;
+};
+
+const buildCountryOptions = (rows) => {
+  const countries = [...new Set(rows.map(playerCountry).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+
+  return [
+    ALL_COUNTRIES_OPTION,
+    ...countries.map((country) => ({
+      value: normalizeCountryName(country),
+      label: country,
+      icon: countryFlagUrl(country),
+    })),
+  ];
 };
 
 function compactPlayerName(name = '') {
@@ -542,6 +616,7 @@ export default function StatLeaders() {
   const [leagueFilter, setLeagueFilter] = useState(initial.leagueFilter);
   const [leadersLeague, setLeadersLeague] = useState(initial.leadersLeague);
   const [positionFilter, setPositionFilter] = useState(initial.positionFilter);
+  const [countryFilter, setCountryFilter] = useState(initial.countryFilter);
   const [teamStats, setTeamStats] = useState([]);
   const [teamGroup, setTeamGroup] = useState(initial.teamGroup);
   const [playerSortCol, setPlayerSortCol] = useState(initial.playerSortCol);
@@ -553,6 +628,7 @@ export default function StatLeaders() {
   const [error, setError] = useState(null);
   const [limit, setLimit] = useState(initial.limit);
   const [playerMode, setPlayerMode] = useState(initial.playerMode);
+  const [completePlayerDisplayLimit, setCompletePlayerDisplayLimit] = useState(COMPLETE_PLAYER_ROWS_STEP);
 
   const syncToUrl = useCallback((overrides = {}, options = {}) => {
     setSearchParams(
@@ -565,6 +641,7 @@ export default function StatLeaders() {
         leadersLeague,
         limit,
         positionFilter,
+        countryFilter,
         playerSortCol,
         playerSortDir,
         teamGroup,
@@ -585,6 +662,7 @@ export default function StatLeaders() {
     leadersLeague,
     limit,
     positionFilter,
+    countryFilter,
     playerSortCol,
     playerSortDir,
     teamGroup,
@@ -623,11 +701,19 @@ export default function StatLeaders() {
     setError(null);
     setLeaders([]);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${leaderCategory}&season=${seasonParam}&statGroup=${statGroup}&leaderGameTypes=R&limit=${resultLimit}&${leadersSportQuery(leagueLevel)}&hydrate=person,team(league)`;
+      const url = seasonParam === 'all'
+        ? `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${leaderCategory}&statGroup=${statGroup}&leaderGameTypes=R&limit=${resultLimit}&${leadersSportQuery(leagueLevel)}&statType=career&hydrate=person,team(league)`
+        : `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${leaderCategory}&season=${seasonParam}&statGroup=${statGroup}&leaderGameTypes=R&limit=${resultLimit}&${leadersSportQuery(leagueLevel)}&hydrate=person,team(league)`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const list = data.leagueLeaders?.[0]?.leaders ?? [];
+      const list = (data.leagueLeaders?.[0]?.leaders ?? []).map((leader) => ({
+        ...leader,
+        player: leader.player ?? leader.person,
+        person: leader.person ?? leader.player,
+        leagueId: leader.team?.league?.id ?? leader.league?.id,
+        stat: normalizeStatKeys(leader.stat ?? {}),
+      }));
       cache.current[cacheKey] = list;
       setLeaders(list);
     } catch (err) {
@@ -655,8 +741,10 @@ export default function StatLeaders() {
       const teams = await fetchTeamsForLevel(leagueLevel, seasonParam);
       const rows = await Promise.all(
         teams.map(async (t) => {
+          const statsType = seasonParam === 'all' ? 'career' : 'season';
+          const seasonPart = seasonParam === 'all' ? '' : `&season=${seasonParam}`;
           const res = await fetch(
-            `https://statsapi.mlb.com/api/v1/teams/${t.id}/stats?stats=season&season=${seasonParam}&group=${statGroup}`,
+            `https://statsapi.mlb.com/api/v1/teams/${t.id}/stats?stats=${statsType}${seasonPart}&group=${statGroup}`,
           );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
@@ -726,6 +814,7 @@ export default function StatLeaders() {
       setLeadersLeague(next.leadersLeague);
       setLimit(next.limit);
       setPositionFilter(next.positionFilter);
+      setCountryFilter(next.countryFilter);
       setPlayerSortCol(next.playerSortCol);
       setPlayerSortDir(next.playerSortDir);
       setTeamGroup(next.teamGroup);
@@ -736,8 +825,14 @@ export default function StatLeaders() {
 
       if (next.playerOrTeam === 'team') {
         fetchTeamStats({ statGroup: next.teamGroup, season: next.season, leagueLevel: next.leadersLeague });
-      } else if (next.playerMode === 'complete') {
-        fetchCompletePlayerStats({ statGroup: next.group, season: next.season, leagueLevel: next.leadersLeague });
+    } else if (next.playerMode === 'complete') {
+        fetchCompletePlayerStats({
+          statGroup: next.group,
+          season: next.season,
+          leagueLevel: next.leadersLeague,
+          sortCol: next.playerSortCol,
+          sortDir: next.playerSortDir,
+        });
       } else {
         fetchLeaders({
           statGroup: next.group,
@@ -789,8 +884,10 @@ export default function StatLeaders() {
     statGroup = group,
     season: seasonParam = season,
     leagueLevel = leadersLeague,
+    sortCol = playerSortCol,
+    sortDir = playerSortDir,
   } = {}) => {
-    const cacheKey = `complete-player:${leagueLevel}:${statGroup}:${seasonParam}`;
+    const cacheKey = `complete-player:${leagueLevel}:${statGroup}:${seasonParam}:${sortCol}:${sortDir}`;
     if (cache.current[cacheKey]) {
       setCompletePlayerRows(cache.current[cacheKey]);
       setError(null);
@@ -799,8 +896,13 @@ export default function StatLeaders() {
     setIsLoading(true);
     setError(null);
     setCompletePlayerRows([]);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     try {
-      const url = `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${statGroup}&season=${seasonParam}&${completeStatsSportQuery(leagueLevel)}&playerPool=all&limit=${COMPLETE_PLAYER_LIMIT}&hydrate=person,team(league)`;
+      const statsType = seasonParam === 'all' ? 'career' : 'season';
+      const seasonPart = seasonParam === 'all' ? '' : `&season=${seasonParam}`;
+      const playerPool = QUALIFIED_PLAYER_SORT_COLS.has(sortCol) ? 'qualified' : 'all';
+      const sortPart = sortCol ? `&sortStat=${sortCol}&order=${sortDir}` : '';
+      const url = `https://statsapi.mlb.com/api/v1/stats?stats=${statsType}&group=${statGroup}${seasonPart}&${completeStatsSportQuery(leagueLevel)}&playerPool=${playerPool}&limit=${COMPLETE_PLAYER_LIMIT}${sortPart}&hydrate=person,team(league)`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -809,7 +911,7 @@ export default function StatLeaders() {
         player: split.player ?? split.person,
         person: split.person ?? split.player,
         leagueId: split.team?.league?.id,
-        stat: split.stat ?? {},
+        stat: normalizeStatKeys(split.stat ?? {}),
       }));
       cache.current[cacheKey] = rows;
       setCompletePlayerRows(rows);
@@ -828,13 +930,16 @@ export default function StatLeaders() {
     setCategory(nextCategory);
     setPlayerSortCol(defaults.col);
     setPlayerSortDir(defaults.dir);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({
       group: g,
       category: nextCategory,
       playerSortCol: defaults.col,
       playerSortDir: defaults.dir,
     });
-    if (playerMode === 'complete') fetchCompletePlayerStats({ statGroup: g });
+    if (playerMode === 'complete') {
+      fetchCompletePlayerStats({ statGroup: g, sortCol: defaults.col, sortDir: defaults.dir });
+    }
     else fetchLeaders({ statGroup: g, leaderCategory: nextCategory });
   };
 
@@ -853,6 +958,7 @@ export default function StatLeaders() {
 
   const handleSeasonChange = (s) => {
     setSeason(s);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({ season: s });
     if (isTeam) fetchTeamStats({ season: s });
     else if (playerMode === 'complete') fetchCompletePlayerStats({ season: s });
@@ -861,12 +967,14 @@ export default function StatLeaders() {
 
   const handleLeagueChange = (league) => {
     setLeagueFilter(league);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({ leagueFilter: league });
   };
 
   const handleLeadersLeagueChange = (level) => {
     if (level === leadersLeague) return;
     setLeadersLeague(level);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     const nextLeagueFilter = level === 'mlb' ? leagueFilter : 'all';
     if (level !== 'mlb') setLeagueFilter('all');
     syncToUrl({ leadersLeague: level, leagueFilter: nextLeagueFilter });
@@ -877,7 +985,14 @@ export default function StatLeaders() {
 
   const handlePositionChange = (pos) => {
     setPositionFilter(pos);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({ positionFilter: pos });
+  };
+
+  const handleCountryChange = (country) => {
+    setCountryFilter(country);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
+    syncToUrl({ countryFilter: country });
   };
 
   const handleCategoryChange = (cat) => {
@@ -896,6 +1011,7 @@ export default function StatLeaders() {
   const showCompletePlayerTable = () => {
     saveScroll();
     setPlayerMode('complete');
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({ playerMode: 'complete' }, { replace: false });
     fetchCompletePlayerStats();
   };
@@ -912,14 +1028,18 @@ export default function StatLeaders() {
     if (playerSortCol === col) {
       const nextDir = playerSortDir === 'asc' ? 'desc' : 'asc';
       setPlayerSortDir(nextDir);
+      setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
       syncToUrl({ playerSortDir: nextDir });
+      fetchCompletePlayerStats({ sortCol: col, sortDir: nextDir });
       return;
     }
     const meta = playerCols.find((c) => c.key === col);
     const nextDir = meta?.lowerBetter ? 'asc' : 'desc';
     setPlayerSortCol(col);
     setPlayerSortDir(nextDir);
+    setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({ playerSortCol: col, playerSortDir: nextDir });
+    fetchCompletePlayerStats({ sortCol: col, sortDir: nextDir });
   };
 
   const handleTeamSort = (col) => {
@@ -958,14 +1078,24 @@ export default function StatLeaders() {
     return true;
   });
 
-  const filteredCompletePlayers = completePlayerRows.filter((row) => {
+  const filteredCompletePlayers = useMemo(() => completePlayerRows.filter((row) => {
     if (isMlbLevel && leagueFilter === 'AL' && row.leagueId !== 103) return false;
     if (isMlbLevel && leagueFilter === 'NL' && row.leagueId !== 104) return false;
+    if (!countryMatches(row, countryFilter)) return false;
     return positionMatches(row, positionFilter);
-  });
+  }), [completePlayerRows, countryFilter, isMlbLevel, leagueFilter, positionFilter]);
+
+  const countryOptions = useMemo(() => buildCountryOptions(completePlayerRows), [completePlayerRows]);
+  const selectedCountryLabel =
+    countryOptions.find((option) => option.value === countryFilter)?.label ?? ALL_COUNTRIES_OPTION.label;
 
   const rankedTeamStats = rankTeams(filteredTeamStats, teamSortCol, teamSortDir);
-  const rankedCompletePlayers = rankRowsByStat(filteredCompletePlayers, playerSortCol, playerSortDir);
+  const rankedCompletePlayers = useMemo(
+    () => rankRowsByStat(filteredCompletePlayers, playerSortCol, playerSortDir),
+    [filteredCompletePlayers, playerSortCol, playerSortDir],
+  );
+  const visibleRankedCompletePlayers = rankedCompletePlayers.slice(0, completePlayerDisplayLimit);
+  const hasMoreCompletePlayers = visibleRankedCompletePlayers.length < rankedCompletePlayers.length;
   const teamLeaderCards = teamCols
     .filter((col) => !['gamesPlayed', 'gamesStarted', 'atBats'].includes(col.key))
     .map((col) => {
@@ -979,6 +1109,8 @@ export default function StatLeaders() {
   const leagueLabel = isMlbLevel
     ? (leagueFilter === 'all' ? 'MLB' : leagueFilter)
     : selectedLeague.shortLabel;
+  const seasonLabel = season === 'all' ? 'All-Time' : season;
+  const seasonSubLabel = season === 'all' ? 'Career totals' : `${season} Regular Season`;
 
   return (
     <div className={`mx-auto px-4 sm:px-6 py-0 sm:py-8 ${isTeam || isCompletePlayer ? 'max-w-7xl' : 'max-w-4xl'}`}>
@@ -1071,12 +1203,20 @@ export default function StatLeaders() {
           <Select value={season} onChange={handleSeasonChange} options={SEASON_OPTIONS} />
 
           {isCompletePlayer && (
-            <Select
-              value={positionFilter}
-              onChange={handlePositionChange}
-              options={POSITION_OPTIONS}
-              className="w-44"
-            />
+            <>
+              <Select
+                value={positionFilter}
+                onChange={handlePositionChange}
+                options={POSITION_OPTIONS}
+                className="w-44"
+              />
+              <Select
+                value={countryFilter}
+                onChange={handleCountryChange}
+                options={countryOptions}
+                className="w-48"
+              />
+            </>
           )}
         </div>
 
@@ -1097,17 +1237,17 @@ export default function StatLeaders() {
           <div>
             <h2 className="font-semibold text-base sm:text-lg">
               {isTeam
-                ? `${leagueLabel} Team ${teamGroupLabel} ${teamMode === 'complete' ? 'Complete Leaders' : 'League Leaders'} ${season}`
+                ? `${leagueLabel} Team ${teamGroupLabel} ${teamMode === 'complete' ? 'Complete Leaders' : 'League Leaders'} ${seasonLabel}`
                 : playerMode === 'complete'
-                  ? `${leagueLabel} Player ${playerGroupLabel} Complete Leaders ${season}`
+                  ? `${leagueLabel} Player ${playerGroupLabel} Complete Leaders ${seasonLabel}`
                   : `${currentCat.label} Leaders`}
             </h2>
             <div className="text-xs text-slate-500 mt-0.5">
-              {season} Regular Season
+              {seasonSubLabel}
               {isTeam
                 ? ` · ${teamGroupLabel} · ${teamMode === 'complete' ? 'full table' : 'quick view'}`
                 : playerMode === 'complete'
-                  ? ` · ${playerGroupLabel} · ${POSITION_OPTIONS.find((option) => option.value === positionFilter)?.label ?? 'All Positions'}`
+                  ? ` · ${playerGroupLabel} · ${POSITION_OPTIONS.find((option) => option.value === positionFilter)?.label ?? 'All Positions'} · ${selectedCountryLabel}`
                   : ` · ${group} · quick view`}
             </div>
           </div>
@@ -1206,7 +1346,7 @@ export default function StatLeaders() {
         )}
 
         {isCompleteTeam && !isLoading && !error && rankedTeamStats.length > 0 && (
-          <div className={TABLE_SCROLL_BODY}>
+          <div className={COMPLETE_LEADERS_TABLE_SCROLL}>
             <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/40">
@@ -1288,7 +1428,7 @@ export default function StatLeaders() {
         )}
 
         {isCompletePlayer && !isLoading && !error && rankedCompletePlayers.length > 0 && (
-          <div className={TABLE_SCROLL_BODY}>
+          <div className={COMPLETE_LEADERS_TABLE_SCROLL}>
             <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_MIN_W.lg}`}>
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-800/40">
@@ -1315,7 +1455,7 @@ export default function StatLeaders() {
                 </tr>
               </thead>
               <tbody>
-                {rankedCompletePlayers.map((row) => (
+                {visibleRankedCompletePlayers.map((row) => (
                   <tr
                     key={`${row.player?.id ?? row.person?.id}-${row.team?.id ?? 'team'}-${row.season ?? season}`}
                     className="group border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors"
@@ -1350,6 +1490,20 @@ export default function StatLeaders() {
                 ))}
               </tbody>
             </table>
+            {hasMoreCompletePlayers && (
+              <div className="sticky bottom-0 z-30 flex items-center justify-center border-t border-slate-800 bg-slate-900/95 px-4 py-3 backdrop-blur">
+                <button
+                  type="button"
+                  onClick={() => setCompletePlayerDisplayLimit((n) => n + COMPLETE_PLAYER_ROWS_STEP)}
+                  className={`rounded-2xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-bold text-${THEME_COLOR}-300 transition-colors hover:border-${THEME_COLOR}-500/50 hover:bg-slate-800/80`}
+                >
+                  Show more
+                  <span className="ml-2 text-xs font-semibold text-slate-500">
+                    {visibleRankedCompletePlayers.length} of {rankedCompletePlayers.length}
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1423,7 +1577,11 @@ export default function StatLeaders() {
       <div className="mt-6 text-xs text-slate-600 text-center">
         Data from MLB Stats API ·{' '}
         <code className="font-mono">
-          {isTeam ? `/v1/teams/{teamId}/stats?stats=season&group=${teamGroup}&season=${season}` : `/v1/stats/leaders?leaderCategories=${category}&season=${season}`}
+          {isTeam
+            ? `/v1/teams/{teamId}/stats?stats=${season === 'all' ? 'career' : 'season'}&group=${teamGroup}${season === 'all' ? '' : `&season=${season}`}`
+            : season === 'all'
+              ? `/v1/stats/leaders?leaderCategories=${category}&statType=career`
+              : `/v1/stats/leaders?leaderCategories=${category}&season=${season}`}
         </code>
       </div>
     </div>

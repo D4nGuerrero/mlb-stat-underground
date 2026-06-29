@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { compactPlayerName, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
 import { fetchStatsApiJson } from '../lib/mlb/client';
+import { countryFlagUrl } from '../utils/countryFlags';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2002 + 1 }, (_, i) => {
@@ -1374,10 +1375,66 @@ function ScheduleTab({
 }
 
 // ─── Roster Tab ──────────────────────────────────────────────────────────────
-function RosterTab({ teamId, season, onNavigateAway }) {
+function rosterBirthplace(person) {
+  return [person?.birthCity, person?.birthStateProvince, person?.birthCountry].filter(Boolean).join(', ');
+}
+
+function buildRosterCountryGroups(roster) {
+  const groups = new Map();
+  for (const entry of roster ?? []) {
+    const country = entry.person?.birthCountry || 'Unknown';
+    const existing = groups.get(country) ?? { country, players: [] };
+    existing.players.push(entry);
+    groups.set(country, existing);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      players: group.players.sort((a, b) => (a.person?.fullName ?? '').localeCompare(b.person?.fullName ?? '')),
+    }))
+    .sort((a, b) => b.players.length - a.players.length || a.country.localeCompare(b.country));
+}
+
+function CountryFlag({ country, className = 'h-4 w-6' }) {
+  const flagUrl = countryFlagUrl(country);
+  if (!flagUrl) {
+    return (
+      <span className={`${className} rounded-[3px] bg-slate-700/80 border border-slate-600 flex-shrink-0`} aria-hidden />
+    );
+  }
+
+  return (
+    <img
+      src={flagUrl}
+      alt={`${country} flag`}
+      title={country}
+      className={`${className} rounded-[3px] object-cover shadow-sm ring-1 ring-white/10 flex-shrink-0`}
+      onError={(e) => (e.target.style.display = 'none')}
+    />
+  );
+}
+
+function RosterTab({
+  teamId,
+  season,
+  selectedCountry,
+  selectedCountryScroll = 0,
+  onSelectedCountryChange,
+  onSelectedCountryScrollChange,
+  onNavigateAway,
+}) {
   const [roster, setRoster] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const countryListRef = useRef(null);
+  const countrySheetHistoryRef = useRef(false);
+
+  const clearCountrySheetState = useCallback(() => {
+    saveTeamPageState(teamId, { activeTab: 'roster', rosterCountry: null, rosterCountryScroll: 0 });
+    onSelectedCountryScrollChange?.(0);
+    onSelectedCountryChange(null);
+  }, [onSelectedCountryChange, onSelectedCountryScrollChange, teamId]);
 
   useEffect(() => {
     (async () => {
@@ -1392,17 +1449,93 @@ function RosterTab({ teamId, season, onNavigateAway }) {
     })();
   }, [teamId, season]);
 
-  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
-  if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
-
   const grouped = {};
   (roster ?? []).forEach((p) => {
     const type = p.person?.primaryPosition?.type ?? 'Other';
     (grouped[type] = grouped[type] ?? []).push(p);
   });
+  const countryGroups = buildRosterCountryGroups(roster);
+  const selectedCountryGroup = countryGroups.find((group) => group.country === selectedCountry);
+
+  const closeCountrySheet = useCallback(() => {
+    if (countrySheetHistoryRef.current) {
+      countrySheetHistoryRef.current = false;
+      clearCountrySheetState();
+      window.history.back();
+      return;
+    }
+
+    clearCountrySheetState();
+  }, [clearCountrySheetState]);
+
+  useEffect(() => {
+    const el = countryListRef.current;
+    if (!selectedCountryGroup || !el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = selectedCountryScroll || 0;
+    });
+  }, [selectedCountryGroup, selectedCountryScroll]);
+
+  useEffect(() => {
+    if (!selectedCountryGroup || countrySheetHistoryRef.current) return;
+
+    if (window.history.state?.rosterCountrySheet) {
+      countrySheetHistoryRef.current = true;
+      return;
+    }
+
+    window.history.pushState({ ...(window.history.state ?? {}), rosterCountrySheet: true }, '');
+    countrySheetHistoryRef.current = true;
+  }, [selectedCountryGroup]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (!selectedCountryGroup) return;
+      countrySheetHistoryRef.current = false;
+      clearCountrySheetState();
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [clearCountrySheetState, selectedCountryGroup]);
+
+  if (loading) return <LoadingSpinner size="lg" py="py-16" />;
+  if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   return (
     <div className="space-y-5">
+      {countryGroups.length > 0 && (
+        <section className="rounded-3xl border border-slate-700/60 bg-slate-900/70 p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">Diversity</div>
+              <div className="text-xs text-slate-400">Birth countries on the active roster</div>
+            </div>
+            <div className="text-xs font-semibold text-slate-500">{roster?.length ?? 0} players</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {countryGroups.map((group) => (
+              <button
+                key={group.country}
+                type="button"
+                onClick={() => {
+                  onNavigateAway?.({ activeTab: 'roster', rosterCountry: group.country, rosterCountryScroll: 0 });
+                  onSelectedCountryScrollChange?.(0);
+                  onSelectedCountryChange(group.country);
+                }}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-700/70 bg-slate-800/50 px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:border-emerald-500/40 hover:bg-slate-800 transition-colors active:scale-[0.98]"
+              >
+                <CountryFlag country={group.country} />
+                <span>{group.country}</span>
+                <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-xs tabular-nums text-slate-400">
+                  {group.players.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {Object.entries(grouped).map(([posType, players]) => (
         <div key={posType}>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{posType}</div>
@@ -1431,6 +1564,49 @@ function RosterTab({ teamId, season, onNavigateAway }) {
           </div>
         </div>
       ))}
+
+      <Modal
+        open={Boolean(selectedCountryGroup)}
+        onClose={closeCountrySheet}
+        title={selectedCountryGroup ? `${selectedCountryGroup.country} Players` : 'Players'}
+        size="md"
+        panelClassName="max-h-[85vh] overflow-hidden"
+      >
+        <div ref={countryListRef} className="max-h-[70vh] overflow-y-auto p-3 space-y-2">
+          {selectedCountryGroup?.players.map((p) => (
+            <Link
+              key={p.person.id}
+              to={`/player/${p.person.id}`}
+              onClick={() => {
+                const scrollTop = countryListRef.current?.scrollTop ?? 0;
+                onSelectedCountryScrollChange?.(scrollTop);
+                onNavigateAway?.({
+                  activeTab: 'roster',
+                  rosterCountry: selectedCountryGroup.country,
+                  rosterCountryScroll: scrollTop,
+                });
+              }}
+              className="flex items-center gap-3 rounded-2xl border border-slate-700/50 bg-slate-800/40 px-3 py-2.5 hover:bg-slate-800/75 transition-colors"
+            >
+              <img
+                src={playerHeadshotUrl(p.person.id)}
+                alt=""
+                className="w-11 h-11 rounded-xl object-cover border border-slate-700 flex-shrink-0 bg-slate-800"
+                onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm text-slate-100 truncate">{p.person.fullName}</div>
+                <div className="text-xs text-slate-500 truncate">
+                  {p.position?.abbreviation ?? p.person?.primaryPosition?.abbreviation ?? '—'}
+                  {p.jerseyNumber ? ` · #${p.jerseyNumber}` : ''}
+                  {rosterBirthplace(p.person) ? ` · ${rosterBirthplace(p.person)}` : ''}
+                </div>
+              </div>
+              <CountryFlag country={selectedCountryGroup.country} className="h-3.5 w-5" />
+            </Link>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1676,6 +1852,8 @@ function readTeamPageDefaults(teamId) {
     statsSeason: saved?.statsSeason ?? (saved?.statsMode === 'historical' ? 'all' : String(CURRENT_YEAR)),
     scheduleView: saved?.scheduleView ?? 'month',
     scheduleMonth: normalizeScheduleMonth(saved?.scheduleMonth),
+    rosterCountry: saved?.rosterCountry ?? null,
+    rosterCountryScroll: Number(saved?.rosterCountryScroll) || 0,
   };
 }
 
@@ -1690,6 +1868,8 @@ function TeamPageContent({ teamId }) {
   const [statsSeason, setStatsSeason] = useState(defaults.statsSeason);
   const [scheduleView, setScheduleView] = useState(defaults.scheduleView);
   const [scheduleMonth, setScheduleMonth] = useState(defaults.scheduleMonth);
+  const [rosterCountry, setRosterCountry] = useState(defaults.rosterCountry);
+  const [rosterCountryScroll, setRosterCountryScroll] = useState(defaults.rosterCountryScroll);
   const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
   const isFavorite = isFavoriteTeam(teamId);
   const teamSportId = Number(teamInfo?.sport?.id) || MLB_SPORT_ID;
@@ -1766,8 +1946,10 @@ function TeamPageContent({ teamId }) {
       statsSeason,
       scheduleView,
       scheduleMonth,
+      rosterCountry,
+      rosterCountryScroll,
     });
-  }, [teamId, activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth]);
+  }, [teamId, activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth, rosterCountry, rosterCountryScroll]);
 
   const teamPageSnapshot = useMemo(() => ({
     activeTab,
@@ -1776,7 +1958,9 @@ function TeamPageContent({ teamId }) {
     statsSeason,
     scheduleView,
     scheduleMonth,
-  }), [activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth]);
+    rosterCountry,
+    rosterCountryScroll,
+  }), [activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth, rosterCountry, rosterCountryScroll]);
 
   const onNavigateAway = useCallback((overrides = {}) => {
     persistTeamPageLeave(teamId, { ...teamPageSnapshot, ...overrides });
@@ -1883,7 +2067,18 @@ function TeamPageContent({ teamId }) {
         </div>
 
         <div className=" sm:px-8 py-5 sm:py-6">
-          <TabBar variant="page" tabs={TABS} activeKey={activeTab} onChange={setActiveTab}>
+          <TabBar
+            variant="page"
+            tabs={TABS}
+            activeKey={activeTab}
+            onChange={(tab) => {
+              setActiveTab(tab);
+              if (tab !== 'roster') {
+                setRosterCountry(null);
+                setRosterCountryScroll(0);
+              }
+            }}
+          >
             {(key) => {
               if (key === 'stats') {
                 return (
@@ -1916,7 +2111,20 @@ function TeamPageContent({ teamId }) {
                   />
                 );
               }
-              if (key === 'roster') return <RosterTab key={`${teamId}:${season}`} teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
+              if (key === 'roster') {
+                return (
+                  <RosterTab
+                    key={`${teamId}:${season}`}
+                    teamId={teamId}
+                    season={season}
+                    selectedCountry={rosterCountry}
+                    selectedCountryScroll={rosterCountryScroll}
+                    onSelectedCountryChange={setRosterCountry}
+                    onSelectedCountryScrollChange={setRosterCountryScroll}
+                    onNavigateAway={onNavigateAway}
+                  />
+                );
+              }
               if (key === 'depth') return <DepthChartTab key={`${teamId}:${season}`} teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
               if (key === 'splits') return <SplitsTab key={`${teamId}:${season}`} teamId={teamId} season={season} />;
               if (key === 'injuries') return <InjuriesTab key={`${teamId}:${season}`} teamId={teamId} season={season} onNavigateAway={onNavigateAway} />;
@@ -1932,7 +2140,6 @@ function TeamPageContent({ teamId }) {
 
 export default function TeamPage() {
   const { teamId } = useParams();
-  const location = useLocation();
 
-  return <TeamPageContent key={`${teamId}:${location.key}`} teamId={teamId} />;
+  return <TeamPageContent key={teamId} teamId={teamId} />;
 }

@@ -15,7 +15,16 @@ export function restoreListScroll(key) {
     sessionStorage.removeItem(`${SCROLL_PREFIX}${key}`);
     const y = parseInt(raw, 10);
     if (Number.isNaN(y)) return;
-    requestAnimationFrame(() => window.scrollTo(0, y));
+
+    let attempts = 0;
+    const restore = () => {
+      window.scrollTo(0, y);
+      attempts += 1;
+      if (attempts >= 12 || Math.abs(window.scrollY - y) <= 2) return;
+      window.setTimeout(restore, 75);
+    };
+
+    requestAnimationFrame(restore);
   } catch {
     /* ignore */
   }
