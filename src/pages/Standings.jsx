@@ -20,6 +20,35 @@ const STANDINGS_TABS = [
   { key: 'vsdivision', label: 'Vs. Division' },
 ];
 
+const LEAGUE_LOGOS = {
+  AL: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg',
+  NL: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg',
+};
+
+function leagueKeyFromName(name) {
+  if (/\bamerican league\b|\bAL\b/i.test(name ?? '')) return 'AL';
+  if (/\bnational league\b|\bNL\b/i.test(name ?? '')) return 'NL';
+  return null;
+}
+
+function LeagueTitle({ title, className = '' }) {
+  const leagueKey = leagueKeyFromName(title);
+
+  return (
+    <span className={`inline-flex items-center gap-2 pl-2 ${className}`}>
+      {leagueKey && (
+        <img
+          src={LEAGUE_LOGOS[leagueKey]}
+          alt=""
+          className="w-5 h-5 object-contain flex-shrink-0"
+          onError={(e) => (e.target.style.display = 'none')}
+        />
+      )}
+      <span>{title}</span>
+    </span>
+  );
+}
+
 const VIEW_SCOPE_OPTIONS = [
   { value: 'division', label: 'Division' },
   { value: 'league', label: 'League' },
@@ -536,7 +565,9 @@ export default function Standings() {
     return (
       <div key={title} className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden px-3">
         <div className="px-5 sm:px-6 py-3 border-b border-slate-800">
-          <h2 className="font-semibold text-base sm:text-lg">{title}</h2>
+          <h2 className="font-semibold text-base sm:text-lg">
+            <LeagueTitle title={title} />
+          </h2>
         </div>
         <div className={TABLE_SCROLL}>
           <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT_STANDINGS} ${tableMinWidthClass}`}>
@@ -658,7 +689,7 @@ export default function Standings() {
           {grouped.groups.map((group, index) => (
             <div key={group.name} className={`${index > 0 ? 'border-t border-slate-700/60 pt-5' : ''} space-y-4`}>
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
-                {group.name}
+                <LeagueTitle title={group.name} />
               </div>
               {group.divisions.map((div) => renderTable(div.name, div.teams, { highlightLeader: true }))}
             </div>

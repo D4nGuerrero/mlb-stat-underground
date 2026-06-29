@@ -128,6 +128,12 @@ function compactPlayerNameFromFullName(fullName, fallback) {
 
 const BASE_URL = 'https://www.mlbstatic.com/team-logos';
 
+const TEAM_LOGO_OVERRIDES = {
+  484: 'https://midfield.mlbstatic.com/v1/team/484/spots/256',
+  536: 'https://lmb.com.mx/_next/image?url=https%3A%2F%2Fd11rb39sj794dg.cloudfront.net%2Fpublic%2F2024-04%2FTecolotes.png&w=96&q=75',
+  562: 'https://sultanes.com.mx/static/images/logo-left.webp',
+};
+
 /**
  * Get MLB team logo URL
  * @param {number|string} teamId 
@@ -140,6 +146,7 @@ export const teamLogoUrl = (teamId, options = {}) => {
   const id = String(teamId).trim();
 
   if (!id) return '';
+  if (TEAM_LOGO_OVERRIDES[id]) return TEAM_LOGO_OVERRIDES[id];
 
   // Teams that look better with the regular (non-cap) logo
   const regularPreferredTeams = new Set([

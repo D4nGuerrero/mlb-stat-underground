@@ -1172,17 +1172,15 @@ export default function StatsApp() {
   const hotColdSelectedScope = HOT_COLD_SCOPE_OPTIONS.find((option) => option.value === hotColdScope);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-      <div className="mb-6">
-        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>Player Stats</div>
-        <h1 className="font-display text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
-        <p className="text-slate-400 mt-1 text-sm">Search any player · Watch favorites · Roster impact</p>
+    <div className="max-w-5xl mx-auto sm:px-6 py-0 sm:py-8">
+      <div className="mb-0 px-4 sm:px-0">
+        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] m-4 uppercase`}>Player Stats</div>
+        <h1 className="font-display py-3 text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
       </div>
 
       <TabBar
-        className="mb-6"
+        className="mb-4"
         variant="page"
-        listClassName="bg-slate-950/40 rounded-t-2xl px-1 pt-1"
         tabClassName="font-semibold"
         tabs={[
           { key: 'search', label: 'Player Search' },
@@ -1193,6 +1191,7 @@ export default function StatsApp() {
         onChange={handleTabChange}
       />
 
+      <div className="px-4 sm:px-0 pb-6 sm:pb-0">
       {/* PLAYER SEARCH TAB */}
       {activeTab === 'search' && (
         <div className="space-y-6">
@@ -1587,6 +1586,7 @@ export default function StatsApp() {
       )}
         </div>
       )}
+      </div>
     </div>
   );
 }
