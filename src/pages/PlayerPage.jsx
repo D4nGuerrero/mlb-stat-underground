@@ -1493,6 +1493,15 @@ function isTradeTransaction(txn) {
   return txn?.typeCode === 'TR' || /^trade$/i.test(txn?.typeDesc?.trim() ?? '');
 }
 
+const isCashTradeItem = (txn) => /cash/i.test(`${txn?.description ?? ''} ${txn?.typeDesc ?? ''}`);
+
+const formatCashTransactionText = (text = '') => {
+  if (!text || text.includes('💵')) return text;
+  return text
+    .replace(/\bcash considerations\b/gi, '💵 Cash Considerations')
+    .replace(/\bcash\b/gi, '💵 Cash');
+};
+
 function txnApiDateParam(isoDate) {
   if (!isoDate) return null;
   const [y, m, d] = isoDate.split('-');
@@ -1520,14 +1529,16 @@ async function fetchTradeBundle(txn) {
 function groupTradePlayers(transactions) {
   const byToTeam = new Map();
   for (const t of transactions) {
-    if (!t.person?.id || !t.toTeam?.id) continue;
+    if (!t.toTeam?.id) continue;
     const key = t.toTeam.id;
     if (!byToTeam.has(key)) {
       byToTeam.set(key, { team: t.toTeam, players: [] });
     }
     const bucket = byToTeam.get(key);
-    if (!bucket.players.some((p) => p.id === t.person.id)) {
+    if (t.person?.id && !bucket.players.some((p) => p.id === t.person.id)) {
       bucket.players.push(t.person);
+    } else if (!t.person?.id && isCashTradeItem(t) && !bucket.players.some((p) => p.cash)) {
+      bucket.players.push({ id: `cash-${t.toTeam.id}`, fullName: '💵 Cash Considerations', cash: true });
     }
   }
   return [...byToTeam.values()].sort((a, b) => a.team.name.localeCompare(b.team.name));
@@ -1583,6 +1594,9 @@ function ReceivesLabel() {
 }
 
 function TransactionPlayerLink({ person, onNavigate }) {
+  if (person?.cash) {
+    return <span className="text-slate-300">💵 Cash Considerations</span>;
+  }
   if (!person?.id) {
     return <span className="text-slate-300">{person?.fullName ?? '—'}</span>;
   }
@@ -1675,11 +1689,17 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
                       <ul className="space-y-2">
                         {players.map((person) => (
                           <li key={person.id} className="flex items-center gap-2">
-                            <img
-                              src={playerHeadshotUrl(person.id)}
-                              alt=""
-                              className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
-                            />
+                            {person.cash ? (
+                              <span className="flex w-8 h-8 items-center justify-center rounded-full bg-emerald-500/10 text-base flex-shrink-0" aria-hidden>
+                                💵
+                              </span>
+                            ) : (
+                              <img
+                                src={playerHeadshotUrl(person.id)}
+                                alt=""
+                                className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
+                              />
+                            )}
                             <TransactionPlayerLink person={person} onNavigate={onPlayerClick} />
                           </li>
                         ))}
@@ -1703,7 +1723,7 @@ function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPla
 
         {txn.description && (
           <p className="text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
-            {txn.description}
+            {formatCashTransactionText(txn.description)}
           </p>
         )}
       </div>
@@ -1728,6 +1748,8 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [tradeBundle, setTradeBundle] = useState([]);
   const [tradeLoading, setTradeLoading] = useState(false);
+  const [allTradeTxns, setAllTradeTxns] = useState(null);
+  const [tradeLookupLoading, setTradeLookupLoading] = useState(false);
 
   const pushTransactionSheetHistory = useCallback(() => {
     if (txnSheetHistoryRef.current) return;
@@ -1799,6 +1821,33 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
     };
   }, [openTransaction, playerId, playerInfo, savedTxnReturn, yearsBack]);
 
+  useEffect(() => {
+    setAllTradeTxns(null);
+    let cancelled = false;
+    setTradeLookupLoading(true);
+
+    if (!playerId || usingProfileTransactions) {
+      setTradeLookupLoading(false);
+      return undefined;
+    }
+
+    (async () => {
+      try {
+        const fullHistory = await fetchPlayerTransactions(playerId, TXN_MAX_YEARS);
+        if (cancelled) return;
+        setAllTradeTxns(fullHistory.filter(isTradeTransaction));
+      } catch {
+        if (!cancelled) setAllTradeTxns(null);
+      } finally {
+        if (!cancelled) setTradeLookupLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playerId, usingProfileTransactions]);
+
   const canLoadMore = !usingProfileTransactions && yearsBack < TXN_MAX_YEARS;
   const oldestYear = txns.length
     ? new Date(txns[txns.length - 1].date + 'T12:00:00').getFullYear()
@@ -1841,8 +1890,13 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
     return <div className="text-slate-500 text-sm text-center py-12">No transactions found.</div>;
   }
 
-  const visibleTxns = txnFilter === 'trades' ? txns.filter(isTradeTransaction) : txns;
-  const tradeCount = txns.filter(isTradeTransaction).length;
+  const loadedTradeTxns = txns.filter(isTradeTransaction);
+  const tradeTxns = allTradeTxns ?? loadedTradeTxns;
+  const visibleTxns = txnFilter === 'trades' ? tradeTxns : txns;
+  const tradeCount = tradeTxns.length;
+  const hiddenTradeCount = Math.max(0, tradeCount - loadedTradeTxns.length);
+  const tradeLabel = tradeLookupLoading && allTradeTxns == null ? 'Trades…' : `Trades (${tradeCount})`;
+  const showLoadMore = canLoadMore && txnFilter !== 'trades';
 
   return (
     <>
@@ -1858,7 +1912,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
             size="sm"
             options={[
               { value: 'all', label: 'All' },
-              { value: 'trades', label: `Trades (${tradeCount})` },
+              { value: 'trades', label: tradeLabel },
             ]}
           />
         </div>
@@ -1867,7 +1921,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
       <div className="space-y-1">
         {visibleTxns.length === 0 && (
           <div className="py-12 text-center text-slate-500 text-sm">
-            No trades found in the loaded transaction history.
+            {tradeLookupLoading ? 'Searching full transaction history for trades…' : 'No trades found.'}
           </div>
         )}
         {visibleTxns.map((t, i) => {
@@ -1884,7 +1938,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
                   </div>
                 )}
                 {t.description && t.typeDesc && t.description !== t.typeDesc && (
-                  <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{formatCashTransactionText(t.description)}</div>
                 )}
               </div>
               {isTrade && (
@@ -1917,7 +1971,13 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
         })}
       </div>
 
-      {canLoadMore && (
+      {txnFilter === 'trades' && hiddenTradeCount > 0 && (
+        <div className="px-4 pt-3 text-center text-[11px] text-slate-500">
+          Showing {hiddenTradeCount} older {hiddenTradeCount === 1 ? 'trade' : 'trades'} from full history.
+        </div>
+      )}
+
+      {showLoadMore && (
         <div className="pt-4 pb-2 flex flex-col items-center gap-1.5">
           <button
             type="button"

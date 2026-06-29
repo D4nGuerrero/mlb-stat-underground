@@ -61,10 +61,57 @@ const isInjuredStatus = (status) => {
   return /^D(7|10|15|60)$/.test(code) || /injur/i.test(description);
 };
 
-const injuryStatusTone = (code = '') => {
-  if (code === 'D60' || code === 'ILF') return 'border-red-500/40 bg-red-500/10 text-red-200';
-  if (code === 'D15' || code === 'D10' || code === 'D7') return 'border-amber-400/40 bg-amber-400/10 text-amber-100';
-  return 'border-slate-600 bg-slate-800 text-slate-200';
+const injuryTransactionMatches = (txn) =>
+  txn?.person?.id &&
+  txn.typeCode === 'SC' &&
+  /(placed|transferred).+injured list/i.test(txn.description ?? '');
+
+const parseInjuryInfo = (txn) => {
+  if (!txn) return null;
+  const description = txn.description ?? '';
+  const retroMatch = description.match(/retroactive to ([^.]+)\./i);
+  const sentences = description.split('.').map((part) => part.trim()).filter(Boolean);
+  const reason = sentences.find((sentence) =>
+    !/(placed|transferred|injured list|retroactive)/i.test(sentence)
+  );
+
+  return {
+    since: retroMatch?.[1] ?? fmtDateWithYear(txn.date),
+    transactionDate: fmtDateWithYear(txn.date),
+    reason: reason || 'Injury details unavailable',
+  };
+};
+
+const injuryHeadingMeta = (label = '') => {
+  const text = `${label}`.toLowerCase();
+  if (text.includes('60')) {
+    return {
+      icon: 'fa-bed-pulse',
+      tone: 'border-red-400/30 bg-red-500/10 text-red-200',
+    };
+  }
+  if (text.includes('15')) {
+    return {
+      icon: 'fa-briefcase-medical',
+      tone: 'border-orange-400/30 bg-orange-500/10 text-orange-200',
+    };
+  }
+  if (text.includes('10')) {
+    return {
+      icon: 'fa-bandage',
+      tone: 'border-amber-400/30 bg-amber-500/10 text-amber-100',
+    };
+  }
+  if (text.includes('7')) {
+    return {
+      icon: 'fa-notes-medical',
+      tone: 'border-sky-400/30 bg-sky-500/10 text-sky-100',
+    };
+  }
+  return {
+    icon: 'fa-user-injured',
+    tone: 'border-slate-600 bg-slate-800 text-slate-200',
+  };
 };
 
 const txnApiDateParam = (isoDate) => {
@@ -1960,17 +2007,40 @@ function SplitsTab({ teamId, season }) {
 // ─── Injuries Tab ────────────────────────────────────────────────────────────
 function InjuriesTab({ teamId, season, onNavigateAway }) {
   const [roster, setRoster] = useState(null);
+  const [injuryInfoByPlayer, setInjuryInfoByPlayer] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(
+        const today = new Date();
+        const seasonStart = new Date(Number(season), 0, 1);
+        const [res, txnsJson] = await Promise.all([
+          fetch(
           `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=40Man&hydrate=person(position)&season=${season}`
-        );
+          ),
+          fetchStatsApiJson('/api/v1/transactions', {
+            query: {
+              teamId,
+              startDate: localDateKey(seasonStart),
+              endDate: localDateKey(today),
+              sportId: 1,
+            },
+            ttl: 60_000,
+            retries: 1,
+          }),
+        ]);
         const json = await res.json();
         setRoster((json.roster ?? []).filter((entry) => isInjuredStatus(entry.status)));
+        const info = {};
+        [...(txnsJson.transactions ?? [])]
+          .filter(injuryTransactionMatches)
+          .sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0))
+          .forEach((txn) => {
+            if (!info[txn.person.id]) info[txn.person.id] = parseInjuryInfo(txn);
+          });
+        setInjuryInfoByPlayer(info);
       } catch (e) { setError(e.message); }
       finally { setLoading(false); }
     })();
@@ -2014,50 +2084,66 @@ function InjuriesTab({ teamId, season, onNavigateAway }) {
 
       {injured.length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No 40-man injuries reported.</div>}
 
-      {Object.entries(grouped).map(([statusLabel, players]) => (
+      {Object.entries(grouped).map(([statusLabel, players]) => {
+        const headingMeta = injuryHeadingMeta(statusLabel);
+        return (
         <section key={statusLabel} className="overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/70">
           <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
-            <div className="font-semibold text-slate-100">{statusLabel}</div>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={`grid h-9 w-9 flex-shrink-0 place-items-center rounded-2xl border ${headingMeta.tone}`}>
+                <i className={`fa-solid ${headingMeta.icon}`} aria-hidden />
+              </span>
+              <div className="truncate font-semibold text-slate-100">{statusLabel}</div>
+            </div>
             <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-400">
               {players.length}
             </span>
           </div>
           <div className="divide-y divide-slate-800/70">
-            {players.map((p) => (
-              <Link
-                key={p.person.id}
-                to={`/player/${p.person.id}`}
-                onClick={onNavigateAway}
-                className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-800/35"
-              >
-                <img
-                  src={playerHeadshotUrl(p.person.id)}
-                  alt=""
-                  className="h-12 w-12 rounded-2xl border border-slate-700 bg-slate-800 object-cover"
-                  onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-                />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-bold text-slate-100">{p.person.fullName}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                    <span>{p.position?.abbreviation ?? p.person?.primaryPosition?.abbreviation ?? '—'}</span>
-                    <span>·</span>
-                    <span>#{p.jerseyNumber ?? p.person?.primaryNumber ?? '—'}</span>
-                    {p.person?.pitchHand?.code && (
-                      <>
-                        <span>·</span>
-                        <span>{p.person.pitchHand.code}HP</span>
-                      </>
-                    )}
+            {players.map((p) => {
+              const injuryInfo = injuryInfoByPlayer[p.person.id];
+              return (
+                <Link
+                  key={p.person.id}
+                  to={`/player/${p.person.id}`}
+                  onClick={onNavigateAway}
+                  className="grid grid-cols-[auto_1fr] items-start gap-3 px-4 py-3 transition-colors hover:bg-slate-800/35"
+                >
+                  <img
+                    src={playerHeadshotUrl(p.person.id)}
+                    alt=""
+                    className="h-12 w-12 rounded-2xl border border-slate-700 bg-slate-800 object-cover"
+                    onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <div className="truncate text-sm font-bold text-slate-100">{p.person.fullName}</div>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {p.position?.abbreviation ?? p.person?.primaryPosition?.abbreviation ?? '—'}
+                        {p.jerseyNumber || p.person?.primaryNumber ? ` · #${p.jerseyNumber ?? p.person.primaryNumber}` : ''}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-300">
+                      {injuryInfo?.reason ?? 'Injury details unavailable'}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                      <span>
+                        Since <span className="font-semibold text-slate-400">{injuryInfo?.since ?? '—'}</span>
+                      </span>
+                      {injuryInfo?.transactionDate && injuryInfo.transactionDate !== injuryInfo.since && (
+                        <span>
+                          Reported <span className="font-semibold text-slate-400">{injuryInfo.transactionDate}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <span className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${injuryStatusTone(p.status?.code)}`}>
-                  {p.status?.code ?? 'IL'}
-                </span>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }
