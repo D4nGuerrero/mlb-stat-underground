@@ -37,6 +37,247 @@ const fmtDate = (d) => {
   const dt = new Date(d + 'T00:00:00');
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
+
+const fmtDateWithYear = (d) => {
+  if (!d) return '—';
+  const dt = new Date(`${d}T00:00:00`);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const isTradeTransaction = (txn) =>
+  txn?.typeCode === 'TR' || /^trade$/i.test(txn?.typeDesc?.trim() ?? '');
+
+const isCashTradeItem = (txn) => /cash/i.test(`${txn?.description ?? ''} ${txn?.typeDesc ?? ''}`);
+
+const tradeItemLabel = (txn) => {
+  if (txn?.person?.fullName) return txn.person.fullName;
+  if (isCashTradeItem(txn)) return '💵 Cash Considerations';
+  return '—';
+};
+
+const isInjuredStatus = (status) => {
+  const code = status?.code ?? '';
+  const description = status?.description ?? '';
+  return /^D(7|10|15|60)$/.test(code) || /injur/i.test(description);
+};
+
+const injuryStatusTone = (code = '') => {
+  if (code === 'D60' || code === 'ILF') return 'border-red-500/40 bg-red-500/10 text-red-200';
+  if (code === 'D15' || code === 'D10' || code === 'D7') return 'border-amber-400/40 bg-amber-400/10 text-amber-100';
+  return 'border-slate-600 bg-slate-800 text-slate-200';
+};
+
+const txnApiDateParam = (isoDate) => {
+  if (!isoDate) return null;
+  const [year, month, day] = isoDate.split('-');
+  return `${month}/${day}/${year}`;
+};
+
+async function fetchTeamTradeBundle(txn) {
+  const teamId = txn.fromTeam?.id ?? txn.toTeam?.id;
+  const dateParam = txnApiDateParam(txn.date);
+  if (!teamId || !dateParam || txn.id == null) return [txn];
+
+  try {
+    const json = await fetchStatsApiJson('/api/v1/transactions', {
+      query: { teamId, date: dateParam, sportId: 1 },
+      ttl: 60_000,
+      retries: 1,
+    });
+    const related = (json.transactions ?? []).filter((t) => t.id === txn.id);
+    return related.length ? related : [txn];
+  } catch {
+    return [txn];
+  }
+}
+
+function groupTradePlayersByReceivingTeam(transactions) {
+  const byTeam = new Map();
+  for (const t of transactions) {
+    if (!t.toTeam?.id) continue;
+    if (!byTeam.has(t.toTeam.id)) byTeam.set(t.toTeam.id, { team: t.toTeam, players: [] });
+    const bucket = byTeam.get(t.toTeam.id);
+    if (t.person?.id) {
+      if (!bucket.players.some((p) => p.id === t.person.id)) bucket.players.push(t.person);
+    } else if (isCashTradeItem(t) && !bucket.players.some((p) => p.cash)) {
+      bucket.players.push({ id: `cash-${t.toTeam.id}`, fullName: '💵 Cash Considerations', cash: true });
+    }
+  }
+  return [...byTeam.values()].sort((a, b) => a.team.name.localeCompare(b.team.name));
+}
+
+function tradeSummaryLabel(rows) {
+  const playerNames = rows
+    .map((row) => row.person?.fullName)
+    .filter(Boolean)
+    .filter((name, index, all) => all.indexOf(name) === index);
+  const hasCash = rows.some(isCashTradeItem);
+  const labels = [...playerNames.slice(0, 2)];
+  if (hasCash) labels.push('💵 Cash');
+  if (playerNames.length > 2) labels.push(`+${playerNames.length - 2} more`);
+  return labels.length ? labels.join(', ') : 'Trade';
+}
+
+function tradeRowAliases(row) {
+  const date = row.date ?? 'no-date';
+  const description = row.description ? row.description.trim().toLowerCase() : '';
+  return [
+    row.id != null ? `id:${date}:${row.id}` : null,
+    description ? `desc:${date}:${description}` : null,
+    row.person?.id && row.toTeam?.id ? `to:${date}:${row.person.id}:${row.toTeam.id}` : null,
+    row.person?.id && row.fromTeam?.id && row.toTeam?.id
+      ? `flow:${date}:${row.person.id}:${row.fromTeam.id}:${row.toTeam.id}`
+      : null,
+  ].filter(Boolean);
+}
+
+function mergeTradeGroups(groups, aliases, targetKey, sourceKey) {
+  if (targetKey === sourceKey || !groups.has(sourceKey)) return targetKey;
+  const target = groups.get(targetKey) ?? [];
+  const source = groups.get(sourceKey) ?? [];
+  groups.set(targetKey, [...target, ...source]);
+  groups.delete(sourceKey);
+  for (const [alias, key] of aliases.entries()) {
+    if (key === sourceKey) aliases.set(alias, targetKey);
+  }
+  return targetKey;
+}
+
+function collapseTradeTransactions(rows) {
+  const groups = new Map();
+  const aliases = new Map();
+  for (const row of rows) {
+    if (!isTradeTransaction(row)) {
+      groups.set(`row:${row.id ?? row.date}:${row.person?.id ?? groups.size}`, [row]);
+      continue;
+    }
+
+    const rowAliases = tradeRowAliases(row);
+    const matchingKeys = [...new Set(rowAliases.map((alias) => aliases.get(alias)).filter(Boolean))];
+    let key = matchingKeys[0] ?? `trade:${row.id ?? 'no-id'}:${row.date ?? 'no-date'}:${groups.size}`;
+    if (!groups.has(key)) groups.set(key, []);
+    for (const existingKey of matchingKeys.slice(1)) {
+      key = mergeTradeGroups(groups, aliases, key, existingKey);
+    }
+
+    const rowKey = `${row.id ?? 'no-id'}:${row.person?.id ?? 'cash'}:${row.fromTeam?.id ?? 'from'}:${row.toTeam?.id ?? 'to'}:${row.description ?? ''}`;
+    if (!groups.get(key).some((existing) =>
+      `${existing.id ?? 'no-id'}:${existing.person?.id ?? 'cash'}:${existing.fromTeam?.id ?? 'from'}:${existing.toTeam?.id ?? 'to'}:${existing.description ?? ''}` === rowKey
+    )) {
+      groups.get(key).push(row);
+    }
+
+    for (const alias of rowAliases) aliases.set(alias, key);
+  }
+
+  return [...groups.values()].map((group) => {
+    if (group.length === 1 && !isTradeTransaction(group[0])) return group[0];
+    const primary = group.find((row) => row.person?.id) ?? group[0];
+    return {
+      ...primary,
+      person: primary.person?.id ? primary.person : { fullName: tradeSummaryLabel(group) },
+      tradeRows: group,
+      tradeSummary: tradeSummaryLabel(group),
+    };
+  });
+}
+
+function uniqueTradeRows(rows, teamIdForKey) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = `${row.person?.id ?? 'cash'}:${teamIdForKey(row) ?? 'team'}:${row.date ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const parseNumber = (value) => {
+  const n = Number.parseFloat(String(value ?? '').replace(/^\./, '0.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const inningsToOuts = (ip) => {
+  const [whole = '0', frac = '0'] = String(ip ?? '0').split('.');
+  return Number.parseInt(whole, 10) * 3 + Number.parseInt(frac, 10);
+};
+
+const statYear = (split) => Number(split?.season) || Number(split?.team?.season) || 0;
+
+function scoreTradeSeason(split) {
+  const stat = split.stat ?? {};
+  if (stat.inningsPitched != null || stat.gamesPitched != null) {
+    const ip = inningsToOuts(stat.inningsPitched) / 3;
+    return (
+      ip * 0.08 +
+      parseNumber(stat.strikeOuts) * 0.035 +
+      parseNumber(stat.wins) * 0.22 +
+      parseNumber(stat.saves) * 0.12 +
+      parseNumber(stat.holds) * 0.08 +
+      parseNumber(stat.gamesPlayed) * 0.015 -
+      parseNumber(stat.earnedRuns) * 0.035 -
+      parseNumber(stat.losses) * 0.06
+    );
+  }
+
+  return (
+    parseNumber(stat.gamesPlayed) * 0.025 +
+    parseNumber(stat.hits) * 0.11 +
+    parseNumber(stat.doubles) * 0.08 +
+    parseNumber(stat.triples) * 0.15 +
+    parseNumber(stat.homeRuns) * 0.45 +
+    parseNumber(stat.rbi) * 0.13 +
+    parseNumber(stat.runs) * 0.12 +
+    parseNumber(stat.baseOnBalls) * 0.07 +
+    parseNumber(stat.stolenBases) * 0.07 -
+    parseNumber(stat.strikeOuts) * 0.015
+  );
+}
+
+async function fetchPlayerYearByYearStats(playerId, cache) {
+  if (!playerId) return [];
+  if (cache.has(playerId)) return cache.get(playerId);
+
+  const promise = fetchStatsApiJson(`/api/v1/people/${playerId}/stats`, {
+    query: { stats: 'yearByYear', group: 'hitting,pitching', hydrate: 'team' },
+    ttl: 5 * 60_000,
+    retries: 1,
+  })
+    .then((json) => (json.stats ?? []).flatMap((section) => section.splits ?? []))
+    .catch(() => []);
+
+  cache.set(playerId, promise);
+  return promise;
+}
+
+async function scorePlayerForTeamAfterTrade(person, receivingTeamId, tradeYear, statCache) {
+  const splits = await fetchPlayerYearByYearStats(person?.id, statCache);
+  const seenSplits = new Set();
+  const teamSplits = splits.filter((split) => {
+    const key = `${split.group?.displayName ?? ''}:${split.season}:${split.team?.id}:${split.gameType}`;
+    if (
+      Number(split.team?.id) !== Number(receivingTeamId) ||
+      statYear(split) < tradeYear ||
+      split.gameType !== 'R' ||
+      seenSplits.has(key)
+    ) {
+      return false;
+    }
+    seenSplits.add(key);
+    return true;
+  });
+  const score = teamSplits.reduce((total, split) => total + scoreTradeSeason(split), 0);
+  const seasons = new Set(teamSplits.map((split) => split.season).filter(Boolean)).size;
+  const games = teamSplits.reduce((total, split) => total + parseNumber(split.stat?.gamesPlayed), 0);
+  return {
+    person,
+    teamId: receivingTeamId,
+    score: Math.max(0, score + seasons * 0.75),
+    seasons,
+    games,
+  };
+}
+
 const fmtGameTime = (gameDate) => {
   if (!gameDate) return 'TBD';
   return new Date(gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -934,6 +1175,8 @@ function ScheduleTab({
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    setLoading(true);
+    setError(null);
 
     (async () => {
       try {
@@ -1722,10 +1965,10 @@ function InjuriesTab({ teamId, season, onNavigateAway }) {
     (async () => {
       try {
         const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=injuries&hydrate=person(position)&season=${season}`
+          `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=40Man&hydrate=person(position)&season=${season}`
         );
         const json = await res.json();
-        setRoster(json.roster ?? []);
+        setRoster((json.roster ?? []).filter((entry) => isInjuredStatus(entry.status)));
       } catch (e) { setError(e.message); }
       finally { setLoading(false); }
     })();
@@ -1734,43 +1977,362 @@ function InjuriesTab({ teamId, season, onNavigateAway }) {
   if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
+  const injured = roster ?? [];
+  const grouped = injured.reduce((acc, p) => {
+    const key = p.status?.description ?? p.status?.code ?? 'Injured';
+    (acc[key] = acc[key] ?? []).push(p);
+    return acc;
+  }, {});
+  const pitchers = injured.filter((p) => p.position?.abbreviation === 'P').length;
+  const positionPlayers = injured.length - pitchers;
+
   return (
-    <div className="space-y-2">
-      {(roster ?? []).length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No injuries reported.</div>}
-      {(roster ?? []).map((p) => (
-        <Link
-          key={p.person.id}
-          to={`/player/${p.person.id}`}
-          onClick={onNavigateAway}
-          className="flex items-center gap-3 bg-red-950/20 hover:bg-red-950/30 border border-red-900/30 rounded-2xl px-4 py-3 transition-colors"
-        >
-          <img src={playerHeadshotUrl(p.person.id)} alt="" className="w-10 h-10 rounded-xl object-cover border border-slate-700 flex-shrink-0" onError={(e) => (e.target.src = FALLBACK_HEADSHOT)} />
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm">{p.person.fullName}</div>
-            <div className="text-xs text-slate-400">{p.person?.primaryPosition?.name} · #{p.jerseyNumber ?? '—'}</div>
+    <div className="space-y-4">
+      <div className="rounded-3xl border border-slate-700/60 bg-slate-900/70 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-red-300">Injury Report</div>
+            <div className="mt-1 text-sm text-slate-400">
+              40-man roster injured-list statuses from MLB Stats API.
+            </div>
           </div>
-          {p.status && <div className="text-xs text-red-400 font-medium flex-shrink-0">{p.status.description ?? p.status.code}</div>}
-        </Link>
+          <div className="flex flex-wrap justify-end gap-2 text-xs">
+            <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 font-semibold text-slate-300">
+              {injured.length} total
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 font-semibold text-slate-300">
+              {pitchers} P
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 font-semibold text-slate-300">
+              {positionPlayers} POS
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {injured.length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No 40-man injuries reported.</div>}
+
+      {Object.entries(grouped).map(([statusLabel, players]) => (
+        <section key={statusLabel} className="overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/70">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <div className="font-semibold text-slate-100">{statusLabel}</div>
+            <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-400">
+              {players.length}
+            </span>
+          </div>
+          <div className="divide-y divide-slate-800/70">
+            {players.map((p) => (
+              <Link
+                key={p.person.id}
+                to={`/player/${p.person.id}`}
+                onClick={onNavigateAway}
+                className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-800/35"
+              >
+                <img
+                  src={playerHeadshotUrl(p.person.id)}
+                  alt=""
+                  className="h-12 w-12 rounded-2xl border border-slate-700 bg-slate-800 object-cover"
+                  onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+                />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-slate-100">{p.person.fullName}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                    <span>{p.position?.abbreviation ?? p.person?.primaryPosition?.abbreviation ?? '—'}</span>
+                    <span>·</span>
+                    <span>#{p.jerseyNumber ?? p.person?.primaryNumber ?? '—'}</span>
+                    {p.person?.pitchHand?.code && (
+                      <>
+                        <span>·</span>
+                        <span>{p.person.pitchHand.code}HP</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <span className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${injuryStatusTone(p.status?.code)}`}>
+                  {p.status?.code ?? 'IL'}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
 }
 
+function TeamTradeDetailModal({ txn, tradeBundle, tradeLoading, onClose, onNavigateAway }) {
+  if (!txn) return null;
+  const tradeGroups = groupTradePlayersByReceivingTeam(tradeBundle);
+
+  return (
+    <Modal
+      open={Boolean(txn)}
+      onClose={onClose}
+      size="lg"
+      panelClassName="max-h-[90vh] sm:max-h-[85vh] overflow-y-auto bg-[#0d1520] border-slate-700/70"
+    >
+      <div className="p-5 sm:p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className={`text-lg sm:text-xl font-bold text-${THEME_COLOR}-300`}>Trade</div>
+            <p className="text-sm text-slate-500 mt-1">{fmtDateWithYear(txn.date)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-lg flex-shrink-0"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        {tradeLoading ? (
+          <LoadingSpinner size="md" py="py-8" />
+        ) : tradeGroups.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {tradeGroups.map(({ team, players }) => (
+              <div key={team.id} className="rounded-3xl border border-slate-700/60 bg-slate-900/70 p-4">
+                <div className="mb-3 flex items-center gap-3">
+                  <img src={teamLogoUrl(team.id)} alt="" className="h-12 w-12 object-contain" />
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Receives</div>
+                    <div className="truncate font-bold text-slate-100">{team.name}</div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {players.map((person) => (
+                    person.cash ? (
+                      <div
+                        key={person.id}
+                        className="flex items-center gap-2 rounded-2xl bg-slate-800/50 px-3 py-2"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-lg" aria-hidden>
+                          💵
+                        </span>
+                        <span className="text-sm font-semibold text-slate-200">Cash Considerations</span>
+                      </div>
+                    ) : (
+                      <Link
+                        key={person.id}
+                        to={`/player/${person.id}`}
+                        onClick={onNavigateAway}
+                        className="flex items-center gap-2 rounded-2xl bg-slate-800/50 px-3 py-2 transition-colors hover:bg-slate-800"
+                      >
+                        <img
+                          src={playerHeadshotUrl(person.id)}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover bg-slate-700"
+                          onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+                        />
+                        <span className="text-sm font-semibold text-slate-200">{person.fullName}</span>
+                      </Link>
+                    )
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">
+            Trade details are unavailable for this row.
+          </div>
+        )}
+
+        {txn.description && (
+          <p className="border-t border-slate-800/60 pt-4 text-sm leading-relaxed text-slate-400">
+            {txn.description}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function TradeAnalysisModal({ open, onClose, loading, error, analysis, progress }) {
+  const renderTrade = (trade, tone) => (
+    <div
+      key={`${trade.date}-${trade.id}`}
+      className={`rounded-3xl border p-4 ${
+        tone === 'best'
+          ? 'border-emerald-500/25 bg-emerald-500/5'
+          : 'border-red-500/25 bg-red-500/5'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-slate-100">{fmtDateWithYear(trade.date)}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            Acquired {trade.acquiredPlayers.length || 0} · Lost {trade.lostPlayers.length || 0}
+          </div>
+        </div>
+        <div className={`font-display text-3xl tabular-nums ${trade.net >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+          {trade.net >= 0 ? '+' : ''}{trade.net.toFixed(1)}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-emerald-300">Value In</div>
+          <div className="space-y-1">
+            {trade.acquiredPlayers.length ? trade.acquiredPlayers.map((p) => (
+              <div key={p.person.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate text-slate-300">{p.person.fullName}</span>
+                <span className="font-mono text-slate-500">{p.score.toFixed(1)}</span>
+              </div>
+            )) : <div className="text-xs text-slate-600">No tracked MLB value</div>}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-red-300">Value Out</div>
+          <div className="space-y-1">
+            {trade.lostPlayers.length ? trade.lostPlayers.map((p) => (
+              <div key={p.person.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate text-slate-300">{p.person.fullName}</span>
+                <span className="font-mono text-slate-500">{p.score.toFixed(1)}</span>
+              </div>
+            )) : <div className="text-xs text-slate-600">No tracked MLB value</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="full"
+      title="Trade Analysis"
+      className="px-3 sm:px-6"
+      panelClassName="mx-auto max-w-6xl max-h-[90vh] overflow-y-auto bg-[#0d1520] border-slate-700/70"
+    >
+      <div className="p-4 sm:p-5 space-y-4">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-xs leading-relaxed text-slate-400">
+          Estimate based on post-trade MLB production with the receiving team. It does not include salaries,
+          extensions, prospects who never reached MLB, cash, draft picks, or WAR.
+        </div>
+
+        {loading && (
+          <div className="py-10">
+            <LoadingSpinner size="lg" py="py-4" />
+            <div className="mx-auto mt-4 max-w-md">
+              <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                <span>Analyzing trades</span>
+                <span>{progress.done} / {progress.total || '...'}</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full border border-slate-700 bg-slate-950">
+                <div
+                  className={`h-full rounded-full bg-gradient-to-r from-${THEME_COLOR}-500 via-amber-300 to-red-400 transition-all duration-300`}
+                  style={{ width: progress.total ? `${Math.min(100, (progress.done / progress.total) * 100)}%` : '12%' }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {!loading && error && <div className="py-8 text-center text-sm text-red-400">{error}</div>}
+
+        {!loading && !error && analysis && (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <section className="space-y-3">
+              <div className="text-sm font-black uppercase tracking-[0.18em] text-emerald-300">Top 10 Best</div>
+              {analysis.best.map((trade) => renderTrade(trade, 'best'))}
+            </section>
+            <section className="space-y-3">
+              <div className="text-sm font-black uppercase tracking-[0.18em] text-red-300">Top 10 Worst</div>
+              {analysis.worst.map((trade) => renderTrade(trade, 'worst'))}
+            </section>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+async function analyzeTeamTrades(teamId, trades, onProgress) {
+  const statCache = new Map();
+  const tradeRows = collapseTradeTransactions(trades.filter(isTradeTransaction)).map((trade) => ({
+    key: `${trade.id ?? 'no-id'}:${trade.date}:${trade.tradeSummary ?? tradeItemLabel(trade)}`,
+    rows: trade.tradeRows ?? [trade],
+  }));
+  onProgress?.({ done: 0, total: tradeRows.length });
+  let done = 0;
+  const analyzed = await mapLimit(tradeRows, 5, async ({ key, rows }) => {
+    const tradeYear = Number(rows[0]?.date?.slice(0, 4)) || 1900;
+    const acquiredRows = uniqueTradeRows(
+      rows.filter((row) => Number(row.toTeam?.id) === Number(teamId) && row.person?.id),
+      () => teamId,
+    );
+    const lostRows = uniqueTradeRows(
+      rows.filter((row) => Number(row.fromTeam?.id) === Number(teamId) && row.person?.id && row.toTeam?.id),
+      (row) => row.toTeam?.id,
+    );
+
+    if (!acquiredRows.length && !lostRows.length) {
+      done += 1;
+      onProgress?.({ done, total: tradeRows.length });
+      return null;
+    }
+
+    const acquiredPlayers = await Promise.all(acquiredRows.map((row) =>
+      scorePlayerForTeamAfterTrade(row.person, teamId, tradeYear, statCache)
+    ));
+    const lostPlayers = await Promise.all(lostRows.map((row) =>
+      scorePlayerForTeamAfterTrade(row.person, row.toTeam.id, tradeYear, statCache)
+    ));
+    const acquiredValue = acquiredPlayers.reduce((sum, player) => sum + player.score, 0);
+    const lostValue = lostPlayers.reduce((sum, player) => sum + player.score, 0);
+
+    const result = {
+      id: rows[0]?.id ?? key,
+      date: rows[0]?.date,
+      acquiredPlayers: acquiredPlayers.sort((a, b) => b.score - a.score),
+      lostPlayers: lostPlayers.sort((a, b) => b.score - a.score),
+      acquiredValue,
+      lostValue,
+      net: acquiredValue - lostValue,
+    };
+    done += 1;
+    onProgress?.({ done, total: tradeRows.length });
+    return result;
+  });
+
+  const valid = analyzed.filter(Boolean);
+  return {
+    best: [...valid].sort((a, b) => b.net - a.net).slice(0, 10),
+    worst: [...valid].sort((a, b) => a.net - b.net).slice(0, 10),
+  };
+}
+
 // ─── Transactions Tab ─────────────────────────────────────────────────────────
 function TransactionsTab({ teamId, onNavigateAway }) {
   const [txns, setTxns] = useState([]);
+  const [txnMode, setTxnMode] = useState('recent');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedTrade, setSelectedTrade] = useState(null);
+  const [tradeBundle, setTradeBundle] = useState([]);
+  const [tradeLoading, setTradeLoading] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisProgress, setAnalysisProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    setLoading(true);
+    setError(null);
 
     (async () => {
       try {
         const today = new Date();
         const start = new Date(today);
-        start.setDate(today.getDate() - 120);
+        if (txnMode === 'trades') {
+          start.setFullYear(1900, 0, 1);
+        } else {
+          start.setDate(today.getDate() - 120);
+        }
         const fmt2 = (d) => localDateKey(d);
         const json = await fetchStatsApiJson('/api/v1/transactions', {
           query: {
@@ -1786,8 +2348,11 @@ function TransactionsTab({ teamId, onNavigateAway }) {
         const sorted = [...(json.transactions ?? [])].sort(
           (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
         );
+        const display = txnMode === 'trades'
+          ? collapseTradeTransactions(sorted.filter(isTradeTransaction))
+          : collapseTradeTransactions(sorted);
         if (!cancelled) {
-          setTxns(sorted);
+          setTxns(display);
           setError(null);
           setLoading(false);
         }
@@ -1802,37 +2367,147 @@ function TransactionsTab({ teamId, onNavigateAway }) {
       cancelled = true;
       controller.abort();
     };
-  }, [teamId]);
+  }, [teamId, txnMode]);
+
+  const openTrade = async (txn) => {
+    setSelectedTrade(txn);
+    setTradeBundle(txn.tradeRows ?? [txn]);
+    setTradeLoading(true);
+    const bundle = txn.tradeRows ?? await fetchTeamTradeBundle(txn);
+    setTradeBundle(bundle);
+    setTradeLoading(false);
+  };
+
+  const runTradeAnalysis = async () => {
+    setAnalysisOpen(true);
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    setAnalysis(null);
+    setAnalysisProgress({ done: 0, total: 0 });
+    try {
+      const sourceRows = txns.flatMap((txn) => txn.tradeRows ?? [txn]);
+      const result = await analyzeTeamTrades(teamId, sourceRows, setAnalysisProgress);
+      setAnalysis(result);
+    } catch (e) {
+      setAnalysisError(e.message || 'Unable to analyze trades.');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
 
   if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
   return (
+    <>
     <div className="space-y-1">
-      {txns.length === 0 && <div className="py-12 text-center text-slate-500 text-sm">No recent transactions.</div>}
-      {txns.map((t, i) => (
-        <div key={t.id ?? `${t.date}-${t.person?.id}-${i}`} className="flex items-start gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors rounded-xl">
-          <div className="w-16 sm:w-20 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{t.date ? fmtDate(t.date) : '—'}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium">
-              {t.person?.id ? (
-                <Link
-                  to={`/player/${t.person.id}`}
-                  onClick={onNavigateAway}
-                  className={`hover:text-${THEME_COLOR}-400 transition-colors`}
-                >
-                  {t.person?.fullName ?? '—'}
-                </Link>
-              ) : (t.person?.fullName ?? '—')}
-            </div>
-            <div className="text-xs text-slate-400 mt-0.5">{t.typeDesc ?? t.description ?? '—'}</div>
-            {t.description && t.typeDesc && t.description !== t.typeDesc && (
-              <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
-            )}
+      <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-800/70 bg-slate-900/60 px-3 py-2">
+        <div className="text-xs text-slate-500">
+          {txnMode === 'trades' ? `${txns.length} all-time trades` : `${txns.length} recent moves`}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {txnMode === 'trades' && txns.length > 0 && (
+            <button
+              type="button"
+              onClick={runTradeAnalysis}
+              className={`rounded-2xl border border-${THEME_COLOR}-500/35 bg-${THEME_COLOR}-500/10 px-3 py-2 text-xs font-bold text-${THEME_COLOR}-200 transition-colors hover:bg-${THEME_COLOR}-500/20`}
+            >
+              Analyze Trades
+            </button>
+          )}
+          <div className="flex rounded-2xl border border-slate-700 bg-slate-800 p-1">
+            <SegmentedControl
+              value={txnMode}
+              onChange={setTxnMode}
+              size="sm"
+              options={[
+                { value: 'recent', label: 'Recent' },
+                { value: 'trades', label: 'Trades All Time' },
+              ]}
+            />
           </div>
         </div>
-      ))}
+      </div>
+
+      {txns.length === 0 && (
+        <div className="py-12 text-center text-slate-500 text-sm">
+          {txnMode === 'trades' ? 'No trades found.' : 'No recent transactions.'}
+        </div>
+      )}
+      {txns.map((t, i) => {
+        const trade = isTradeTransaction(t);
+        const rowLabel = t.tradeSummary ?? tradeItemLabel(t);
+        const content = (
+          <>
+            <div className="w-20 sm:w-28 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">
+              {txnMode === 'trades' ? fmtDateWithYear(t.date) : (t.date ? fmtDate(t.date) : '—')}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium">
+                {t.person?.id && !trade ? (
+                  <Link
+                    to={`/player/${t.person.id}`}
+                    onClick={onNavigateAway}
+                    className={`hover:text-${THEME_COLOR}-400 transition-colors`}
+                  >
+                    {t.person?.fullName ?? '—'}
+                  </Link>
+                ) : rowLabel}
+              </div>
+              <div className={`mt-0.5 text-xs ${trade ? `text-${THEME_COLOR}-300` : 'text-slate-400'}`}>
+                {t.typeDesc ?? t.description ?? '—'}
+              </div>
+              {txnMode === 'trades' && t.fromTeam?.name && t.toTeam?.name && (
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {t.fromTeam.name} → {t.toTeam.name}
+                </div>
+              )}
+              {t.description && t.typeDesc && t.description !== t.typeDesc && (
+                <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{t.description}</div>
+              )}
+            </div>
+            {trade && (
+              <i className="fa-solid fa-chevron-right mt-1 flex-shrink-0 text-[10px] text-slate-600" aria-hidden />
+            )}
+          </>
+        );
+
+        if (trade) {
+          return (
+            <button
+              key={t.id ?? `${t.date}-${t.person?.id}-${i}`}
+              type="button"
+              onClick={() => openTrade(t)}
+              className="flex w-full items-start gap-3 rounded-xl border-b border-slate-800/30 px-3 py-3 text-left transition-colors hover:bg-slate-800/25"
+            >
+              {content}
+            </button>
+          );
+        }
+
+        return (
+          <div key={t.id ?? `${t.date}-${t.person?.id}-${i}`} className="flex items-start gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors rounded-xl">
+            {content}
+          </div>
+        );
+      })}
     </div>
+    <TeamTradeDetailModal
+      txn={selectedTrade}
+      tradeBundle={tradeBundle}
+      tradeLoading={tradeLoading}
+      onClose={() => setSelectedTrade(null)}
+      onNavigateAway={onNavigateAway}
+    />
+    <TradeAnalysisModal
+      open={analysisOpen}
+      onClose={() => setAnalysisOpen(false)}
+      loading={analysisLoading}
+      error={analysisError}
+      analysis={analysis}
+      progress={analysisProgress}
+    />
+    </>
   );
 }
 

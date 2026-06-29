@@ -1717,6 +1717,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const txnSheetHistoryRef = useRef(false);
   const savedTxnReturn = useMemo(() => readTxnSheetReturn(playerId), [playerId]);
   const [txns, setTxns] = useState([]);
+  const [txnFilter, setTxnFilter] = useState('all');
   const [usingProfileTransactions, setUsingProfileTransactions] = useState(false);
   const [yearsBack, setYearsBack] = useState(() => Math.max(
     TXN_INITIAL_YEARS,
@@ -1840,10 +1841,36 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
     return <div className="text-slate-500 text-sm text-center py-12">No transactions found.</div>;
   }
 
+  const visibleTxns = txnFilter === 'trades' ? txns.filter(isTradeTransaction) : txns;
+  const tradeCount = txns.filter(isTradeTransaction).length;
+
   return (
     <>
+      <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-800/70 bg-slate-900/60 px-3 py-2">
+        <div className="text-xs text-slate-500">
+          Showing {visibleTxns.length} of {txns.length}
+          {txnFilter === 'trades' ? ' trade moves' : ' transactions'}
+        </div>
+        <div className="flex rounded-2xl border border-slate-700 bg-slate-800 p-1">
+          <SegmentedControl
+            value={txnFilter}
+            onChange={setTxnFilter}
+            size="sm"
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'trades', label: `Trades (${tradeCount})` },
+            ]}
+          />
+        </div>
+      </div>
+
       <div className="space-y-1">
-        {txns.map((t, i) => {
+        {visibleTxns.length === 0 && (
+          <div className="py-12 text-center text-slate-500 text-sm">
+            No trades found in the loaded transaction history.
+          </div>
+        )}
+        {visibleTxns.map((t, i) => {
           const isTrade = isTradeTransaction(t);
           const rowKey = `${t.id ?? t.date}-${t.person?.id ?? i}`;
           const rowContent = (
