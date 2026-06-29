@@ -8,6 +8,7 @@ import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
 import { fetchStatsApiJson } from '../lib/mlb/client';
 import { countryFlagUrl } from '../utils/countryFlags';
+import { getHistoricalTradeBundle, getHistoricalTradesForTeam, isHistoricalTrade } from '../utils/historicalTrades';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2002 + 1 }, (_, i) => {
@@ -121,6 +122,10 @@ const txnApiDateParam = (isoDate) => {
 };
 
 async function fetchTeamTradeBundle(txn) {
+  if (isHistoricalTrade(txn)) {
+    return getHistoricalTradeBundle(txn);
+  }
+
   const teamId = txn.fromTeam?.id ?? txn.toTeam?.id;
   const dateParam = txnApiDateParam(txn.date);
   if (!teamId || !dateParam || txn.id == null) return [txn];
@@ -2426,18 +2431,26 @@ function TransactionsTab({ teamId, onNavigateAway }) {
           start.setDate(today.getDate() - 120);
         }
         const fmt2 = (d) => localDateKey(d);
-        const json = await fetchStatsApiJson('/api/v1/transactions', {
-          query: {
-            teamId,
-            startDate: fmt2(start),
-            endDate: fmt2(today),
-            sportId: 1,
-          },
-          signal: controller.signal,
-          ttl: 60_000,
-          retries: 1,
-        });
-        const sorted = [...(json.transactions ?? [])].sort(
+        const [statsResult, historicalResult] = await Promise.allSettled([
+          fetchStatsApiJson('/api/v1/transactions', {
+            query: {
+              teamId,
+              startDate: fmt2(start),
+              endDate: fmt2(today),
+              sportId: 1,
+            },
+            signal: controller.signal,
+            ttl: 60_000,
+            retries: 1,
+          }),
+          txnMode === 'trades' ? getHistoricalTradesForTeam(teamId) : Promise.resolve([]),
+        ]);
+        if (cancelled) return;
+        if (statsResult.status === 'rejected' && txnMode !== 'trades') throw statsResult.reason;
+        if (statsResult.status === 'rejected' && historicalResult.status === 'rejected') throw statsResult.reason;
+        const json = statsResult.status === 'fulfilled' ? statsResult.value : { transactions: [] };
+        const historicalTrades = historicalResult.status === 'fulfilled' ? historicalResult.value : [];
+        const sorted = [...(json.transactions ?? []), ...historicalTrades].sort(
           (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
         );
         const display = txnMode === 'trades'

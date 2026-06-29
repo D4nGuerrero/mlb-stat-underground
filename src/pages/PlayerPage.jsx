@@ -11,6 +11,7 @@ import SeasonYearLabel from '../components/SeasonYearLabel';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { fetchStatsApiJson } from '../lib/mlb/client';
 import { countryFlagUrl } from '../utils/countryFlags';
+import { getHistoricalTradeBundle, getHistoricalTradesForPlayer, isHistoricalTrade } from '../utils/historicalTrades';
 import {
   SegmentedControl,
   Select,
@@ -1509,6 +1510,10 @@ function txnApiDateParam(isoDate) {
 }
 
 async function fetchTradeBundle(txn) {
+  if (isHistoricalTrade(txn)) {
+    return getHistoricalTradeBundle(txn);
+  }
+
   const teamId = txn.fromTeam?.id ?? txn.toTeam?.id;
   const dateParam = txnApiDateParam(txn.date);
   if (!teamId || !dateParam || txn.id == null) return [txn];
@@ -1582,6 +1587,25 @@ function sortTransactions(transactions = []) {
   return [...transactions].sort(
     (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
   );
+}
+
+function transactionDedupeKey(txn) {
+  const person = txn.person?.id ?? txn.person?.retroId ?? txn.person?.fullName ?? 'asset';
+  const from = txn.fromTeam?.id ?? txn.fromTeam?.retroCode ?? txn.fromTeam?.name ?? 'from';
+  const to = txn.toTeam?.id ?? txn.toTeam?.retroCode ?? txn.toTeam?.name ?? 'to';
+  return `${txn.date ?? ''}:${txn.typeCode ?? txn.typeDesc ?? ''}:${person}:${from}:${to}`;
+}
+
+function mergeTransactions(...groups) {
+  const seen = new Set();
+  const rows = [];
+  for (const txn of groups.flat()) {
+    const key = transactionDedupeKey(txn);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(txn);
+  }
+  return sortTransactions(rows);
 }
 
 function ReceivesLabel() {
@@ -1749,6 +1773,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const [tradeBundle, setTradeBundle] = useState([]);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [allTradeTxns, setAllTradeTxns] = useState(null);
+  const [historicalTradeTxns, setHistoricalTradeTxns] = useState([]);
   const [tradeLookupLoading, setTradeLookupLoading] = useState(false);
 
   const pushTransactionSheetHistory = useCallback(() => {
@@ -1823,21 +1848,35 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
 
   useEffect(() => {
     setAllTradeTxns(null);
+    setHistoricalTradeTxns([]);
     let cancelled = false;
     setTradeLookupLoading(true);
 
-    if (!playerId || usingProfileTransactions) {
+    if (!playerId) {
       setTradeLookupLoading(false);
       return undefined;
     }
 
     (async () => {
       try {
-        const fullHistory = await fetchPlayerTransactions(playerId, TXN_MAX_YEARS);
+        const [modernResult, historicalResult] = await Promise.allSettled([
+          fetchPlayerTransactions(playerId, TXN_MAX_YEARS),
+          getHistoricalTradesForPlayer(playerId),
+        ]);
         if (cancelled) return;
-        setAllTradeTxns(fullHistory.filter(isTradeTransaction));
+        const fullHistory = modernResult.status === 'fulfilled' ? modernResult.value : [];
+        const historicalTrades = historicalResult.status === 'fulfilled' ? historicalResult.value : [];
+        if (modernResult.status === 'rejected' && historicalResult.status === 'rejected') {
+          throw modernResult.reason;
+        }
+        const historical = sortTransactions(historicalTrades);
+        setHistoricalTradeTxns(historical);
+        setAllTradeTxns(mergeTransactions(fullHistory.filter(isTradeTransaction), historical));
       } catch {
-        if (!cancelled) setAllTradeTxns(null);
+        if (!cancelled) {
+          setAllTradeTxns(null);
+          setHistoricalTradeTxns([]);
+        }
       } finally {
         if (!cancelled) setTradeLookupLoading(false);
       }
@@ -1846,7 +1885,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
     return () => {
       cancelled = true;
     };
-  }, [playerId, usingProfileTransactions]);
+  }, [playerId]);
 
   const canLoadMore = !usingProfileTransactions && yearsBack < TXN_MAX_YEARS;
   const oldestYear = txns.length
@@ -1886,23 +1925,24 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
 
   if (loading) return <LoadingSpinner size="md" py="py-12" />;
 
-  if (!txns.length) {
-    return <div className="text-slate-500 text-sm text-center py-12">No transactions found.</div>;
-  }
-
-  const loadedTradeTxns = txns.filter(isTradeTransaction);
+  const mergedTxns = mergeTransactions(txns, historicalTradeTxns);
+  const loadedTradeTxns = mergedTxns.filter(isTradeTransaction);
   const tradeTxns = allTradeTxns ?? loadedTradeTxns;
-  const visibleTxns = txnFilter === 'trades' ? tradeTxns : txns;
+  const visibleTxns = txnFilter === 'trades' ? tradeTxns : mergedTxns;
   const tradeCount = tradeTxns.length;
-  const hiddenTradeCount = Math.max(0, tradeCount - loadedTradeTxns.length);
+  const hiddenTradeCount = Math.max(0, tradeCount - txns.filter(isTradeTransaction).length);
   const tradeLabel = tradeLookupLoading && allTradeTxns == null ? 'Trades…' : `Trades (${tradeCount})`;
   const showLoadMore = canLoadMore && txnFilter !== 'trades';
+
+  if (!mergedTxns.length && !tradeTxns.length && !tradeLookupLoading) {
+    return <div className="text-slate-500 text-sm text-center py-12">No transactions found.</div>;
+  }
 
   return (
     <>
       <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-800/70 bg-slate-900/60 px-3 py-2">
         <div className="text-xs text-slate-500">
-          Showing {visibleTxns.length} of {txns.length}
+          Showing {visibleTxns.length} of {txnFilter === 'trades' ? tradeCount : mergedTxns.length}
           {txnFilter === 'trades' ? ' trade moves' : ' transactions'}
         </div>
         <div className="flex rounded-2xl border border-slate-700 bg-slate-800 p-1">
