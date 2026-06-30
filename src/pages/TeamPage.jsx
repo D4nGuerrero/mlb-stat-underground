@@ -25,6 +25,7 @@ const SCHEDULE_SEASON_OPTIONS = Array.from(
 
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
 const MLB_SPORT_ID = 1;
+const TEAM_SCHEDULE_GAME_TYPES = ['R', 'F', 'D', 'L', 'W'];
 
 const localDateKey = (d) => {
   const y = d.getFullYear();
@@ -1237,7 +1238,7 @@ function ScheduleTab({
             teamId,
             season,
             sportId,
-            gameType: 'R',
+            gameType: TEAM_SCHEDULE_GAME_TYPES.join(','),
             hydrate: 'team,linescore',
           },
           signal: controller.signal,
