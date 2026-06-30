@@ -3,11 +3,10 @@ import { compactPlayerName, teamLogoUrl, sumInningsPitched } from '../../../util
 import { stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } from '../../../components/ui';
 import { TABLE_TEXT_CLASS } from '../../../theme/tableTheme';
 
-const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-fixed w-full`;
-const BOX_SCORE_TABLE_COMPACT = `${TABLE_BASE} text-[10px] 2xl:text-[11px] table-fixed w-full`;
-const BOX_SCORE_TABLE_FULLSCREEN = `${TABLE_BASE} table-fixed w-full text-[9px] 2xl:text-[10px] [&_th]:!px-0.5 [&_td]:!px-0.5 [&_th]:!py-0.5 [&_td]:!py-0.5 [&_th]:!text-[9px] [&_td]:!text-[9px] 2xl:[&_th]:!text-[10px] 2xl:[&_td]:!text-[10px]`;
-const BOX_SCORE_LABEL_COL = 'w-[24%]';
-const BOX_SCORE_STAT_COL = 'w-[9.5%]';
+const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-auto w-max min-w-full`;
+const BOX_SCORE_TABLE_COMPACT = `${TABLE_BASE} text-[10px] 2xl:text-[11px] table-auto w-max min-w-full`;
+const BOX_SCORE_TABLE_FULLSCREEN = `${TABLE_BASE} table-auto w-max min-w-full text-[9px] 2xl:text-[10px] [&_th]:!px-0.5 [&_td]:!px-0.5 [&_th]:!py-0.5 [&_td]:!py-0.5 [&_th]:!text-[9px] [&_td]:!text-[9px] 2xl:[&_th]:!text-[10px] 2xl:[&_td]:!text-[10px]`;
+const BOX_SCORE_STAT_COL = 'w-8 min-w-[2rem]';
 
 const boxScoreStatHead = (className = '') => (
   statHead(`${BOX_SCORE_STAT_COL} font-normal ${className}`, { align: 'text-center' })
@@ -30,6 +29,14 @@ const getPlayersFromIds = (teamBox, ids = []) =>
 const getSubLetter = (order) => {
   const suffix = parseInt(order, 10) % 100;
   return suffix === 0 ? null : String.fromCharCode(96 + suffix);
+};
+
+const formatBoxScorePositions = (player) => {
+  const positions = (player?.allPositions || [])
+    .map((entry) => entry?.abbreviation)
+    .filter(Boolean);
+  if (positions.length > 0) return positions.join('-');
+  return player?.position?.abbreviation || '';
 };
 
 const formatBoxRate = (value) => {
@@ -264,14 +271,14 @@ export default function TeamBoxSection({
       <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mb-1 shrink-0' : 'mb-2'}`}>
         <table className={tableClassName}>
           <colgroup>
-            <col className={BOX_SCORE_LABEL_COL} />
+            <col />
             {Array.from({ length: 8 }, (_, i) => (
               <col key={i} className={BOX_SCORE_STAT_COL} />
             ))}
           </colgroup>
           <thead>
             <tr className="text-slate-500 border-b border-slate-700/60">
-              <th className={`${stickyHead('bg-slate-900')} ${BOX_SCORE_LABEL_COL} font-normal`}>BATTING</th>
+              <th className={`${stickyHead('bg-slate-900')} font-normal`}>BATTING</th>
               {['AB', 'R', 'H', 'RBI', 'BB', 'SO', 'AVG', 'OPS'].map((header) => (
                 <th key={header} className={boxScoreStatHead()}>
                   {header}
@@ -284,28 +291,32 @@ export default function TeamBoxSection({
               const batting = player.stats?.batting || {};
               const seasonBatting = player.seasonStats?.batting || {};
               const subLetter = getSubLetter(player.battingOrder);
+              const isSubstitute = Boolean(subLetter);
               const lastName = compactPlayerName(player.person, '');
-              const pos = player.position?.abbreviation || '';
+              const pos = formatBoxScorePositions(player);
 
               return (
                 <tr
-                  key={player.person?.id}
+                  key={`${player.battingOrder}-${player.person?.id}`}
                   className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                 >
-                  <td className={`${stickyCell('bg-slate-900')} ${BOX_SCORE_LABEL_COL}`}>
+                  <td className={stickyCell('bg-slate-900')}>
                     <button
+                      type="button"
                       onClick={() => onPlayerSelect(player.person?.id)}
-                      className={`text-left hover:text-${THEME_COLOR}-400 transition-colors whitespace-nowrap`}
+                      className={`text-left whitespace-nowrap hover:text-${THEME_COLOR}-400 transition-colors ${isSubstitute ? 'pl-3' : ''}`}
                     >
                       {subLetter && <span className="text-slate-500 mr-0.5">{subLetter}-</span>}
-                      <span className={subLetter ? 'text-slate-400' : 'text-slate-200'}>
+                      <span className={isSubstitute ? 'text-slate-400' : 'text-slate-200'}>
                         <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
                         {!compact && (
                           <span className="hidden sm:inline">{player.person?.fullName}</span>
                         )}
                       </span>
+                      {pos && (
+                        <span className="text-slate-600 ml-1 text-[10px]">{pos}</span>
+                      )}
                     </button>
-                    <span className="text-slate-600 ml-1 text-[10px]">{pos}</span>
                   </td>
                   <td className={boxScoreStatCell('text-slate-400')}>{batting.atBats ?? '-'}</td>
                   <td className={boxScoreStatCell('text-slate-400')}>{batting.runs ?? '-'}</td>
@@ -319,7 +330,7 @@ export default function TeamBoxSection({
               );
             })}
             <tr className="group border-t border-slate-700 font-bold text-slate-300">
-              <td className={`${stickyCell('bg-slate-900', { footer: true })} ${BOX_SCORE_LABEL_COL}`}>Totals</td>
+              <td className={stickyCell('bg-slate-900', { footer: true })}>Totals</td>
               {[
                 battingTotals.ab,
                 battingTotals.r,
@@ -367,14 +378,14 @@ export default function TeamBoxSection({
         <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mt-1 shrink-0' : 'mt-4'}`}>
           <table className={tableClassName}>
             <colgroup>
-              <col className={BOX_SCORE_LABEL_COL} />
+              <col />
               {Array.from({ length: 8 }, (_, i) => (
                 <col key={i} className={BOX_SCORE_STAT_COL} />
               ))}
             </colgroup>
             <thead>
               <tr className="text-slate-500 border-b border-slate-700/60">
-                <th className={`${stickyHead('bg-slate-900')} ${BOX_SCORE_LABEL_COL} font-normal`}>PITCHING</th>
+                <th className={`${stickyHead('bg-slate-900')} font-normal`}>PITCHING</th>
                 {['IP', 'H', 'R', 'ER', 'BB', 'K', 'HR', 'ERA'].map((header) => (
                   <th key={header} className={boxScoreStatHead()}>
                     {header}
@@ -395,7 +406,7 @@ export default function TeamBoxSection({
                     key={player.person?.id}
                     className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                   >
-                    <td className={`${stickyCell('bg-slate-900')} ${BOX_SCORE_LABEL_COL}`}>
+                    <td className={stickyCell('bg-slate-900')}>
                       <div className="min-w-0">
                         <button
                           onClick={() => onPlayerSelect(player.person?.id)}
@@ -427,7 +438,7 @@ export default function TeamBoxSection({
                 );
               })}
               <tr className="group border-t border-slate-700 font-bold text-slate-300">
-                <td className={`${stickyCell('bg-slate-900', { footer: true })} ${BOX_SCORE_LABEL_COL}`}>Totals</td>
+                <td className={stickyCell('bg-slate-900', { footer: true })}>Totals</td>
                 <td className={boxScoreStatCell()}>{pitchingTotalsIp}</td>
                 {[
                   pitchingTotals.h,
