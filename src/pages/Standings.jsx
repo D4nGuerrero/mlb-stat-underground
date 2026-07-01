@@ -155,6 +155,32 @@ function formatGamesBack(value) {
   return s.startsWith('+') ? `+${num}` : num;
 }
 
+function gamesBackFromLeader(team, leader) {
+  if (!team || !leader) return '-';
+  const gamesBack = ((leader.wins - team.wins) + (team.losses - leader.losses)) / 2;
+  if (!Number.isFinite(gamesBack) || gamesBack <= 0) return '-';
+  return Number.isInteger(gamesBack) ? String(gamesBack) : gamesBack.toFixed(1);
+}
+
+function getGroupLeader(teams, rankKey) {
+  return [...teams].sort((a, b) => {
+    const ar = Number.isFinite(a[rankKey]) ? a[rankKey] : 99;
+    const br = Number.isFinite(b[rankKey]) ? b[rankKey] : 99;
+    if (ar !== br) return ar - br;
+    const pctDiff = (parseFloat(b.pct) || 0) - (parseFloat(a.pct) || 0);
+    if (pctDiff !== 0) return pctDiff;
+    return (b.wins ?? 0) - (a.wins ?? 0);
+  })[0];
+}
+
+function withGamesBackFromGroupLeader(teams, rankKey) {
+  const leader = getGroupLeader(teams, rankKey);
+  return teams.map((team) => ({
+    ...team,
+    gb: gamesBackFromLeader(team, leader),
+  }));
+}
+
 function parseSortValue(col, value) {
   if (col === 'streak') {
     if (!value || value === '-') return 0;
@@ -390,7 +416,10 @@ export default function Standings() {
       acc[key].teams.push(...div.teams);
       acc[key].divisions.push(div);
       return acc;
-    }, {})).map((group) => ({ ...group, teams: sortTeams(group.teams) }));
+    }, {})).map((group) => ({
+      ...group,
+      teams: sortTeams(withGamesBackFromGroupLeader(group.teams, 'leagueRank')),
+    }));
 
     if (viewScope === 'league') {
       return {
@@ -400,10 +429,11 @@ export default function Standings() {
     }
 
     if (viewScope === 'overall') {
+      const overallTeams = withGamesBackFromGroupLeader(divs.flatMap((d) => d.teams), 'sportRank');
       return {
         layout: 'single',
         title: `${selectedLeague.shortLabel} Overall`,
-        teams: sortTeams(divs.flatMap((d) => d.teams)),
+        teams: sortTeams(overallTeams),
       };
     }
 
