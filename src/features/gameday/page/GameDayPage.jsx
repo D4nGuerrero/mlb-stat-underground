@@ -896,12 +896,18 @@ function FinalGameHeader({
   homeRuns,
   ls,
   decisions,
+  gamePk,
   getPitcherStats,
+  leagueLabel,
+  logoSrc,
   onTeamSelect,
   onPlayerSelect,
 }) {
   return (
-    <div className="bg-[#121827] border border-slate-700/60 rounded-2xl overflow-hidden">
+    <div className="relative bg-[#121827] border border-slate-700/60 rounded-2xl overflow-visible">
+      <div className="absolute right-3 top-3 z-20 2xl:hidden">
+        <WatchMenu gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
+      </div>
       <div className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_4rem_minmax(0,1fr)] items-center gap-4 px-5 py-4">
         <FinalHeaderTeamBlock team={away} onTeamSelect={onTeamSelect} />
         <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${awayRuns > homeRuns ? 'text-white' : 'text-slate-300'}`}>
@@ -916,7 +922,7 @@ function FinalGameHeader({
         <FinalHeaderTeamBlock team={home} align="right" onTeamSelect={onTeamSelect} />
       </div>
 
-      <div className="border-t border-slate-700/60 grid grid-cols-[minmax(0,1fr)_18rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="border-t border-slate-700/60 grid grid-cols-[minmax(0,1fr)_18rem] 2xl:grid-cols-[minmax(0,1fr)_13rem_22rem]">
         <LinescoreBoard
           key="final-header-line"
           ls={ls}
@@ -925,6 +931,7 @@ function FinalGameHeader({
           awayRuns={awayRuns}
           homeRuns={homeRuns}
         />
+        <WatchInlineLink gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
         <div className="border-l border-slate-700/60 px-4 py-3 space-y-1.5">
           <FinalHeaderDecisionLine label="W" player={decisions?.winner} stats={getPitcherStats(decisions?.winner?.id)} onPlayerSelect={onPlayerSelect} />
           <FinalHeaderDecisionLine label="L" player={decisions?.loser} stats={getPitcherStats(decisions?.loser?.id)} onPlayerSelect={onPlayerSelect} />
@@ -1078,11 +1085,27 @@ function WatchMenu({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
   );
 }
 
-async function fetchGamesForDate(dateStr, sportId = 1) {
-  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=${sportId || 1}&date=${dateStr}&hydrate=team(record),linescore`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  return dedupeDaySchedule((json.dates ?? []).flatMap((d) => d.games ?? []));
+function WatchInlineLink({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
+  return (
+    <a
+      href={buildMlbTvUrl(gamePk)}
+      target="_blank"
+      rel="noreferrer"
+      className={`hidden h-full min-h-[76px] items-center gap-3 border-l border-slate-700/60 px-4 transition-colors hover:bg-${THEME_COLOR}-500/10 2xl:flex`}
+      aria-label={`Watch this ${leagueLabel} game`}
+    >
+      <img src={logoSrc} alt="" className="h-8 w-8 object-contain" draggable={false} />
+      <span className="min-w-0">
+        <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+          Watch:
+        </span>
+        <span className={`mt-0.5 flex items-center gap-2 text-sm font-black text-${THEME_COLOR}-200`}>
+          {Number.isFinite(Number(gamePk)) ? `${leagueLabel}.TV` : 'Broadcast'}
+          <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-500" aria-hidden />
+        </span>
+      </span>
+    </a>
+  );
 }
 
 function GamedayGamePicker({ games, currentGamePk, loading, onSelect, label = 'Gameday' }) {
@@ -1429,6 +1452,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [pinnedVideo, setPinnedVideo] = useState(null);
   const [milbHighlightByItemKey, setMilbHighlightByItemKey] = useState({});
   const [previewTab, setPreviewTab] = useState('preview');
+  const [stripDate, setStripDate] = useState(null);
   const officialDate = feed?.gameData?.datetime?.officialDate;
   const gameSportId = feed?.gameData?.teams?.home?.sport?.id
     ?? feed?.gameData?.teams?.away?.sport?.id
@@ -1438,7 +1462,8 @@ function GamePageContent({ gamePk, navigate, location }) {
   const scoringCount = feed?.liveData?.plays?.scoringPlays?.length ?? 0;
   const batterId = feed?.liveData?.linescore?.offense?.batter?.id;
   const pitcherId = feed?.liveData?.linescore?.defense?.pitcher?.id;
-  const { daySchedule, dayScheduleLoading } = useDaySchedule(officialDate, dedupeDaySchedule, gameSportId);
+  const activeStripDate = stripDate ?? officialDate;
+  const { daySchedule, dayScheduleLoading } = useDaySchedule(activeStripDate, dedupeDaySchedule, gameSportId);
   const { gameContent } = useGameContent(gamePk, scoringCount);
   const { previewLineups, previewLineupsLoading } = usePreviewLineups(
     gamePk,
@@ -1461,23 +1486,18 @@ function GamePageContent({ gamePk, navigate, location }) {
     linescore: feed?.liveData?.linescore,
   });
 
-  const goToGamedayDate = useCallback(async (dateStr) => {
-    try {
-      const gamesForDate = await fetchGamesForDate(dateStr, gameSportId);
-      const nextGamePk = gamesForDate[0]?.gamePk;
-      if (nextGamePk) {
-        navigate(`/game/${nextGamePk}`, { state: { returnDate: dateStr } });
-      } else {
-        navigate('/', { state: { returnDate: dateStr } });
-      }
-    } catch {
-      navigate('/', { state: { returnDate: dateStr } });
-    }
-  }, [navigate, gameSportId]);
+  useEffect(() => {
+    if (!officialDate) return;
+    setStripDate((current) => current ?? officialDate);
+  }, [officialDate]);
 
-  const shiftGamedayDate = useCallback((days) => {
-    void goToGamedayDate(addDaysToDateString(officialDate, days));
-  }, [goToGamedayDate, officialDate]);
+  const setGameStripDate = useCallback((dateStr) => {
+    setStripDate(dateStr);
+  }, []);
+
+  const shiftGameStripDate = useCallback((days) => {
+    setStripDate((current) => addDaysToDateString(current ?? officialDate, days));
+  }, [officialDate]);
 
   const refreshLiveFeed = useCallback(async ({ allowSetError = false } = {}) => {
     if (!gamePk) return false;
@@ -2249,7 +2269,10 @@ function GamePageContent({ gamePk, navigate, location }) {
           homeRuns={homeRuns}
           ls={ls}
           decisions={decisions}
+          gamePk={gamePk}
           getPitcherStats={getPitcherStats}
+          leagueLabel={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
+          logoSrc={leagueLogoSrc}
           onTeamSelect={(teamId) => navigate(`/team/${teamId}`)}
           onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
         />
@@ -2356,10 +2379,10 @@ function GamePageContent({ gamePk, navigate, location }) {
               games={daySchedule}
               currentGamePk={gamePk}
               loading={dayScheduleLoading}
-              dateValue={officialDate}
-              dateLabel={formatDesktopStripDate(officialDate)}
-              onDateSelect={goToGamedayDate}
-              onDateShift={shiftGamedayDate}
+              dateValue={activeStripDate}
+              dateLabel={formatDesktopStripDate(activeStripDate)}
+              onDateSelect={setGameStripDate}
+              onDateShift={shiftGameStripDate}
               onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
             />
           </div>
@@ -2585,10 +2608,10 @@ function GamePageContent({ gamePk, navigate, location }) {
               games={daySchedule}
               currentGamePk={gamePk}
               loading={dayScheduleLoading}
-              dateValue={officialDate}
-              dateLabel={formatDesktopStripDate(officialDate)}
-              onDateSelect={goToGamedayDate}
-              onDateShift={shiftGamedayDate}
+              dateValue={activeStripDate}
+              dateLabel={formatDesktopStripDate(activeStripDate)}
+              onDateSelect={setGameStripDate}
+              onDateShift={shiftGameStripDate}
               onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
             />
 

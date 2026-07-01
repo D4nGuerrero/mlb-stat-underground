@@ -43,11 +43,12 @@ function LiveMatchupPlayerCard({
           }}
         />
       </div>
+      {/* DUE UP */}
       <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[88px] truncate">
         <span>{name || '—'}</span>
         {role && <span className="ml-1 text-[10px] font-black text-slate-500">{role}</span>}
       </div>
-      <div className="text-[12px] text-red-500 font-mono text-center font-bold font-sans">
+      <div className="text-[12px] text-white-500 font-mono text-center font-bold font-sans">
         {stat}
       </div>
     </button>

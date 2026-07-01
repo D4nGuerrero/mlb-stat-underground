@@ -174,10 +174,16 @@ function playSlugCandidates(item) {
   const description = item?.description ?? play?.result?.description ?? '';
   const pitcher = play?.matchup?.pitcher?.fullName;
   const batter = play?.matchup?.batter?.fullName ?? item?.batterName;
+  const pitcherBatterCandidates = pitcher && batter
+    ? [
+        `${pitcher} In play, run(s) to ${batter}`,
+        `${pitcher} In play, out(s) to ${batter}`,
+      ]
+    : [];
   return [
     slugifyMiLBVideoPart(description, 120),
     slugifyMiLBVideoPart(description, 73),
-    pitcher && batter ? slugifyMiLBVideoPart(`${pitcher} In play, run(s) to ${batter}`, 80) : null,
+    ...pitcherBatterCandidates.map((candidate) => slugifyMiLBVideoPart(candidate, 80)),
   ].filter(Boolean);
 }
 
@@ -312,7 +318,8 @@ function isReliableHighlightMatch(item, highlight, { priorBatterScoringCount = 0
   // scoring clips are tagged to the scoring runner instead of the batter
   // (example: "Caleb Durbin scores on groundout"), so participantIds includes
   // the batter plus runners who scored on the play.
-  if (!playerIdentityMatches(item, highlight)) return false;
+  const strongSlugMatch = slugHighlightScore(item, highlight) >= 45;
+  if (!playerIdentityMatches(item, highlight) && !strongSlugMatch) return false;
   if (!eventTypeMatchesHighlight(item, highlight)) return false;
   if (headlineOrdinalMismatch(item, highlight, priorBatterScoringCount)) return false;
 
