@@ -2068,12 +2068,34 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
     return <div className="text-slate-500 text-sm text-center py-8">{emptyMessage}</div>;
   }
 
-  const dateStickyHead = scrollStickyDateHead('bg-[#121827]', { stickTop: true });
-  const dateStickyCell = scrollStickyDateCell('bg-[#121827]');
-  const oppStickyHead = scrollStickyTeamAfterDateHead('bg-[#121827]', { stickTop: true });
-  const oppStickyCell = scrollStickyTeamAfterDateCell('bg-[#121827]');
-  const monthStickyDateCell = scrollStickyDateCell('bg-[#182030]', { footer: true });
-  const monthStickyOppCell = scrollStickyTeamAfterDateCell('bg-[#182030]', { footer: true });
+  const gameLogDateWidth = 'w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem]';
+  const gameLogAfterDateLeft = 'left-[3.25rem]';
+  const gameLogOppWidth = 'w-[4.75rem] min-w-[4.75rem] max-w-[4.75rem]';
+  const dateStickyHead = scrollStickyDateHead('bg-[#121827]', {
+    stickTop: true,
+    widthClass: gameLogDateWidth,
+  });
+  const dateStickyCell = scrollStickyDateCell('bg-[#121827]', {
+    widthClass: gameLogDateWidth,
+  });
+  const oppStickyHead = scrollStickyTeamAfterDateHead('bg-[#121827]', {
+    stickTop: true,
+    left: gameLogAfterDateLeft,
+    widthClass: gameLogOppWidth,
+  });
+  const oppStickyCell = scrollStickyTeamAfterDateCell('bg-[#121827]', {
+    left: gameLogAfterDateLeft,
+    widthClass: gameLogOppWidth,
+  });
+  const monthStickyDateCell = scrollStickyDateCell('bg-[#182030]', {
+    footer: true,
+    widthClass: gameLogDateWidth,
+  });
+  const monthStickyOppCell = scrollStickyTeamAfterDateCell('bg-[#182030]', {
+    footer: true,
+    left: gameLogAfterDateLeft,
+    widthClass: gameLogOppWidth,
+  });
 
   return (
     <div>
@@ -2089,7 +2111,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                     i === 0
                       ? dateStickyHead
                       : i === 1
-                        ? oppStickyHead
+                        ? `${oppStickyHead} pr-4 shadow-[6px_0_10px_-8px_rgba(0,0,0,0.9)]`
                         : scrollStatHead('text-center', { align: 'text-center', stickTop: true }),
                   ].join(' ')}
                 >
@@ -2129,7 +2151,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                             j === 0
                               ? `${dateStickyCell} font-semibold text-slate-200`
                               : j === 1
-                                ? oppStickyCell
+                                ? `${oppStickyCell} pr-4 shadow-[6px_0_10px_-8px_rgba(0,0,0,0.9)]`
                                 : scrollStatCell('', { align: 'text-center' }),
                           ].join(' ')}
                         >
@@ -2151,7 +2173,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                             j === 0
                               ? monthStickyDateCell
                               : j === 1
-                                ? `${monthStickyOppCell} text-[10px] font-bold text-slate-300 uppercase tracking-widest`
+                                ? `${monthStickyOppCell} pr-4 shadow-[6px_0_10px_-8px_rgba(0,0,0,0.9)] text-[10px] font-bold text-slate-300 uppercase tracking-widest`
                                 : scrollStatCell('text-slate-400 font-semibold', { align: 'text-center' }),
                           ].join(' ')}
                         >
