@@ -26,7 +26,7 @@ import {
   LEAGUE_LEVEL_STORAGE_KEY,
   LEAGUE_LEVEL_VALUES,
 } from '../constants/leagueLevels.js';
-import { countryFlagUrl, normalizeCountryName } from '../utils/countryFlags';
+import { countryFlagUrl, displayCountryName, normalizeCountryName } from '../utils/countryFlags';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -46,7 +46,31 @@ const LIMIT_OPTIONS = [
   { value: 50, label: 'Top 50' },
 ];
 const COMPLETE_PLAYER_LIMIT = 5000;
+const COMPLETE_PLAYER_PAGE_LIMIT = 1000;
 const COMPLETE_PLAYER_ROWS_STEP = 250;
+const RATE_STAT_SAMPLE_MINIMUMS = {
+  season: {
+    batting: 502,
+    pitchingIpOuts: 486,
+    fieldingChances: 100,
+  },
+  allTime: {
+    batting: 1000,
+    pitchingIpOuts: 1500,
+    fieldingChances: 500,
+  },
+};
+const BATTING_RATE_SORT_COLS = new Set(['avg', 'obp', 'slg', 'ops']);
+const PITCHING_RATE_SORT_COLS = new Set([
+  'era',
+  'whip',
+  'avg',
+  'strikeoutsPer9Inn',
+  'strikeoutWalkRatio',
+  'walksPer9Inn',
+  'hitsPer9Inn',
+]);
+const FIELDING_RATE_SORT_COLS = new Set(['fielding']);
 
 const POSITION_OPTIONS = [
   { value: 'all', label: 'All Positions' },
@@ -307,7 +331,7 @@ function parseStatLeadersState(searchParams) {
   const positionFilter = VALID_POSITIONS.has(searchParams.get('pos'))
     ? searchParams.get('pos')
     : 'all';
-  const countryFilter = searchParams.get('country') || 'all';
+  const countryFilter = normalizeCountryName(searchParams.get('country') || 'all');
 
   const playerGroup = playerOrTeam === 'player' ? activeGroup : 'hitting';
   const cats = GROUP_CATS[playerGroup] ?? HITTING_CATS;
@@ -444,6 +468,12 @@ const parseSortValue = (stat, key) => {
   return Number.isNaN(n) ? 0 : n;
 };
 
+const parseOutsFromInnings = (innings) => {
+  if (innings == null || innings === '') return 0;
+  const [whole, frac = '0'] = String(innings).split('.');
+  return (parseInt(whole, 10) || 0) * 3 + (parseInt(frac, 10) || 0);
+};
+
 const statKeyForLeaderCategory = (categoryKey) => LEADER_CATEGORY_STAT_KEYS[categoryKey] ?? categoryKey;
 
 const leaderCategoryLowerBetter = (categoryKey) => {
@@ -471,8 +501,35 @@ const rankTeams = (rows, sortCol, sortDir) => {
   });
 };
 
-const rankRowsByStat = (rows, sortCol, sortDir) => {
+const rateSampleEligible = (row, sortCol, seasonParam) => {
+  const stat = row.stat ?? {};
+  const minimums = seasonParam === 'all'
+    ? RATE_STAT_SAMPLE_MINIMUMS.allTime
+    : RATE_STAT_SAMPLE_MINIMUMS.season;
+
+  if (BATTING_RATE_SORT_COLS.has(sortCol)) {
+    const sample = parseInt(stat.plateAppearances ?? stat.atBats ?? 0, 10) || 0;
+    return sample >= minimums.batting;
+  }
+
+  if (PITCHING_RATE_SORT_COLS.has(sortCol)) {
+    return parseOutsFromInnings(stat.inningsPitched) >= minimums.pitchingIpOuts;
+  }
+
+  if (FIELDING_RATE_SORT_COLS.has(sortCol)) {
+    const sample = parseInt(stat.chances ?? 0, 10) || 0;
+    return sample >= minimums.fieldingChances;
+  }
+
+  return true;
+};
+
+const rankRowsByStat = (rows, sortCol, sortDir, seasonParam = DEFAULT_SEASON) => {
   const sorted = [...rows].sort((a, b) => {
+    const aEligible = rateSampleEligible(a, sortCol, seasonParam);
+    const bEligible = rateSampleEligible(b, sortCol, seasonParam);
+    if (aEligible !== bEligible) return aEligible ? -1 : 1;
+
     const av = parseSortValue(a.stat, sortCol);
     const bv = parseSortValue(b.stat, sortCol);
     return sortDir === 'asc' ? av - bv : bv - av;
@@ -508,11 +565,11 @@ const playerCountry = (row) => row.person?.birthCountry ?? row.player?.birthCoun
 
 const countryMatches = (row, countryFilter) => {
   if (!countryFilter || countryFilter === 'all') return true;
-  return normalizeCountryName(playerCountry(row)) === countryFilter;
+  return normalizeCountryName(playerCountry(row)) === normalizeCountryName(countryFilter);
 };
 
 const buildCountryOptions = (rows) => {
-  const countries = [...new Set(rows.map(playerCountry).filter(Boolean))]
+  const countries = [...new Set(rows.map((row) => displayCountryName(playerCountry(row))).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
 
   return [
@@ -887,7 +944,12 @@ export default function StatLeaders() {
     sortCol = playerSortCol,
     sortDir = playerSortDir,
   } = {}) => {
-    const cacheKey = `complete-player:${leagueLevel}:${statGroup}:${seasonParam}:${sortCol}:${sortDir}`;
+    const isAllTime = seasonParam === 'all';
+    // All-time country/position filters need the full career result set. If we let the
+    // API return only the first sorted slice, players disappear when sorting/filtering.
+    const cacheKey = isAllTime
+      ? `complete-player:${leagueLevel}:${statGroup}:${seasonParam}:all-rows`
+      : `complete-player:${leagueLevel}:${statGroup}:${seasonParam}:${sortCol}:${sortDir}`;
     if (cache.current[cacheKey]) {
       setCompletePlayerRows(cache.current[cacheKey]);
       setError(null);
@@ -898,15 +960,30 @@ export default function StatLeaders() {
     setCompletePlayerRows([]);
     setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     try {
-      const statsType = seasonParam === 'all' ? 'career' : 'season';
-      const seasonPart = seasonParam === 'all' ? '' : `&season=${seasonParam}`;
-      const playerPool = QUALIFIED_PLAYER_SORT_COLS.has(sortCol) ? 'qualified' : 'all';
-      const sortPart = sortCol ? `&sortStat=${sortCol}&order=${sortDir}` : '';
-      const url = `https://statsapi.mlb.com/api/v1/stats?stats=${statsType}&group=${statGroup}${seasonPart}&${completeStatsSportQuery(leagueLevel)}&playerPool=${playerPool}&limit=${COMPLETE_PLAYER_LIMIT}${sortPart}&hydrate=person,team(league)`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const rows = (data.stats?.[0]?.splits ?? []).map((split) => ({
+      const statsType = isAllTime ? 'career' : 'season';
+      const seasonPart = isAllTime ? '' : `&season=${seasonParam}`;
+      const playerPool = !isAllTime && QUALIFIED_PLAYER_SORT_COLS.has(sortCol) ? 'qualified' : 'all';
+      const sortPart = !isAllTime && sortCol ? `&sortStat=${sortCol}&order=${sortDir}` : '';
+      const pageLimit = isAllTime ? COMPLETE_PLAYER_PAGE_LIMIT : COMPLETE_PLAYER_LIMIT;
+      const baseUrl = `https://statsapi.mlb.com/api/v1/stats?stats=${statsType}&group=${statGroup}${seasonPart}&${completeStatsSportQuery(leagueLevel)}&playerPool=${playerPool}&limit=${pageLimit}${sortPart}&hydrate=person,team(league)`;
+      const splits = [];
+      let offset = 0;
+      let totalSplits = null;
+
+      do {
+        const url = isAllTime ? `${baseUrl}&offset=${offset}` : baseUrl;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const statBlock = data.stats?.[0] ?? {};
+        const pageSplits = statBlock.splits ?? [];
+        splits.push(...pageSplits);
+        totalSplits = statBlock.totalSplits ?? pageSplits.length;
+        offset += pageSplits.length;
+        if (!isAllTime) break;
+      } while (offset < totalSplits && offset > 0);
+
+      const rows = splits.map((split) => ({
         ...split,
         player: split.player ?? split.person,
         person: split.person ?? split.player,
@@ -1030,7 +1107,7 @@ export default function StatLeaders() {
       setPlayerSortDir(nextDir);
       setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
       syncToUrl({ playerSortDir: nextDir });
-      fetchCompletePlayerStats({ sortCol: col, sortDir: nextDir });
+      if (season !== 'all') fetchCompletePlayerStats({ sortCol: col, sortDir: nextDir });
       return;
     }
     const meta = playerCols.find((c) => c.key === col);
@@ -1039,7 +1116,7 @@ export default function StatLeaders() {
     setPlayerSortDir(nextDir);
     setCompletePlayerDisplayLimit(COMPLETE_PLAYER_ROWS_STEP);
     syncToUrl({ playerSortCol: col, playerSortDir: nextDir });
-    fetchCompletePlayerStats({ sortCol: col, sortDir: nextDir });
+    if (season !== 'all') fetchCompletePlayerStats({ sortCol: col, sortDir: nextDir });
   };
 
   const handleTeamSort = (col) => {
@@ -1087,12 +1164,12 @@ export default function StatLeaders() {
 
   const countryOptions = useMemo(() => buildCountryOptions(completePlayerRows), [completePlayerRows]);
   const selectedCountryLabel =
-    countryOptions.find((option) => option.value === countryFilter)?.label ?? ALL_COUNTRIES_OPTION.label;
+    countryOptions.find((option) => option.value === normalizeCountryName(countryFilter))?.label ?? ALL_COUNTRIES_OPTION.label;
 
   const rankedTeamStats = rankTeams(filteredTeamStats, teamSortCol, teamSortDir);
-  const rankedCompletePlayers = useMemo(
-    () => rankRowsByStat(filteredCompletePlayers, playerSortCol, playerSortDir),
-    [filteredCompletePlayers, playerSortCol, playerSortDir],
+const rankedCompletePlayers = useMemo(
+    () => rankRowsByStat(filteredCompletePlayers, playerSortCol, playerSortDir, season),
+    [filteredCompletePlayers, playerSortCol, playerSortDir, season],
   );
   const visibleRankedCompletePlayers = rankedCompletePlayers.slice(0, completePlayerDisplayLimit);
   const hasMoreCompletePlayers = visibleRankedCompletePlayers.length < rankedCompletePlayers.length;

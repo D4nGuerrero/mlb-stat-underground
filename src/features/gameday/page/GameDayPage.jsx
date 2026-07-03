@@ -1503,8 +1503,22 @@ function GamePageContent({ gamePk, navigate, location }) {
     if (!gamePk) return false;
     try {
       const data = await fetchLiveGameFeed(gamePk);
-      feedTimecodeRef.current = data.metaData?.timeStamp ?? null;
-      setFeed(data);
+      setFeed((prev) => {
+        const nextTc = data.metaData?.timeStamp;
+        if (
+          prev &&
+          nextTc &&
+          feedTimecodeRef.current &&
+          compareTimecodes(nextTc, feedTimecodeRef.current) < 0
+        ) {
+          return prev;
+        }
+
+        const merged = prev ? mergeLiveFeed(prev, data) : data;
+        if (!isValidLiveFeed(merged)) return prev;
+        if (nextTc) feedTimecodeRef.current = nextTc;
+        return merged;
+      });
       setError(null);
       return true;
     } catch (err) {
