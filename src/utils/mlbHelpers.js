@@ -231,16 +231,18 @@ export function spotracPlayerSlug({ nameSlug, fullName, firstName, lastName } = 
 
 /**
  * Spotrac contract page URL. Search resolves directly for most MLB players;
- * ambiguous names may land on Spotrac search results.
+ * adding the current MLB team code helps disambiguate names like "Ian Happ CHC".
  */
 export function spotracPlayerUrl(player = {}) {
   const fullName = player.fullName ?? [player.firstName, player.lastName].filter(Boolean).join(' ');
-  if (fullName) {
-    return `https://www.spotrac.com/search?q=${encodeURIComponent(fullName)}`;
-  }
   const slug = spotracPlayerSlug(player);
-  if (slug) return `https://www.spotrac.com/search?q=${encodeURIComponent(slug.replace(/-/g, ' '))}`;
-  return null;
+  const playerQuery = fullName || slug.replace(/-/g, ' ');
+  if (!playerQuery) return null;
+
+  const teamCode = getTeamAbbr(player.currentTeam);
+  const hasTeamCode = teamCode && teamCode !== '—';
+  const query = [playerQuery, hasTeamCode ? teamCode : null].filter(Boolean).join(' ');
+  return `https://www.spotrac.com/search?q=${encodeURIComponent(query)}`;
 }
 
 // Hero shot – batter (horizontal pose)
