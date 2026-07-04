@@ -22,6 +22,7 @@ import {
   parseGameHighlightVideos,
   buildHighlightMap,
   buildMiLBHighlightMap,
+  buildYoutubeHighlightFallbackMap,
 } from '../../../utils/gameContent';
 import { TabBar, SegmentedControl, Modal } from '../../../components/ui';
 import GamePreviewView from '../../../components/GamePreviewView';
@@ -1885,7 +1886,9 @@ function GamePageContent({ gamePk, navigate, location }) {
   const summaryItems = filterSummaryItems(allSummaryItems, summaryFilter);
   const summaryItemGroups = groupSummaryByInning(summaryItems, ORDINALS);
   const highlightVideos = parseGameHighlightVideos(gameContent);
+  const youtubeHighlightFallbackByItemKey = buildYoutubeHighlightFallbackMap(allSummaryItems, gd);
   const highlightByItemKey = {
+    ...youtubeHighlightFallbackByItemKey,
     ...buildHighlightMap(allSummaryItems, highlightVideos),
     ...milbHighlightByItemKey,
   };

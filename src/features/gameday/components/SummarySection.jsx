@@ -272,7 +272,7 @@ function VideoShareMenu({ video }) {
                 className={`block px-3 py-2 text-sm flex items-center gap-2 ${focus ? 'bg-slate-800 text-white' : 'text-slate-300'}`}
               >
                 <i className="fa-solid fa-arrow-up-right-from-square text-xs w-4 text-center" aria-hidden />
-                Open on MLB.com
+                Open on {video?.provider || 'MLB.com'}
               </a>
             )}
           </MenuItem>
@@ -286,6 +286,7 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
   const videoRef = useRef(null);
   const playOnExpandRef = useRef(false);
   const src = video?.mp4Url || video?.hlsUrl;
+  const externalUrl = !src ? getHighlightShareUrl(video) : null;
 
   useEffect(() => {
     const el = videoRef.current;
@@ -300,7 +301,34 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
     onToggle();
   };
 
-  if (!video?.thumbnail && !src) return null;
+  if (!video?.thumbnail && !src && !externalUrl) return null;
+
+  if (externalUrl) {
+    return (
+      <div className="mt-3 max-w-md" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <div className="relative rounded-xl overflow-hidden border border-slate-700/60 bg-slate-950">
+          <VideoShareMenu video={video} />
+          <a
+            href={externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex aspect-video flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-900 via-slate-950 to-red-950/50 px-5 text-center transition-colors hover:from-slate-800 hover:to-red-900/60"
+            aria-label={video.headline || 'Open video fallback'}
+          >
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-red-600 text-white shadow-lg shadow-red-950/40 transition-transform group-hover:scale-105">
+              <i className="fa-brands fa-youtube text-2xl" aria-hidden />
+            </span>
+            <span className="text-sm font-black uppercase tracking-[0.22em] text-red-100">
+              YouTube fallback
+            </span>
+            <span className="max-w-xs text-xs leading-snug text-slate-300">
+              MLB archive video was not available. Search YouTube for this scoring play.
+            </span>
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 max-w-md" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>

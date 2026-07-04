@@ -41,20 +41,60 @@ function hasKeyword(keywordsAll, value) {
   return (keywordsAll ?? []).some((k) => k.value === value);
 }
 
+function hasKeywordType(keywordsAll, type) {
+  return (keywordsAll ?? []).some((k) => k.type === type);
+}
+
+function isLegacyGameClip(item) {
+  const keywords = item?.keywordsAll ?? [];
+  return (
+    hasKeywordType(keywords, 'game_pk') &&
+    (hasKeywordType(keywords, 'player_id') || hasKeyword(keywords, 'highlight'))
+  );
+}
+
 /** Parse in-game highlight videos from game content API. */
 export function parseGameHighlightVideos(content) {
   const items = content?.highlights?.highlights?.items ?? [];
-  return items
-    .filter((it) => it.type === 'video' && it.state === 'A')
-    .filter((it) => hasKeyword(it.keywordsAll, 'in-game-highlight'))
-    .filter((it) => hasKeyword(it.keywordsAll, 'game-action-tracking'))
+  const activeVideos = items.filter((it) => it.type === 'video' && it.state === 'A');
+  const inGameHighlights = activeVideos
+    .filter((it) => hasKeyword(it.keywordsAll, 'in-game-highlight'));
+
+  // Newer MLB clips include game-action-tracking, which is a safer signal for
+  // play matching. Older seasons (roughly 2019-2022) often omit it entirely.
+  const trackedHighlights = inGameHighlights.filter((it) =>
+    hasKeyword(it.keywordsAll, 'game-action-tracking')
+  );
+  // Some 2017-era clips have neither modern keyword, but still carry game/player
+  // keywords and direct legacy media URLs. Only use this broad pool as a last
+  // resort so newer games keep the stricter matching behavior.
+  const legacyGameClips = activeVideos.filter(isLegacyGameClip);
+  const playableHighlights = trackedHighlights.length
+    ? trackedHighlights
+    : inGameHighlights.length
+      ? inGameHighlights
+      : legacyGameClips;
+
+  return playableHighlights
     .map((it) => ({
       id: it.id,
       headline: it.headline ?? '',
       description: it.description ?? '',
       thumbnail: pickThumbnail(it.image),
-      mp4Url: pickPlayback(it.playbacks, ['mp4Avc', 'highBit']),
-      hlsUrl: pickPlayback(it.playbacks, ['hlsCloud', 'HTTP_CLOUD_WIRED']),
+      mp4Url: pickPlayback(it.playbacks, [
+        'mp4Avc',
+        'highBit',
+        'FLASH_2500K_1280X720',
+        'FLASH_1800K_960X540',
+        'FLASH_1200K_640X360',
+      ]),
+      hlsUrl: pickPlayback(it.playbacks, [
+        'hlsCloud',
+        'HTTP_CLOUD_WIRED',
+        'HTTP_CLOUD_WIRED_60',
+        'HTTP_CLOUD_TABLET',
+        'HTTP_CLOUD_MOBILE',
+      ]),
       shareUrl: it.id ? `https://www.mlb.com/video/${it.id}` : null,
       playerIds: keywordValues(it.keywordsAll, 'player_id').map(Number).filter(Boolean),
       taxonomies: keywordValues(it.keywordsAll, 'taxonomy'),
@@ -85,6 +125,62 @@ export function getHighlightVideoUrl(video) {
 /** Public MLB.com page for a highlight. */
 export function getHighlightShareUrl(video) {
   return video?.shareUrl ?? (video?.id ? `https://www.mlb.com/video/${video.id}` : null);
+}
+
+function formatYoutubeFallbackDate(gameData) {
+  const rawDate =
+    gameData?.datetime?.originalDate ||
+    gameData?.datetime?.officialDate ||
+    gameData?.game?.officialDate ||
+    gameData?.datetime?.dateTime;
+  if (!rawDate) return null;
+
+  const [year, month, day] = String(rawDate).slice(0, 10).split('-');
+  if (!year || !month || !day) return null;
+  return `${year}/${month}/${day}`;
+}
+
+function lastNameForVideoSearch(fullName) {
+  const suffixes = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']);
+  const parts = String(fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  const last = parts.at(-1);
+  if (parts.length > 1 && suffixes.has(last.toLowerCase())) return parts.at(-2);
+  return last;
+}
+
+function isLegacyYoutubeFallbackSeason(gameData) {
+  const season = Number(gameData?.game?.season);
+  return season >= 2012 && season <= 2018;
+}
+
+export function buildYoutubeHighlightFallbackMap(summaryItems, gameData) {
+  if (!isLegacyYoutubeFallbackSeason(gameData)) return {};
+
+  const date = formatYoutubeFallbackDate(gameData);
+  if (!date) return {};
+
+  const map = {};
+  for (const item of summaryItems ?? []) {
+    if (!item?.isScoring) continue;
+
+    const lastName = lastNameForVideoSearch(item.batterName);
+    if (!lastName) continue;
+
+    const query = `${date} ${lastName}`;
+    map[item.key] = {
+      id: `youtube-search-${item.key}`,
+      provider: 'YouTube',
+      isExternal: true,
+      headline: `Search YouTube: ${query}`,
+      description: item.description,
+      shareUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+      playerIds: item.batterId ? [Number(item.batterId)].filter(Boolean) : [],
+      taxonomies: ['youtube-fallback'],
+    };
+  }
+
+  return map;
 }
 
 /** Copy text with Clipboard API, falling back to execCommand for mobile browsers. */
