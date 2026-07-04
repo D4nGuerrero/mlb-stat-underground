@@ -12,6 +12,9 @@ const RESULT_STYLES = {
   misc: 'border-orange-500/45 text-orange-100',
 };
 
+const TOAST_DURATION_MS = 2400;
+const TOAST_EXIT_START_MS = Math.round(TOAST_DURATION_MS * 0.72);
+
 function toastFromPitch(pitch) {
   if (!pitch) return null;
   const description = formatPitchDescriptionWithAbsContext(
@@ -29,11 +32,15 @@ function toastFromPitch(pitch) {
   };
 }
 
-export default function LivePitchToast({ item, pitch, onComplete }) {
+export default function LivePitchToast({ item, pitch, onComplete, onExitStart }) {
   useEffect(() => {
-    const timer = setTimeout(() => onComplete?.(), 2400);
-    return () => clearTimeout(timer);
-  }, [item, pitch, onComplete]);
+    const exitTimer = setTimeout(() => onExitStart?.(), TOAST_EXIT_START_MS);
+    const completeTimer = setTimeout(() => onComplete?.(), TOAST_DURATION_MS);
+    return () => {
+      clearTimeout(exitTimer);
+      clearTimeout(completeTimer);
+    };
+  }, [item, pitch, onComplete, onExitStart]);
 
   const toast = item || toastFromPitch(pitch);
   if (!toast) return null;
@@ -42,7 +49,7 @@ export default function LivePitchToast({ item, pitch, onComplete }) {
 
   return (
     <div
-      className={`absolute left-1/2 bottom-4 z-30 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border bg-slate-900/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur-md xl:w-[260px] xl:px-3 xl:py-2 ${style}`}
+      className={`absolute left-1/2 bottom-6 z-10 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border bg-slate-900/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur-md xl:w-[260px] xl:px-3 xl:py-2 ${style}`}
       role="status"
       aria-live="polite"
     >

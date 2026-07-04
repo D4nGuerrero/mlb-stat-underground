@@ -148,7 +148,7 @@ function formatPitcherStat(s) {
   );
 }
   return (
-    <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden ">
+    <div className="relative z-20 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden ">
       {finalMessage ? (
         <div className="px-4 py-5 text-center">
           <div className="text-[9px] text-slate-500 uppercase tracking-[0.22em] font-semibold">

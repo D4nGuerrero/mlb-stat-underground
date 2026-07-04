@@ -225,9 +225,13 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     });
   }, [stablePlayEvents, visualCurrentPlay, showPitchToast]);
 
+  const revealToastRecentRow = useCallback(() => {
+    const rowKey = toastItemRef.current?.rowKey;
+    if (rowKey) onRecentRowReady?.(rowKey);
+  }, [onRecentRowReady]);
+
   const clearToast = useCallback(() => {
     setToastItem((current) => {
-      if (current?.rowKey) onRecentRowReady?.(current.rowKey);
       const pending = pendingToastRef.current;
       if (pending) {
         pendingToastRef.current = null;
@@ -235,7 +239,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       }
       return null;
     });
-  }, [onRecentRowReady]);
+  }, []);
 
   const exteriorTimeOfDay = stadiumTimeOfDay(gameDateTime);
   const batterSide = batterIsAway ? 'away' : 'home';
@@ -301,7 +305,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     <div
       // MLB uses an invisible spacer image for this same idea: width is owned by
       // the layout, and height follows the fixed stadium field aspect ratio.
-      className={`relative overflow-hidden sm:rounded-2xl border border-slate-700/60 flex flex-col ${className}`}
+      className={`relative overflow-visible sm:rounded-2xl border border-slate-700/60 flex flex-col ${className}`}
       style={{ aspectRatio: `${FIELD_ASPECT}` }}
     >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -426,10 +430,16 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
               baseballModelUrl={baseballModelUrl}
               className="mx-auto shrink-0"
             />
-            {showPitchToast && <LivePitchToast item={toastItem} onComplete={clearToast} />}
           </div>
         </div>
       </div>
+      {showPitchToast && (
+        <LivePitchToast
+          item={toastItem}
+          onComplete={clearToast}
+          onExitStart={revealToastRecentRow}
+        />
+      )}
     </div>
   );
 });
