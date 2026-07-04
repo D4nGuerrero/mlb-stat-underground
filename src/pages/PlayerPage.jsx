@@ -753,13 +753,15 @@ function getCareerStatFromYearByYear(stats, group) {
   return computeCareerTotalsRow(rows, group)?.stat ?? null;
 }
 
-function PlayerStatSummaryCard({ playerInfo, isPitcher, stats }) {
+function PlayerStatSummaryCard({ playerInfo, isPitcher, stats, levelLabel = '' }) {
   const isActive = playerInfo?.active !== false;
   const group = isPitcher ? 'pitching' : 'hitting';
   const stat = isActive
     ? getSeasonStatFromYearByYear(stats, group, CURRENT_YEAR)
     : getCareerStatFromYearByYear(stats, group);
-  const header = isActive ? `${CURRENT_YEAR} SEASON STATS` : 'CAREER STATS';
+  const header = isActive
+    ? `${CURRENT_YEAR} ${levelLabel ? `${levelLabel} ` : ''}STATS`
+    : 'CAREER STATS';
   const headerClass = isActive
     ? `border-${THEME_COLOR}-500/25 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-300`
     : 'border-slate-600/40 bg-slate-700/30 text-slate-300';
@@ -772,6 +774,7 @@ function PlayerStatSummaryCard({ playerInfo, isPitcher, stats }) {
         { label: 'WHIP', value: formatTwoDecimalStat(stat?.whip) },
       ]
     : [
+        { label: 'AB', value: formatWholeStat(stat?.atBats) },
         { label: 'AVG', value: formatRateStat(stat?.avg) },
         { label: 'HR', value: formatWholeStat(stat?.homeRuns) },
         { label: 'RBI', value: formatWholeStat(stat?.rbi) },
@@ -786,7 +789,7 @@ function PlayerStatSummaryCard({ playerInfo, isPitcher, stats }) {
             {header}
           </div>
         </div>
-        <div className={`grid ${isPitcher ? 'grid-cols-5' : 'grid-cols-4'} divide-x divide-slate-800/80 px-1 py-3 sm:py-4`}>
+        <div className="grid grid-cols-5 divide-x divide-slate-800/80 px-1 py-3 sm:py-4">
           {items.map((item) => (
             <div key={item.label} className="min-w-0 px-1.5 text-center">
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:text-[10px]">
@@ -2568,6 +2571,11 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const regularMlbYearByYear =
     yearByYearByLevel.mlb ??
     (careerLevel === 'mlb' && careerGameType === 'R' ? yearByYear : null);
+  const regularMinorsYearByYear =
+    yearByYearByLevel.minors ??
+    (careerLevel === 'minors' && careerGameType === 'R' ? yearByYear : null);
+  const summaryStatsLevel = isMinorsProfile && regularMinorsYearByYear ? 'minors' : 'mlb';
+  const summaryStats = summaryStatsLevel === 'minors' ? regularMinorsYearByYear : regularMlbYearByYear;
 
   const PLAYER_TABS = [
     { key: 'career', label: 'Career' },
@@ -2658,7 +2666,8 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
           <PlayerStatSummaryCard
             playerInfo={playerInfo}
             isPitcher={isPitcher}
-            stats={regularMlbYearByYear}
+            stats={summaryStats}
+            levelLabel={summaryStatsLevel === 'minors' ? 'MINORS' : ''}
           />
 
           <PlayerBioInfo playerInfo={playerInfo} draftPick={draftPick} />

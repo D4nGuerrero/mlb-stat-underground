@@ -265,7 +265,7 @@ function buildDiscoveryTags(player) {
   return tags.slice(0, 3);
 }
 
-function mapBoxPlayer(player, kind, affiliate) {
+function mapBoxPlayer(player, kind, affiliate, orderIndex = 0) {
   const stat = player.stats?.[kind] ?? {};
   const season = player.seasonStats?.[kind] ?? {};
   const mapped = {
@@ -279,6 +279,8 @@ function mapBoxPlayer(player, kind, affiliate) {
     score: kind === 'batting' ? hitterScore(stat) : pitcherScore(stat),
     kind,
     mode: 'today',
+    orderIndex,
+    battingOrder: player.battingOrder,
   };
   return { ...mapped, tags: buildDiscoveryTags(mapped) };
 }
@@ -305,14 +307,23 @@ function extractTeamPlayers(boxscore, side, affiliate) {
   if (!teamBox?.players) return { hitters: [], pitchers: [] };
 
   const hitters = (teamBox.batters ?? [])
-    .map((id) => teamBox.players[`ID${id}`])
-    .filter((player) => player?.stats?.batting?.plateAppearances)
-    .map((player) => mapBoxPlayer(player, 'batting', affiliate));
+    .map((id, orderIndex) => ({ player: teamBox.players[`ID${id}`], orderIndex }))
+    .filter(({ player }) => player?.person?.id && player?.stats?.batting)
+    .map(({ player, orderIndex }) => mapBoxPlayer(player, 'batting', affiliate, orderIndex))
+    .sort((a, b) => {
+      const ao = parseInt(a.battingOrder, 10);
+      const bo = parseInt(b.battingOrder, 10);
+      if (!Number.isNaN(ao) && !Number.isNaN(bo) && ao !== bo) return ao - bo;
+      if (!Number.isNaN(ao) && Number.isNaN(bo)) return -1;
+      if (Number.isNaN(ao) && !Number.isNaN(bo)) return 1;
+      return a.orderIndex - b.orderIndex;
+    });
 
   const pitchers = (teamBox.pitchers ?? [])
-    .map((id) => teamBox.players[`ID${id}`])
-    .filter((player) => player?.stats?.pitching?.outs || player?.stats?.pitching?.inningsPitched)
-    .map((player) => mapBoxPlayer(player, 'pitching', affiliate));
+    .map((id, orderIndex) => ({ player: teamBox.players[`ID${id}`], orderIndex }))
+    .filter(({ player }) => player?.person?.id && player?.stats?.pitching)
+    .map(({ player, orderIndex }) => mapBoxPlayer(player, 'pitching', affiliate, orderIndex))
+    .sort((a, b) => a.orderIndex - b.orderIndex);
 
   return { hitters, pitchers };
 }
@@ -612,8 +623,8 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
   const game = affiliate.game;
   const side = affiliate.side;
   const opponentSide = side === 'home' ? 'away' : 'home';
-  const topHitter = affiliate.hitters[0];
-  const topPitcher = affiliate.pitchers[0];
+  const topHitter = [...affiliate.hitters].sort((a, b) => b.score - a.score)[0];
+  const topPitcher = [...affiliate.pitchers].sort((a, b) => b.score - a.score)[0];
 
   return (
     <div className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/80 shadow-2xl shadow-black/25">
@@ -929,12 +940,10 @@ export default function ProspectWatch() {
                 const boxscoreRes = await fetch(`https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`);
                 const boxscore = await boxscoreRes.json();
                 const todayPlayers = extractTeamPlayers(boxscore, side, affiliate);
-                hitters = todayPlayers.hitters
-                  .filter((player) => activeRosterIds.has(Number(player.id)))
-                  .sort((a, b) => b.score - a.score);
-                pitchers = todayPlayers.pitchers
-                  .filter((player) => activeRosterIds.has(Number(player.id)))
-                  .sort((a, b) => b.score - a.score);
+                // Today's table should mirror the official game box score,
+                // including rehab/temporary players who may not be active-roster.
+                hitters = todayPlayers.hitters;
+                pitchers = todayPlayers.pitchers;
               }
 
               return {
@@ -1006,8 +1015,8 @@ export default function ProspectWatch() {
 
     visibleCards.forEach((card) => {
       if (formMode === 'today') {
-        hitters.push(...card.hitters);
-        pitchers.push(...card.pitchers);
+        hitters.push(...card.hitters.map((player) => ({ ...player, orderIndex: player.orderIndex ?? 0 })));
+        pitchers.push(...card.pitchers.map((player) => ({ ...player, orderIndex: player.orderIndex ?? 0 })));
         return;
       }
       hitters.push(...(card.forms?.[formMode]?.hitters ?? []));
