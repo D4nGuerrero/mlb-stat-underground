@@ -162,18 +162,37 @@ body {
 }
 
 .recent-play-insert {
-  animation: recentPlayInsert 780ms cubic-bezier(0.16, 1, 0.3, 1);
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: visible;
+  position: relative;
+  transform-origin: top;
+  animation: recentPlayInsertSpace 520ms cubic-bezier(0.22, 1, 0.36, 1);
   animation-fill-mode: both;
 }
 
-@keyframes recentPlayInsert {
+.recent-play-insert > * {
+  min-height: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+  animation: recentPlayInsertContent 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes recentPlayInsertSpace {
   0% {
-    opacity: 0;
-    transform: translateY(-14px);
+    grid-template-rows: 0fr;
   }
-  55% {
+  100% {
+    grid-template-rows: 1fr;
+  }
+}
+
+@keyframes recentPlayInsertContent {
+  0% {
     opacity: 1;
-    transform: translateY(4px);
+    transform: translateY(-80px);
   }
   100% {
     opacity: 1;
@@ -211,11 +230,15 @@ body {
 }
 
 .impact-fire-track::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 2px;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.08), transparent 45%);
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.08),
+    transparent 45%
+  );
   pointer-events: none;
 }
 
@@ -240,22 +263,38 @@ body {
 }
 
 .impact-fire-fill::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: -18px -10px -2px 0;
   opacity: 0.92;
   background:
-    radial-gradient(circle at 8px 30px, rgba(254, 240, 138, 0.95) 0 4px, transparent 9px),
-    radial-gradient(circle at 24px 28px, rgba(251, 146, 60, 0.9) 0 7px, transparent 13px),
-    radial-gradient(circle at 40px 31px, rgba(239, 68, 68, 0.82) 0 6px, transparent 12px),
-    radial-gradient(circle at 58px 27px, rgba(253, 186, 116, 0.9) 0 8px, transparent 14px);
+    radial-gradient(
+      circle at 8px 30px,
+      rgba(254, 240, 138, 0.95) 0 4px,
+      transparent 9px
+    ),
+    radial-gradient(
+      circle at 24px 28px,
+      rgba(251, 146, 60, 0.9) 0 7px,
+      transparent 13px
+    ),
+    radial-gradient(
+      circle at 40px 31px,
+      rgba(239, 68, 68, 0.82) 0 6px,
+      transparent 12px
+    ),
+    radial-gradient(
+      circle at 58px 27px,
+      rgba(253, 186, 116, 0.9) 0 8px,
+      transparent 14px
+    );
   background-size: 64px 34px;
   animation: impactFlames 650ms linear infinite;
   mix-blend-mode: screen;
 }
 
 .impact-fire-fill::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
@@ -276,7 +315,11 @@ body {
   display: grid;
   place-items: center;
   border-radius: 9999px;
-  background: radial-gradient(circle, rgba(255, 247, 237, 0.18), transparent 68%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 247, 237, 0.18),
+    transparent 68%
+  );
   box-shadow:
     0 0 18px rgba(251, 146, 60, 0.55),
     0 5px 12px rgba(0, 0, 0, 0.35);
@@ -288,17 +331,24 @@ body {
 .impact-baseball-spinner {
   width: 32px !important;
   height: 32px !important;
-  filter:
-    drop-shadow(0 0 7px rgba(255, 247, 237, 0.75))
+  filter: drop-shadow(0 0 7px rgba(255, 247, 237, 0.75))
     drop-shadow(0 0 12px rgba(249, 115, 22, 0.55));
 }
 
 @keyframes impactFlames {
   from {
-    background-position: 0 0, 0 0, 0 0, 0 0;
+    background-position:
+      0 0,
+      0 0,
+      0 0,
+      0 0;
   }
   to {
-    background-position: 64px 0, 64px 0, 64px 0, 64px 0;
+    background-position:
+      64px 0,
+      64px 0,
+      64px 0,
+      64px 0;
   }
 }
 
@@ -382,21 +432,30 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.32));
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.12),
+    rgba(15, 23, 42, 0.32)
+  );
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb {
-  background:
-    linear-gradient(180deg, rgba(148, 163, 184, 0.76), rgba(71, 85, 105, 0.86));
+  background: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.76),
+    rgba(71, 85, 105, 0.86)
+  );
   border: 2px solid rgba(15, 23, 42, 0.78);
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background:
-    linear-gradient(180deg, rgba(203, 213, 225, 0.88), rgba(100, 116, 139, 0.95));
+  background: linear-gradient(
+    180deg,
+    rgba(203, 213, 225, 0.88),
+    rgba(100, 116, 139, 0.95)
+  );
 }
 
 *::-webkit-scrollbar-corner {
@@ -422,23 +481,32 @@ body {
 }
 
 .gameday-scroll-rail::-webkit-scrollbar-track {
-  background:
-    linear-gradient(180deg, rgba(2, 6, 23, 0.18), rgba(15, 23, 42, 0.56));
+  background: linear-gradient(
+    180deg,
+    rgba(2, 6, 23, 0.18),
+    rgba(15, 23, 42, 0.56)
+  );
   border: 1px solid rgba(51, 65, 85, 0.5);
   border-radius: 999px;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.45);
 }
 
 .gameday-scroll-rail::-webkit-scrollbar-thumb {
-  background:
-    linear-gradient(180deg, rgba(226, 232, 240, 0.82), rgba(100, 116, 139, 0.92));
+  background: linear-gradient(
+    180deg,
+    rgba(226, 232, 240, 0.82),
+    rgba(100, 116, 139, 0.92)
+  );
   border: 3px solid rgba(15, 23, 42, 0.9);
   border-radius: 999px;
 }
 
 .gameday-scroll-rail::-webkit-scrollbar-thumb:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(148, 163, 184, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.95),
+    rgba(148, 163, 184, 0.98)
+  );
 }
 
 .live-info-swap {
@@ -618,7 +686,6 @@ body {
   body.game-page-final-fullscreen {
     overflow: hidden;
   }
-
 }
 
 /* Today button styling */
@@ -939,7 +1006,9 @@ img {
   will-change: transform, opacity;
   transform: translateX(var(--calendar-drag-x, 0));
   opacity: var(--calendar-drag-opacity, 1);
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
   animation-duration: 260ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   animation-fill-mode: both;

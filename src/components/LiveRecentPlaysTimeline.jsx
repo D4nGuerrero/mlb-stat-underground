@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import {
   teamLogoUrl,
   playerHeadshotUrl,
@@ -475,7 +475,7 @@ export default function LiveRecentPlaysTimeline({
   const knownRowKeysRef = useRef(null);
   const [newRowKeys, setNewRowKeys] = useState(() => new Set());
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const keys = groups.flatMap((group) => group.rows.map((row) => row.key));
     if (knownRowKeysRef.current == null) {
       knownRowKeysRef.current = new Set(keys);

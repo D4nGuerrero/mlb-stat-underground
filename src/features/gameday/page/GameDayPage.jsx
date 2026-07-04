@@ -624,14 +624,14 @@ function HitDataPanel({ hitData }) {
 
   return (
     <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-slate-700/30">
+      {/* <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-slate-700/30">
         <div className="text-[10px] text-slate-500 uppercase tracking-widest">
           Statcast
         </div>
         <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wide">
           Batted Ball
         </span>
-      </div>
+      </div> */}
 
       <div className="grid grid-cols-3 divide-x divide-slate-700/30">
         {stats.map(({ key, label, short, value, unit, tone, bar, barColor }) => (
@@ -656,46 +656,12 @@ function HitDataPanel({ hitData }) {
                 />
               </div>
             )}
-            {key === 'angle' && launchAngle != null && (
-              <div className="mx-auto mt-2.5 w-14 h-7 relative">
-                <div className="absolute bottom-0 left-1 right-1 h-px bg-slate-600" />
-                <div
-                  className="absolute bottom-0 left-1/2 w-6 h-px bg-slate-400 origin-left"
-                  style={{ transform: `rotate(${-launchAngle}deg)` }}
-                />
-              </div>
-            )}
+        
           </div>
         ))}
       </div>
 
-      {(trajectoryLabel || hardness || location) && (
-        <div className="flex flex-wrap gap-2 px-4 py-3 border-t border-slate-700/30 bg-slate-900/20">
-          {trajectoryLabel && (
-            <span className="text-[11px] px-2.5 py-1 bg-slate-800 border border-slate-700/40 rounded-full text-slate-400 capitalize">
-              {trajectoryLabel}
-            </span>
-          )}
-          {hardness && (
-            <span
-              className={`text-[11px] px-2.5 py-1 border rounded-full capitalize ${
-                hardness === 'hard'
-                  ? `bg-${THEME_COLOR}-500/10 border-${THEME_COLOR}-500/30 text-${THEME_COLOR}-400`
-                  : hardness === 'soft'
-                    ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                    : 'bg-slate-800 border-slate-700/40 text-slate-400'
-              }`}
-            >
-              {hardness} contact
-            </span>
-          )}
-          {location && (
-            <span className="text-[11px] px-2.5 py-1 bg-slate-800 border border-slate-700/40 rounded-full text-slate-400">
-              Zone {location}
-            </span>
-          )}
-        </div>
-      )}
+   
     </div>
   );
 }
@@ -2052,7 +2018,7 @@ function GamePageContent({ gamePk, navigate, location }) {
       />
 
       {(vsMatchupLine || dueUpTickerLine) && (
-        <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl px-3 py-2">
+        <div className="relative z-20 bg-slate-900 border border-slate-800 sm:rounded-2xl px-3 py-2">
           {vsMatchupLine && dueUpTickerLine ? (
             <div className="live-info-swap text-center text-[11px] sm:text-xs font-semibold text-slate-300">
               <div className="live-info-swap__line live-info-swap__line--primary">
@@ -2092,8 +2058,9 @@ function GamePageContent({ gamePk, navigate, location }) {
   );
 
   const recentPlaysPanel = (
-    <div className="bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+    <div className="relative z-0 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-visible">
+      <div className="pointer-events-none absolute -top-4 left-0 right-0 z-30 h-5 bg-slate-900 sm:rounded-t-2xl" aria-hidden />
+      <div className="relative z-20 bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between sm:rounded-t-2xl">
         <span className="xl:hidden text-[10px] text-slate-500 uppercase tracking-widest">
           Recent Plays
         </span>
@@ -2117,7 +2084,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           {leftRailView === 'summary' ? `${summaryItems.length} plays` : `${liveRecentRows.length} events`}
         </span>
       </div>
-      <div className="p-2 sm:p-4 xl:p-3 2xl:p-4">
+      <div className="relative z-0 overflow-hidden p-2 sm:p-4 xl:p-3 2xl:p-4">
         {leftRailView === 'summary' ? (
           <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
             {summaryPanel}

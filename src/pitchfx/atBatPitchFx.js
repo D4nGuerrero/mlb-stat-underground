@@ -617,7 +617,7 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   ctx.globalCompositeOperation = 'source-over';
 
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.arc(x, y, radius * 1.05, 0, Math.PI * 2);
   ctx.fillStyle = shader.ball;
   ctx.fill();
   ctx.closePath();
@@ -627,15 +627,15 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = Math.max(2, fontSize * 0.18);
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-  ctx.strokeText(String(pitch.num ?? ''), x, y);
+  // ctx.strokeStyle = 'red';
+  // ctx.strokeText(String(pitch.num ?? ''), x, y);
   ctx.fillText(String(pitch.num ?? ''), x, y);
 
   ctx.beginPath();
   ctx.arc(x, y, safeStroke, 0, Math.PI * 2);
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = shader.ballStroke;
-  ctx.stroke();
+  // ctx.stroke();
   ctx.restore();
 }
 
@@ -737,8 +737,8 @@ export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = Math.max(2, fontSize * 0.18);
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-  ctx.strokeText(String(pitch.num ?? ''), x, y);
+  // ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+  // ctx.strokeText(String(pitch.num ?? ''), x, y);
   ctx.fillText(String(pitch.num ?? ''), x, y);
   ctx.restore();
 }

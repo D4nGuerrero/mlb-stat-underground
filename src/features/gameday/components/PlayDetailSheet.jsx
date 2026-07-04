@@ -98,9 +98,9 @@ export default function PlayDetailSheet({
         {renderHitDataPanel(hitData)}
 
         <div className="bg-slate-900/70 border border-slate-700/50 rounded-2xl overflow-hidden">
-          <div className="text-[10px] text-slate-500 uppercase tracking-widest px-3 pt-2.5 pb-1">
+          {/* <div className="text-[10px] text-slate-500 uppercase tracking-widest px-3 pt-2.5 pb-1">
             At Bat Matchup
-          </div>
+          </div> */}
           <div className="flex items-stretch">
             <button
               className="flex-1 flex flex-col items-center gap-1.5 p-3 hover:bg-slate-700/30 transition-colors border-r border-slate-700/40"
@@ -156,9 +156,9 @@ export default function PlayDetailSheet({
 
         {pitches.length > 0 && (
           <div className="bg-slate-900/70 border border-slate-700/50 rounded-2xl overflow-hidden">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest px-3 pt-2.5 pb-2">
+            {/* <div className="text-[10px] text-slate-500 uppercase tracking-widest px-3 pt-2.5 pb-2">
               At Bat View
-            </div>
+            </div> */}
             <LiveAtBatVisual
               venueId={venueId}
               exteriorFailed={exteriorFailed}
@@ -180,35 +180,15 @@ export default function PlayDetailSheet({
               strikeZoneTopImageUrl={strikeZoneTopImageUrl}
               className="rounded-none border-x-0 border-b-0 border-t border-slate-700/50"
             />
-            <div
-              className="px-3 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 justify-center"
-            >
-              {[
-                { color: '#c61b2b', label: 'Strike' },
-                { color: '#098314', label: 'Ball' },
-                { color: '#0062e3', label: 'In Play' },
-                { color: '#7756b3', label: 'Out' },
-                showPitchTrails ? { color: '#ffffff', label: 'Trail' } : null,
-              ]
-                .filter(Boolean)
-                .map(({ color, label }) => (
-                  <span key={label} className="flex items-center gap-1">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full border border-slate-500 shrink-0"
-                      style={{ backgroundColor: color }}
-                    />
-                    {label}
-                  </span>
-                ))}
-            </div>
+          
           </div>
         )}
 
         {pitches.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 px-1">
+            {/* <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 px-1">
               Pitch Sequence / {pitches.length} pitch{pitches.length !== 1 ? 'es' : ''}
-            </div>
+            </div> */}
             <div className="space-y-2">
               {pitches.map(({ event: pitch, eventIdx }, index) => {
                 const desc = formatPitchDescriptionWithAbsContext(
@@ -260,7 +240,7 @@ export default function PlayDetailSheet({
                     className={`flex items-center gap-3 rounded-2xl  border bg-[#0f1a23] ${rowBg}`}
                   >
                     <div
-                      className={`w-7 h-7  rounded-full flex-shrink-0 flex items-center justify-center text-2xl  font-extrabold text-white ring-2 ring-white/80 shadow-sm ${dotColor}`}
+                      className={`w-8 h-8  rounded-full flex-shrink-0 flex items-center justify-center text-2xl  font-extrabold text-white  shadow-sm ${dotColor}`}
                     >
                       {index + 1}
                     </div>

@@ -102,6 +102,9 @@ export default function LiveMatchupStrip({
   const batterPlayer = getGamePlayer?.(linescore?.offense?.batter?.id);
   const batterRole = formatBatterRole(batterPlayer, currentPlay, linescore);
   const pitcherRole = formatPitcherRole(currentPlay, linescore);
+  // The matchup strip should mirror the live situation. `currentPlay.runners`
+  // can lag during diff updates, so use the linescore offense for bases here.
+  const liveBases = getRunnersOnBase(linescore);
 
 function formatPitcherStat(s) {
   if (!s) return null;
@@ -201,7 +204,7 @@ function formatPitcherStat(s) {
           />
 
           <div className="flex flex-col items-center justify-center  p-3">
-            <BaseDiamondIndicator {...getRunnersOnBase(linescore, currentPlay)} size="md" />
+            <BaseDiamondIndicator {...liveBases} size="md" />
             <span className="text-sm font-bold font-mono text-slate-200 tabular-nums">
               {linescore?.balls ?? 0}-{linescore?.strikes ?? 0}
             </span>
