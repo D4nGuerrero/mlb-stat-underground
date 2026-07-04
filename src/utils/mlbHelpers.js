@@ -42,6 +42,7 @@ const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']
 
 const PIDS = {
   IAN_KINSLER: 435079,
+  MIKE_NAPOLI: 435063,
   ADRIAN_BELTRE: 134181,
 };
 
@@ -60,6 +61,9 @@ const PLAYER_PROFILE_OVERRIDES = {
       headshot: 'https://i.postimg.cc/sxG5tB6w/ik.png',
     },
     heroBgClass: 'bg-[right_-5rem_top_0rem]',
+  },
+  [PIDS.MIKE_NAPOLI]: {
+    retiredTeamId: TEAM_IDS.TEXAS_RANGERS,
   },
   [PIDS.ADRIAN_BELTRE]: {
     images: {
