@@ -265,6 +265,14 @@ function buildDiscoveryTags(player) {
   return tags.slice(0, 3);
 }
 
+function boxPlayerPosition(player) {
+  const positions = [
+    player.position?.abbreviation,
+    ...(player.allPositions ?? []).map((pos) => pos?.abbreviation),
+  ].filter(Boolean);
+  return [...new Set(positions)].join('/') || '—';
+}
+
 function mapBoxPlayer(player, kind, affiliate, orderIndex = 0) {
   const stat = player.stats?.[kind] ?? {};
   const season = player.seasonStats?.[kind] ?? {};
@@ -281,6 +289,7 @@ function mapBoxPlayer(player, kind, affiliate, orderIndex = 0) {
     mode: 'today',
     orderIndex,
     battingOrder: player.battingOrder,
+    position: boxPlayerPosition(player),
   };
   return { ...mapped, tags: buildDiscoveryTags(mapped) };
 }
@@ -540,6 +549,11 @@ function BoxScoreTable({ rows, kind, onSelectPlayer, isWatched, onToggleWatch })
                 >
                   {player.boxscoreName}
                 </button>
+                {kind === 'batting' && player.position && player.position !== '—' && (
+                  <span className="ml-1 text-[10px] font-semibold text-slate-600">
+                    {player.position}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => onToggleWatch?.(player)}
