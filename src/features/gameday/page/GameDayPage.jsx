@@ -1226,7 +1226,7 @@ function GamedayDayPicker({
 
 function DesktopMiniTeamRow({ team, score, record }) {
   return (
-    <div className="grid grid-cols-[1rem_2.4rem_1fr_1.1rem] items-center gap-1 leading-none">
+    <div className="grid h-5 grid-cols-[1rem_2.4rem_1fr_1.1rem] items-center gap-1 leading-none">
       <img src={teamLogoUrl(team.id)} alt={team.abbreviation} className="h-3.5 w-3.5 object-contain" />
       <span className="truncate text-[12px] font-extrabold text-white">
         {team.abbreviation}
@@ -1271,29 +1271,21 @@ function DesktopMiniGameCard({ game, isSelected, onClick }) {
       onClick={onClick}
       disabled={isSelected}
       className={[
-        'h-full w-full rounded-lg border bg-[#111a24] px-2 py-1.5 text-left transition-colors',
+        'grid h-full w-full grid-rows-[0.9rem_1.25rem_1.25rem] rounded-lg border bg-[#111a24] px-2 py-1.5 text-left transition-colors',
         isSelected
           ? 'border-slate-300/80 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.45)]'
           : 'border-slate-700/70 hover:border-slate-500/80 hover:bg-slate-800/60',
         isPostponed ? 'opacity-55' : '',
       ].filter(Boolean).join(' ')}
     >
-      <div className="flex items-start justify-between gap-1">
-        <div className="truncate text-[9px] font-extrabold uppercase tracking-wide text-slate-200">
+      <div className="flex min-h-0 items-start justify-between gap-1 leading-none">
+        <div className="truncate text-[9px] font-extrabold uppercase leading-none tracking-wide text-slate-200">
           {statusLabel}
         </div>
-        {isLiveGame && game.linescore && (
-          <div className="flex items-center gap-1">
-            <BaseDiamondIndicator {...getRunnersOnBase(game.linescore)} size="xs" />
-            <OutsIndicator outs={game.linescore.outs ?? 0} size="xs" />
-          </div>
-        )}
       </div>
 
-      <div className="mt-1.5 space-y-1.5">
-        <DesktopMiniTeamRow team={awayTeam} score={awayScore} record={awayRecord} />
-        <DesktopMiniTeamRow team={homeTeam} score={homeScore} record={homeRecord} />
-      </div>
+      <DesktopMiniTeamRow team={awayTeam} score={awayScore} record={awayRecord} />
+      <DesktopMiniTeamRow team={homeTeam} score={homeScore} record={homeRecord} />
     </button>
   );
 }
