@@ -1843,13 +1843,26 @@ function GamePageContent({ gamePk, navigate, location }) {
   const homeRuns = ls?.teams?.home?.runs ?? 0;
   const awayWins = isFinal && awayRuns > homeRuns;
   const homeWins = isFinal && homeRuns > awayRuns;
+  const bottomHalf = currentPlay?.about?.halfInning === 'bottom' || ls?.inningHalf === 'Bottom';
+  const lastOutCanEndGame =
+    !isFinal &&
+    bottomHalf &&
+    currentPlay?.about?.isComplete &&
+    Number(currentPlay?.count?.outs ?? ls?.outs ?? 0) >= 3 &&
+    Number(ls?.currentInning ?? currentPlay?.about?.inning ?? 0) >= 9 &&
+    homeRuns !== awayRuns;
+  const gameOverMessage = lastOutCanEndGame
+    ? homeRuns > awayRuns
+      ? `Game Over! ${home.abbreviation} wins, ${homeRuns}-${awayRuns}`
+      : `Game Over! ${away.abbreviation} wins, ${awayRuns}-${homeRuns}`
+    : null;
   const finalMessage = isFinal
     ? awayRuns === homeRuns
       ? `${away.abbreviation} tied ${home.abbreviation}`
       : awayRuns > homeRuns
         ? `${away.abbreviation} defeated ${home.abbreviation}, ${awayRuns}-${homeRuns}`
         : `${home.abbreviation} defeated ${away.abbreviation}, ${homeRuns}-${awayRuns}`
-    : null;
+    : gameOverMessage;
   const gamePlayers = {
     ...(ld.boxscore?.teams?.away?.players || {}),
     ...(ld.boxscore?.teams?.home?.players || {}),
