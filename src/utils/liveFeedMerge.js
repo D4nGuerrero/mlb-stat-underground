@@ -97,15 +97,20 @@ function deepMerge(prev, next) {
  * Merge a diffPatch (or full) response into the existing live feed.
  * Keeps prior sections when the patch omits them so partial payloads cannot blank the UI.
  */
-export function mergeLiveFeed(prev, patch) {
+export function mergeLiveFeed(prev, patch, options = {}) {
   if (!patch) return prev ?? null;
   if (!prev) return patch;
+
+  const liveData = patch.liveData ? deepMerge(prev.liveData, patch.liveData) : prev.liveData;
+  if (options.replaceLinescore && patch.liveData?.linescore) {
+    liveData.linescore = patch.liveData.linescore;
+  }
 
   return {
     ...prev,
     ...patch,
     metaData: patch.metaData ?? prev.metaData,
     gameData: patch.gameData ? deepMerge(prev.gameData, patch.gameData) : prev.gameData,
-    liveData: patch.liveData ? deepMerge(prev.liveData, patch.liveData) : prev.liveData,
+    liveData,
   };
 }

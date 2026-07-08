@@ -55,6 +55,7 @@ import { useLocalStorageState } from '../../../hooks/useStorageState';
 
 const LIVE_DIFF_POLL_MS = 2_500;
 const LIVE_FULL_FEED_REFRESH_MS = 4_000;
+const EVENT_TYPES_URL = 'https://statsapi.mlb.com/api/v1/eventTypes';
 const SHOW_PLAY_DETAIL_PITCH_TRAILS = false;
 const GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY = 'gameday:inPlayOutsPurple';
 const MLB_LEAGUE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg';
@@ -82,6 +83,20 @@ async function fetchLiveGameFeed(gamePk, { retries = 2 } = {}) {
     }
   }
   throw lastErr;
+}
+
+let eventTypesCache = null;
+async function fetchEventTypes() {
+  if (eventTypesCache) return eventTypesCache;
+  const res = await fetch(EVENT_TYPES_URL);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const eventTypes = await res.json();
+  eventTypesCache = Object.fromEntries(
+    (Array.isArray(eventTypes) ? eventTypes : [])
+      .filter((eventType) => eventType?.code)
+      .map((eventType) => [eventType.code, eventType]),
+  );
+  return eventTypesCache;
 }
 
 const PLAY_BADGE = {
@@ -158,10 +173,15 @@ const PLAY_BADGE = {
     label: 'Force Out',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
   },
+   fielders_choice_out: {
+    label: 'Fielders Choice Out',
+    cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',
+  },
   fielders_choice: {
     label: 'Fielder\'s Choice',
    cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
   },
+  
   field_error: {
     label: 'Field Error',
     cls: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
@@ -233,7 +253,15 @@ const PLAY_BADGE = {
  
 };
 
-function inferFieldOutBadge(context) {
+function withEventTypeLabel(badge, eventType, eventTypesByCode) {
+  const apiLabel = eventTypesByCode?.[eventType]?.description;
+  return {
+    ...badge,
+    label: apiLabel || badge?.label || eventType || '—',
+  };
+}
+
+function inferFieldOutBadge(context, eventTypesByCode = null) {
   const play = context?.play ?? context;
   let trajectory = '';
   const events = play?.playEvents ?? [];
@@ -253,20 +281,21 @@ function inferFieldOutBadge(context) {
     .join(' ')
     .toLowerCase();
 
-  if (/ground|grounds|grounder|bunt_grounder/.test(text)) return PLAY_BADGE.groundout;
-  if (/fly|flies|flied|fly_ball/.test(text)) return PLAY_BADGE.flyout;
-  if (/line|lines|lined|line_drive/.test(text)) return PLAY_BADGE.lineout;
-  if (/pop|pops|popped|popup/.test(text)) return PLAY_BADGE.pop_out;
-  return PLAY_BADGE.field_out;
+  if (/ground|grounds|grounder|bunt_grounder/.test(text)) return withEventTypeLabel(PLAY_BADGE.groundout, 'groundout', eventTypesByCode);
+  if (/fly|flies|flied|fly_ball/.test(text)) return withEventTypeLabel(PLAY_BADGE.flyout, 'flyout', eventTypesByCode);
+  if (/line|lines|lined|line_drive/.test(text)) return withEventTypeLabel(PLAY_BADGE.lineout, 'lineout', eventTypesByCode);
+  if (/pop|pops|popped|popup/.test(text)) return withEventTypeLabel(PLAY_BADGE.pop_out, 'pop_out', eventTypesByCode);
+  return withEventTypeLabel(PLAY_BADGE.field_out, 'field_out', eventTypesByCode);
 }
 
-const getPlayBadge = (et, context = null) =>
-  et === 'field_out'
-    ? inferFieldOutBadge(context)
-    : PLAY_BADGE[et] || {
+const buildPlayBadge = (et, context = null, eventTypesByCode = null) => {
+  if (et === 'field_out') return inferFieldOutBadge(context, eventTypesByCode);
+  const fallback = PLAY_BADGE[et] || {
     label: et || '—',
     cls: 'bg-slate-700/40 text-slate-400 border-slate-700/40',
   };
+  return withEventTypeLabel(fallback, et, eventTypesByCode);
+};
 
 const getPlayHitData = (play) => {
   if (play?.hitData) return play.hitData;
@@ -1410,6 +1439,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
   const [pinnedVideo, setPinnedVideo] = useState(null);
   const [milbHighlightByItemKey, setMilbHighlightByItemKey] = useState({});
+  const [eventTypesByCode, setEventTypesByCode] = useState(() => eventTypesCache ?? {});
   const [previewTab, setPreviewTab] = useState('preview');
   const [stripDate, setStripDate] = useState(null);
   const officialDate = feed?.gameData?.datetime?.officialDate;
@@ -1429,6 +1459,10 @@ function GamePageContent({ gamePk, navigate, location }) {
     feed?.gameData?.status?.abstractGameState,
   );
   const { visibleVsStats } = useVsStats(batterId, pitcherId);
+  const getPlayBadge = useCallback(
+    (eventType, context = null) => buildPlayBadge(eventType, context, eventTypesByCode),
+    [eventTypesByCode],
+  );
   const {
     dueUpBatters,
     dueUpHalfLabel,
@@ -1449,6 +1483,18 @@ function GamePageContent({ gamePk, navigate, location }) {
     if (!officialDate) return;
     setStripDate((current) => current ?? officialDate);
   }, [officialDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEventTypes()
+      .then((eventTypes) => {
+        if (!cancelled) setEventTypesByCode(eventTypes);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setGameStripDate = useCallback((dateStr) => {
     setStripDate(dateStr);
@@ -1473,7 +1519,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           return prev;
         }
 
-        const merged = prev ? mergeLiveFeed(prev, data) : data;
+        const merged = prev ? mergeLiveFeed(prev, data, { replaceLinescore: true }) : data;
         if (!isValidLiveFeed(merged)) return prev;
         if (nextTc) feedTimecodeRef.current = nextTc;
         return merged;
@@ -1579,6 +1625,10 @@ function GamePageContent({ gamePk, navigate, location }) {
     const reconnectAndRefresh = () => {
       setWsReconnectKey((key) => key + 1);
       void refreshLiveFeed();
+      // Mobile browsers can fire resume events before network/websocket state is
+      // fully thawed. A short follow-up refresh catches pitches that landed
+      // while the tab/app was suspended without requiring a manual page reload.
+      window.setTimeout(() => { void refreshLiveFeed(); }, 900);
     };
 
     const onVisibilityChange = () => {
@@ -1590,10 +1640,12 @@ function GamePageContent({ gamePk, navigate, location }) {
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', reconnectAndRefresh);
     window.addEventListener('pageshow', onPageShow);
     window.addEventListener('online', reconnectAndRefresh);
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', reconnectAndRefresh);
       window.removeEventListener('pageshow', onPageShow);
       window.removeEventListener('online', reconnectAndRefresh);
     };
@@ -1869,7 +1921,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   // ── Main render ────────────────────────────────────────────────────────────
 
   const tabList = [
-    ...(isLive ? [{ key: 'live', label: 'Live Situation' }] : []),
+    ...(isLive ? [{ key: 'live', label: 'Live At Bat' }] : []),
     { key: 'boxscore', label: 'Box Score' },
     { key: 'summary', label: 'Summary' },
   ];
@@ -2052,7 +2104,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const recentPlaysPanel = (
     <div className="relative z-0 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-visible">
       <div className="pointer-events-none absolute -top-4 left-0 right-0 z-30 h-5 bg-slate-900 sm:rounded-t-2xl" aria-hidden />
-      <div className="relative z-20 bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between sm:rounded-t-2xl">
+      {/* <div className="relative z-20 bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between sm:rounded-t-2xl">
         <span className="xl:hidden text-[10px] text-slate-500 uppercase tracking-widest">
           Recent Plays
         </span>
@@ -2075,7 +2127,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         <span className="text-[9px] text-slate-600">
           {leftRailView === 'summary' ? `${summaryItems.length} plays` : `${liveRecentRows.length} events`}
         </span>
-      </div>
+      </div> */}
       <div className="relative z-0 overflow-hidden p-2 sm:p-4 xl:p-3 2xl:p-4">
         {leftRailView === 'summary' ? (
           <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">

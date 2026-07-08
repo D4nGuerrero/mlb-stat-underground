@@ -11,6 +11,11 @@ function pitchAtBatIndexFromKey(rowKey) {
   return match ? Number(match[1]) : null;
 }
 
+function pitchEventIndexFromKey(rowKey) {
+  const match = String(rowKey || '').match(/^live-pitch-(\d+)-(\d+)$/);
+  return match ? Number(match[2]) : null;
+}
+
 export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   const liveRecentFeed = useMemo(() => {
     if (!feed || !isValidLiveFeed(feed)) {
@@ -35,7 +40,23 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   const liveFirstPitch = liveRecentFeed.firstPitch;
   const knownPitchRowKeysRef = useRef(null);
   const retainedAtBatPitchRowsRef = useRef({ atBatIndex: null, rows: new Map() });
+  const resumeRevealUntilRef = useRef(0);
   const [revealedPitchRowKeys, setRevealedPitchRowKeys] = useState(() => new Set());
+
+  const revealPitchRows = useCallback((rowKeys) => {
+    if (!rowKeys?.length) return;
+    setRevealedPitchRowKeys((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      rowKeys.forEach((key) => {
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, []);
 
   useEffect(() => {
     const currentPitchRows = liveRecentRows.filter((row) => row.kind === 'live_pitch');
@@ -57,6 +78,10 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
     const previousKnown = knownPitchRowKeysRef.current;
     knownPitchRowKeysRef.current = new Set(pitchRowKeys);
     setRevealedPitchRowKeys((prev) => {
+      if (Date.now() < resumeRevealUntilRef.current && pitchRowKeys.length) {
+        return new Set([...prev, ...pitchRowKeys]);
+      }
+
       // Page refresh / first live-feed hydration: if we previously had no known
       // live pitch rows and no revealed rows, show the current pitch list
       // immediately. These rows already existed before this browser session, so
@@ -73,15 +98,56 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
     });
   }, [liveRecentRows]);
 
+  useEffect(() => {
+    if (!isLive) return undefined;
+
+    const revealCurrentPitchRowsAfterResume = () => {
+      resumeRevealUntilRef.current = Date.now() + 10_000;
+      const rowKeys = liveRecentRows
+        .filter((row) => row.kind === 'live_pitch')
+        .map((row) => row.key);
+      revealPitchRows(rowKeys);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') revealCurrentPitchRowsAfterResume();
+    };
+
+    const onPageShow = () => revealCurrentPitchRowsAfterResume();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('online', revealCurrentPitchRowsAfterResume);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('online', revealCurrentPitchRowsAfterResume);
+    };
+  }, [isLive, liveRecentRows, revealPitchRows]);
+
   const revealLiveRecentRow = useCallback((rowKey) => {
     if (!rowKey) return;
+    const atBatIndex = pitchAtBatIndexFromKey(rowKey);
+    const eventIndex = pitchEventIndexFromKey(rowKey);
+    const rowKeysToReveal =
+      atBatIndex != null && eventIndex != null
+        ? liveRecentRows
+            .filter((row) => {
+              if (row.kind !== 'live_pitch') return false;
+              if (pitchAtBatIndexFromKey(row.key) !== atBatIndex) return false;
+              const rowEventIndex = pitchEventIndexFromKey(row.key);
+              return rowEventIndex != null && rowEventIndex <= eventIndex;
+            })
+            .map((row) => row.key)
+        : [rowKey];
+
     setRevealedPitchRowKeys((prev) => {
-      if (prev.has(rowKey)) return prev;
+      if (rowKeysToReveal.every((key) => prev.has(key))) return prev;
       const next = new Set(prev);
-      next.add(rowKey);
+      rowKeysToReveal.forEach((key) => next.add(key));
       return next;
     });
-  }, []);
+  }, [liveRecentRows]);
 
   const visibleLiveRecentRows = useMemo(
     () => {
