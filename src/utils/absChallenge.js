@@ -17,16 +17,41 @@ function collectChallengeText(value, depth = 0, out = []) {
   return out;
 }
 
-export function getAbsChallengeOutcome(event) {
-  if (typeof event?.reviewDetails?.isOverturned === 'boolean') {
-    return event.reviewDetails.isOverturned ? 'Overturned' : 'Upheld';
+function collectChallengeValues(value, depth = 0, out = []) {
+  if (value == null || depth > 4) return out;
+  if (typeof value === 'string') {
+    out.push(value);
+    return out;
   }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    out.push(String(value));
+    return out;
+  }
+  if (typeof value !== 'object') return out;
 
+  for (const child of Object.values(value)) {
+    collectChallengeValues(child, depth + 1, out);
+  }
+  return out;
+}
+
+export function getAbsChallengeOutcome(event) {
   const haystack = collectChallengeText(event).join(' ').toLowerCase();
-  if (/overturn|overturned|reversed|changed|successful/.test(haystack)) return 'Overturned';
-  if (/upheld|confirmed|stands|unsuccessful/.test(haystack)) return 'Upheld';
-  if (!/(abs|automated\s*ball|ball.?strike|challenge|challenged|review)/i.test(haystack)) return null;
+  if (/\b(upheld|confirmed|stands|unsuccessful)\b/.test(haystack)) return 'Upheld';
+  if (/\b(overturn|overturned|reversed|changed|successful)\b/.test(haystack)) return 'Overturned';
+  if (event?.reviewDetails?.isOverturned === true) return 'Overturned';
   return null;
+}
+
+function isAbsChallengeSignal(event) {
+  const haystack = collectChallengeValues(event).join(' ').toLowerCase();
+  return /(abs|automated\s*ball|ball.?strike|challenge|challenged|under review|reviewing)/i.test(haystack);
+}
+
+export function getAbsChallengePitchLabel(event) {
+  const outcome = getAbsChallengeOutcome(event);
+  if (outcome) return outcome;
+  return isAbsChallengeSignal(event) ? 'Under Review' : null;
 }
 
 function compactTimerLabel(eventType = '', text = '') {
@@ -78,9 +103,9 @@ export function formatPitchDescriptionWithAbs(description, event) {
   if (automaticCall) return automaticCall;
 
   const text = description || 'Pitch';
-  if (/\((overturned|upheld)\)$/i.test(text)) return text;
-  const outcome = getAbsChallengeOutcome(event);
-  return outcome ? `${text} (${outcome})` : text;
+  if (/\((overturned|upheld|under review)\)$/i.test(text)) return text;
+  const label = getAbsChallengePitchLabel(event);
+  return label ? `${text} (${label})` : text;
 }
 
 export function getAbsChallengeOutcomeForPitch(playEvents = [], pitchEventIndex = -1) {
@@ -93,16 +118,26 @@ export function getAbsChallengeOutcomeForPitch(playEvents = [], pitchEventIndex 
   return null;
 }
 
+export function getAbsChallengePitchLabelForPitch(playEvents = [], pitchEventIndex = -1) {
+  if (pitchEventIndex < 0) return null;
+  for (let idx = pitchEventIndex; idx < playEvents.length; idx += 1) {
+    if (idx > pitchEventIndex && playEvents[idx]?.isPitch) break;
+    const label = getAbsChallengePitchLabel(playEvents[idx]);
+    if (label) return label;
+  }
+  return null;
+}
+
 export function formatPitchDescriptionWithAbsContext(description, event, playEvents, pitchEventIndex) {
   const automaticCall = formatAutomaticPitchTimerCall(event);
   if (automaticCall) return automaticCall;
 
   const text = description || 'Pitch';
-  if (/\((overturned|upheld)\)$/i.test(text)) return text;
-  const outcome =
-    getAbsChallengeOutcome(event) ||
-    getAbsChallengeOutcomeForPitch(playEvents, pitchEventIndex);
-  return outcome ? `${text} (${outcome})` : text;
+  if (/\((overturned|upheld|under review)\)$/i.test(text)) return text;
+  const label =
+    getAbsChallengePitchLabel(event) ||
+    getAbsChallengePitchLabelForPitch(playEvents, pitchEventIndex);
+  return label ? `${text} (${label})` : text;
 }
 
 export function getAbsChallengeOutcomeFromPlay(play) {
