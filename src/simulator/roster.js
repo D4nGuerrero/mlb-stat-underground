@@ -1,13 +1,15 @@
 import { CURRENT_SEASON } from './constants';
+import { enrichPlayerWithCard } from './playerCard';
 
 export function defaultPlayer(teamId, idx) {
-  return {
+  return enrichPlayerWithCard({
     id: `${teamId}-p${idx}`,
     name: `Player ${idx + 1}`,
     pos: ['CF', 'SS', '1B', '3B', 'RF', 'LF', 'DH', '2B', 'C'][idx % 9],
+    posType: 'Hitter',
     stats: null,
     pitchingStats: null,
-  };
+  });
 }
 
 function statOBP(stats) {
@@ -52,7 +54,7 @@ function parseStatcastStats(rosterEntry) {
 }
 
 export function buildPlayerFromRoster(entry) {
-  return {
+  return enrichPlayerWithCard({
     id: entry.person.id,
     name: entry.person.fullName,
     pos: entry.position?.abbreviation || 'DH',
@@ -67,7 +69,7 @@ export function buildPlayerFromRoster(entry) {
     sitSplits: {},
     bestSlot: null,
     bestSlotABs: 0,
-  };
+  });
 }
 
 function filterRosterWithStats(roster = []) {
@@ -325,9 +327,12 @@ export async function loadTeamForGame(team, season, context, mode = 'realistic')
   const batters = allPlayers.filter((player) => player.posType !== 'Pitcher' && player.posType !== 'Two-Way Player');
   const pitchers = allPlayers.filter((player) => player.posType === 'Pitcher');
   const splits = await Promise.all(batters.map((player) => fetchPlayerSplits(player.id, season)));
-  const enrichedBatters = batters.map((player, index) => ({ ...player, ...splits[index] }));
-  const pitcherRoles = pitchers.length
-    ? sortPitchersByRole(pitchers)
+  const enrichedBatters = batters.map((player, index) => (
+    enrichPlayerWithCard({ ...player, ...splits[index] })
+  ));
+  const enrichedPitchers = pitchers.map((player) => enrichPlayerWithCard(player));
+  const pitcherRoles = enrichedPitchers.length
+    ? sortPitchersByRole(enrichedPitchers)
     : { starter: defaultPlayer(team.id, 99), bullpen: [] };
   const lineup = enrichedBatters.length >= 9
     ? assignGamePositions(buildOptimalLineup(enrichedBatters, context, mode))

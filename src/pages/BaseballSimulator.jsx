@@ -7,6 +7,7 @@ import {
   CURRENT_SEASON,
   SERIES_LENGTH_OPTIONS,
   SIM_SEASON_OPTIONS,
+  venueIdForTeam,
 } from '../simulator/constants';
 import { fetchScheduleSummary } from '../simulator/schedule';
 import { simulateHistoricalMatchup } from '../simulator/history';
@@ -14,6 +15,13 @@ import { simulatePlayoffs } from '../simulator/playoffs';
 import { defaultPlayer, loadTeamForGame } from '../simulator/roster';
 import { simulateTeamSeason } from '../simulator/season';
 import { clearTeamCache } from '../simulator/teamCache';
+import {
+  createLiveGame,
+  getLiveGameView,
+  liveGameAckOutcome,
+  liveGameEnsureAtBat,
+  liveGameThrowPitch,
+} from '../simulator/liveGame';
 import {
   AtBatCard,
   BoxScore,
@@ -27,15 +35,46 @@ import {
   SimProgressBar,
   teamLogoUrl,
 } from '../simulator/components/GameUI';
+import SimPitchStage from '../simulator/viz/SimPitchStage';
 
-/** Full game list is newest-first; live mode reveals from first at-bat forward, display newest revealed on top. */
-function getRevealedPlays(result, speed, liveIdx) {
-  if (!result?.plays?.length) return [];
-  if (speed !== 'live') return result.plays;
-  if (liveIdx <= 0) return [];
+/** Plays array is newest-first. Chronological index 0 = last element. */
+function playAtChrono(result, chronoIndex) {
+  if (!result?.plays?.length) return null;
   const total = result.plays.length;
+  if (chronoIndex < 0 || chronoIndex >= total) return null;
+  return result.plays[total - 1 - chronoIndex];
+}
+
+function isPlayPitchComplete(play, pitchIdx) {
+  if (!play) return true;
+  if (play.outcome === 'IBB' || play.intentionalWalk) return pitchIdx > 0;
+  const n = play.pitches?.length || 0;
+  if (n === 0) return pitchIdx > 0;
+  return pitchIdx >= n;
+}
+
+/**
+ * Full game list is newest-first; live/atbat reveal from first at-bat forward,
+ * display newest revealed on top.
+ */
+function getRevealedPlays(result, speed, liveIdx, pitchIdx = 0) {
+  if (!result?.plays?.length) return [];
+  if (speed === 'instant') return result.plays;
+  if (speed !== 'live' && speed !== 'atbat') return result.plays;
+  if (liveIdx <= 0 && speed === 'live') return [];
+
+  const total = result.plays.length;
+  let completed = liveIdx;
+  if (speed === 'atbat') {
+    const current = playAtChrono(result, liveIdx);
+    if (current && isPlayPitchComplete(current, pitchIdx)) {
+      completed = liveIdx + 1;
+    }
+  }
+
+  if (completed <= 0) return [];
   const revealed = [];
-  for (let chrono = liveIdx - 1; chrono >= 0; chrono -= 1) {
+  for (let chrono = completed - 1; chrono >= 0; chrono -= 1) {
     const play = result.plays[total - 1 - chrono];
     if (play) revealed.push(play);
   }
@@ -93,6 +132,10 @@ export default function BaseballSimulator() {
   const [simming, setSimming] = useState(false);
   const [speed, setSpeed] = useState(() => initialSession?.speed ?? 'instant');
   const [liveIdx, setLiveIdx] = useState(0);
+  const [pitchIdx, setPitchIdx] = useState(0);
+  /** Progressive live game for ◎ AB mode (pitch-by-pitch, not pre-sim). */
+  const [liveGame, setLiveGame] = useState(null);
+  const [liveView, setLiveView] = useState(null);
   const [resultTab, setResultTab] = useState(() => initialSession?.resultTab ?? 'plays');
   const [boxTab, setBoxTab] = useState(() => initialSession?.boxTab ?? 'away');
   const playsListRef = useRef(null);
@@ -121,6 +164,7 @@ export default function BaseballSimulator() {
   const [historicalResult, setHistoricalResult] = useState(null);
   const [bulkProgress, setBulkProgress] = useState(null);
   const [simError, setSimError] = useState(null);
+  const [selectedCardPlayerId, setSelectedCardPlayerId] = useState(null);
 
   useEffect(() => {
     const persist = () => {
@@ -261,19 +305,49 @@ export default function BaseballSimulator() {
       : Array.from({ length: 9 }, (_, index) => defaultPlayer(homeTeam.id, index));
     const awayBullpen = awayPitchers.filter((pitcher) => pitcher.id !== awayStarter?.id).slice(0, 5);
     const homeBullpen = homePitchers.filter((pitcher) => pitcher.id !== homeStarter?.id).slice(0, 5);
+    const starters = {
+      awayStarter: awayStarter || defaultPlayer(awayTeam.id, 99),
+      homeStarter: homeStarter || defaultPlayer(homeTeam.id, 99),
+    };
 
     setSimming(true);
     setResult(null);
+    setLiveGame(null);
+    setLiveView(null);
     setLiveIdx(0);
+    setPitchIdx(0);
 
     setTimeout(() => {
+      // ◎ AB mode: progressive live game — each pitch is rolled when you throw
+      if (speed === 'atbat') {
+        const game = createLiveGame({
+          awayTeam,
+          homeTeam,
+          awayLineup: awayLineupFinal,
+          homeLineup: homeLineupFinal,
+          ...starters,
+          awayBullpen,
+          homeBullpen,
+          awayBench,
+          homeBench,
+        });
+        // First batter ready, 0 pitches — user throws each pitch live
+        liveGameEnsureAtBat(game);
+        const view = getLiveGameView(game);
+        setLiveGame(game);
+        setLiveView(view);
+        setResult(view);
+        setResultTab('plays');
+        setSimming(false);
+        return;
+      }
+
       const gameResult = simulateGame({
         awayTeam,
         homeTeam,
         awayLineup: awayLineupFinal,
         homeLineup: homeLineupFinal,
-        awayStarter: awayStarter || defaultPlayer(awayTeam.id, 99),
-        homeStarter: homeStarter || defaultPlayer(homeTeam.id, 99),
+        ...starters,
         awayBullpen,
         homeBullpen,
         awayBench,
@@ -282,8 +356,10 @@ export default function BaseballSimulator() {
       setResult(gameResult);
       setResultTab('plays');
       setSimming(false);
+      setLiveIdx(0);
+      setPitchIdx(0);
     }, 80);
-  }, [awayTeam, homeTeam, awayLineup, homeLineup, awayBench, homeBench, awayStarter, homeStarter, awayPitchers, homePitchers, resetBulkState]);
+  }, [awayTeam, homeTeam, awayLineup, homeLineup, awayBench, homeBench, awayStarter, homeStarter, awayPitchers, homePitchers, resetBulkState, speed]);
 
   const runSeasonSimulation = useCallback(async () => {
     if (!homeTeam) return;
@@ -358,20 +434,69 @@ export default function BaseballSimulator() {
 
   const totalPlays = result?.plays?.length ?? 0;
   const isLiveMode = speed === 'live' && result && liveIdx < totalPlays;
-  const isLiveComplete = speed === 'live' && result && liveIdx >= totalPlays && totalPlays > 0;
-  const displayedPlays = getRevealedPlays(result, speed, liveIdx);
+  const isAtBatMode = speed === 'atbat' && Boolean(liveView || liveGame);
+  const isLiveComplete = speed === 'live'
+    ? (result && liveIdx >= totalPlays && totalPlays > 0)
+    : (speed === 'atbat' && Boolean(liveView?.complete));
+
+  // Live AB: current at-bat being pitched (not pre-simmed)
+  const currentLiveAb = isAtBatMode
+    ? (liveView?.phase === 'outcome'
+      ? (liveView.playsChrono?.[liveView.playsChrono.length - 1]
+        || liveView.plays?.[0]
+        || null)
+      : liveView?.currentAtBat)
+    : null;
+
+  const displayedPlays = speed === 'atbat'
+    ? (liveView?.plays || [])
+    : getRevealedPlays(result, speed, liveIdx, pitchIdx);
   const playListIndex = (index) => (
-    speed === 'live' ? liveIdx - index - 1 : totalPlays - index - 1
+    (speed === 'live' || speed === 'atbat')
+      ? Math.max(0, displayedPlays.length - index - 1)
+      : totalPlays - index - 1
   );
   const liveScore = getLiveScore(result, displayedPlays);
-  const useLiveScore = speed === 'live' && result && liveIdx < totalPlays;
-  const displayAwayScore = useLiveScore ? liveScore.away : result?.awayScore ?? 0;
-  const displayHomeScore = useLiveScore ? liveScore.home : result?.homeScore ?? 0;
+  const useLiveScore = speed === 'live' && result && !isLiveComplete;
+  const displayAwayScore = speed === 'atbat'
+    ? (liveView?.awayScore ?? 0)
+    : (useLiveScore ? liveScore.away : result?.awayScore ?? 0);
+  const displayHomeScore = speed === 'atbat'
+    ? (liveView?.homeScore ?? 0)
+    : (useLiveScore ? liveScore.home : result?.homeScore ?? 0);
+
+  const matchupBatter = currentLiveAb
+    ? [...awayLineup, ...homeLineup, ...awayBench, ...homeBench]
+      .find((p) => p.id === currentLiveAb.batterId) || { name: currentLiveAb.batter, card: null }
+    : null;
+  const matchupPitcher = currentLiveAb
+    ? [...awayPitchers, ...homePitchers, awayStarter, homeStarter]
+      .filter(Boolean)
+      .find((p) => p.id === currentLiveAb.pitcherId) || { name: currentLiveAb.pitcher, card: null }
+    : null;
 
   const advanceLivePlay = useCallback(() => {
     if (!result || speed !== 'live' || liveIdx >= totalPlays) return;
     setLiveIdx((prev) => Math.min(prev + 1, totalPlays));
   }, [result, speed, liveIdx, totalPlays]);
+
+  const throwLiveGamePitch = useCallback(() => {
+    if (!liveGame || speed !== 'atbat') return;
+    const out = liveGameThrowPitch(liveGame);
+    setLiveGame(out.state);
+    const view = getLiveGameView(out.state);
+    setLiveView(view);
+    setResult(view);
+  }, [liveGame, speed]);
+
+  const ackLiveOutcome = useCallback(() => {
+    if (!liveGame || speed !== 'atbat') return;
+    liveGameAckOutcome(liveGame);
+    const view = getLiveGameView(liveGame);
+    setLiveGame(liveGame);
+    setLiveView(view);
+    setResult(view);
+  }, [liveGame, speed]);
 
   useEffect(() => {
     if (speed !== 'live' || liveIdx <= 0) return;
@@ -385,7 +510,9 @@ export default function BaseballSimulator() {
       <div className="text-center mb-6">
         <div className={`text-${THEME_COLOR}-400 text-[10px] font-mono tracking-[3px] uppercase mb-1`}>Rebuild</div>
         <h1 className="font-display text-3xl sm:text-4xl tracking-tighter mb-1">Baseball Simulator</h1>
-        <p className="text-slate-500 text-sm">Hybrid probabilistic engine with pitch-by-pitch at-bats</p>
+        <p className="text-slate-500 text-sm">
+          Instant / Live = full game sim · ◎ AB = live pitch-by-pitch
+        </p>
       </div>
 
       <div className="mb-6 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
@@ -716,6 +843,8 @@ export default function BaseballSimulator() {
                 onPickStarter={setAwayStarter}
                 mode={lineupMode}
                 onModeChange={setLineupMode}
+                selectedPlayerId={selectedCardPlayerId}
+                onSelectPlayer={(player) => setSelectedCardPlayerId(player?.id ?? null)}
               />
               <LineupBuilder
                 title={homeTeam.abbr}
@@ -727,6 +856,8 @@ export default function BaseballSimulator() {
                 onPickStarter={setHomeStarter}
                 mode={lineupMode}
                 onModeChange={setLineupMode}
+                selectedPlayerId={selectedCardPlayerId}
+                onSelectPlayer={(player) => setSelectedCardPlayerId(player?.id ?? null)}
               />
             </div>
           )}
@@ -734,13 +865,21 @@ export default function BaseballSimulator() {
           <div className="flex items-center gap-3 mb-5">
             <SegmentedControl
               value={speed}
-              onChange={setSpeed}
+              onChange={(value) => {
+                setSpeed(value);
+                setLiveIdx(0);
+                setPitchIdx(0);
+                setLiveGame(null);
+                setLiveView(null);
+                setResult(null);
+              }}
               variant="speed"
               size="sm"
               rounded="lg"
               options={[
                 { value: 'instant', label: '⚡' },
                 { value: 'live', label: '▶ Live' },
+                { value: 'atbat', label: '◎ AB' },
               ]}
             />
             <button
@@ -752,9 +891,9 @@ export default function BaseballSimulator() {
               {simming ? (
                 <>
                   <BaseballSpinner size="xs" inline />
-                  Simulating…
+                  Starting…
                 </>
-              ) : '▶ Simulate Game'}
+              ) : speed === 'atbat' ? '▶ Start Live Game' : '▶ Simulate Game'}
             </button>
           </div>
 
@@ -762,7 +901,9 @@ export default function BaseballSimulator() {
             <div className="space-y-4">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest text-center mb-4">
-                  {isLiveMode ? 'In Progress' : result.innings.length > 9 ? `Final / ${result.innings.length}` : 'Final'}
+                  {(isLiveMode || isAtBatMode)
+                    ? 'In Progress'
+                    : result.innings.length > 9 ? `Final / ${result.innings.length}` : 'Final'}
                 </div>
                 <div className="flex items-center justify-center gap-4 sm:gap-6">
                   <div className="flex flex-col items-center gap-2">
@@ -781,15 +922,52 @@ export default function BaseballSimulator() {
                     <span className="text-[11px] text-slate-500 font-mono">{result.homeTeam.abbr}</span>
                   </div>
                 </div>
-                {result && (speed !== 'live' || isLiveComplete) && (
+                {result && (speed === 'instant' || isLiveComplete) && result.winner && (
                   <div className="mt-4 text-center">
                     <span className={`inline-flex items-center gap-2 px-4 py-2 bg-${THEME_COLOR}-500/10 border border-${THEME_COLOR}-500/30 rounded-xl text-${THEME_COLOR}-400 text-sm font-semibold`}>
-                      {result.winner.abbr} win{result.innings.length > 9 ? ` (F/${result.innings.length})` : '!'}
+                      {result.winner.abbr} win{(result.innings?.length || 0) > 9 ? ` (F/${result.innings.length})` : '!'}
                     </span>
+                  </div>
+                )}
+                {isAtBatMode && liveView && !liveView.complete && (
+                  <div className="mt-3 text-center text-[11px] font-mono text-slate-500">
+                    {liveView.half === 'away' ? '▲' : '▼'}{liveView.inningNum}
+                    {' · '}{liveView.outs} out
+                    {' · '}live pitch-by-pitch
                   </div>
                 )}
               </div>
 
+              {isAtBatMode && (
+                <SimPitchStage
+                  key={`ab-${liveView?.sessionId || 's'}-${currentLiveAb?.batterId || 'x'}-${liveView?.playsChrono?.length || 0}-${liveView?.phase}`}
+                  play={currentLiveAb}
+                  batter={matchupBatter}
+                  pitcher={matchupPitcher}
+                  sessionId={liveView?.sessionId || liveGame?.sessionId || 'sim'}
+                  venueId={venueIdForTeam(homeTeam?.id ?? result?.homeTeam?.id)}
+                  batterTeamId={
+                    currentLiveAb?.battingSide === 'away'
+                      ? (awayTeam?.id ?? result?.awayTeam?.id)
+                      : (homeTeam?.id ?? result?.homeTeam?.id)
+                  }
+                  showOutcome={liveView?.phase === 'outcome'}
+                  onThrowPitch={throwLiveGamePitch}
+                  onOutcomeDone={ackLiveOutcome}
+                  paLabel={
+                    liveView?.complete
+                      ? 'Final'
+                      : `Inning ${liveView?.inningNum ?? 1}`
+                  }
+                  gameMeta={liveView ? {
+                    awayScore: liveView.awayScore,
+                    homeScore: liveView.homeScore,
+                    outs: liveView.outs,
+                  } : null}
+                />
+              )}
+
+              {(speed === 'instant' || isLiveComplete || (isAtBatMode && liveView)) && result?.innings && (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Linescore</div>
                 <InningBox
@@ -800,6 +978,7 @@ export default function BaseballSimulator() {
                   lineErrors={result.lineErrors}
                 />
               </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 {[
@@ -850,7 +1029,7 @@ export default function BaseballSimulator() {
                 <ScoringPlaysPanel
                   plays={displayedPlays}
                   emptyMessage={
-                    speed === 'live' && liveIdx === 0
+                    (speed === 'live' || speed === 'atbat') && displayedPlays.length === 0
                       ? 'Press Next to step through at-bats.'
                       : 'No runs scored in the plays shown.'
                   }
@@ -864,9 +1043,12 @@ export default function BaseballSimulator() {
                     <span className="text-[10px] text-slate-600 font-mono">{displayedPlays.length} plays</span>
                   </div>
                   <div ref={playsListRef} className="max-h-96 overflow-y-auto">
-                    {displayedPlays.length === 0 && speed === 'live' && liveIdx === 0 ? (
+                    {displayedPlays.length === 0 && (speed === 'live' || speed === 'atbat') ? (
                       <div className="px-4 py-8 text-center text-sm text-slate-600">
-                        Press <span className="text-slate-400 font-semibold">Next At-Bat</span> below to begin.
+                        Press <span className="text-slate-400 font-semibold">
+                          {speed === 'atbat' ? 'First Pitch' : 'Next At-Bat'}
+                        </span>
+                        {' '}to begin.
                       </div>
                     ) : (
                       displayedPlays.map((play, index) => (

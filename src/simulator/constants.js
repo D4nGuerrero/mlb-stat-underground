@@ -13,10 +13,35 @@ export const SERIES_LENGTH_OPTIONS = [
   { value: 7, label: 'Best of 7' },
 ];
 
+/** PA outcome rates — league average (engine + Log5 baseline). */
 export const LEAGUE_AVG = {
   HR: 0.033, '3B': 0.005, '2B': 0.048, '1B': 0.145,
   BB: 0.080, HBP: 0.010, K: 0.227, OUT: 0.452,
 };
+
+/** Bayesian prior strength: effective "ghost" PAs / BF mixed toward league. */
+export const RATE_SHRINK_PA = 120;
+export const RATE_SHRINK_BF = 80;
+
+/**
+ * Rating anchors: rate at overall ~40 (poor) and ~80 (elite).
+ * Linear map: 40..80 between anchors, clamp 25..99. 50 ≈ league when rate ≈ mid.
+ */
+export const RATING_ANCHORS = {
+  contact: { low: 0.68, high: 0.84 },       // 1 − K/PA  (league ~0.773)
+  power: { low: 0.012, high: 0.058 },       // HR/PA
+  gap: { low: 0.030, high: 0.075 },         // (2B+3B)/PA
+  eye: { low: 0.040, high: 0.140 },         // BB/PA
+  speed: { low: 0.005, high: 0.080 },       // SB/PA proxy blended with 3B
+  stuff: { low: 0.140, high: 0.320 },       // K/BF
+  control: { low: 0.050, high: 0.130 },     // BB/BF — inverted (low BB = high rating)
+  hrAvoid: { low: 0.015, high: 0.055 },     // HR/BF — inverted
+};
+
+export const RATING_MIN = 25;
+export const RATING_MAX = 99;
+export const RATING_FLOOR = 40;
+export const RATING_CEIL = 80;
 
 export const PARK_FACTORS = {
   115: { hr: 1.30, hits: 1.12, name: 'Coors Field' },
@@ -33,6 +58,18 @@ export const PARK_FACTORS = {
 };
 
 export const DEFAULT_PARK = { hr: 1.0, hits: 1.0, name: 'Neutral Park' };
+
+/** MLB teamId → home venueId (Gameday stadium image ids). */
+export const TEAM_VENUE_ID = {
+  109: 15, 144: 4705, 110: 2, 111: 3, 112: 17, 145: 4, 113: 2602, 114: 5,
+  115: 19, 116: 2394, 117: 2392, 118: 7, 108: 1, 119: 22, 146: 4169, 158: 32,
+  142: 3312, 121: 3289, 147: 3313, 133: 10, 143: 2681, 134: 31, 135: 2680,
+  137: 2395, 136: 680, 138: 2889, 139: 12, 140: 5325, 141: 14, 120: 3309,
+};
+
+export function venueIdForTeam(teamId) {
+  return TEAM_VENUE_ID[teamId] ?? null;
+}
 
 export const PITCH_DEFS = {
   FF: { name: '4-Seam Fastball', short: 'FF', velMean: 93.5, velStd: 2.5, spinMean: 2270, color: 'text-red-400', bg: 'bg-red-400/10 border-red-400/20' },

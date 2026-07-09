@@ -1,4 +1,4 @@
-import { classifyBattedBall, randn } from './math';
+import { classifyBattedBall, randn } from './math.js';
 
 const BALL_LABEL = { GB: 'ground ball', LD: 'line drive', FB: 'fly ball', PU: 'popup' };
 
@@ -42,7 +42,7 @@ export function simulateSprayAngle(batter, plateX, pitchType) {
 
   const total = pullWt + centWt + oppoWt;
   const roll = Math.random() * total;
-  let bucket = 'cent';
+  let bucket;
   if (roll < pullWt) bucket = 'pull';
   else if (roll < pullWt + centWt) bucket = 'cent';
   else bucket = 'oppo';
@@ -98,13 +98,15 @@ function reconcileOutcome(outcome, ev, la, dist, parkHr) {
 }
 
 export function buildBipResult({
-  ev, la, spray, outcome, parkHr = 1, batter = null,
+  ev, la, spray, outcome, parkHr = 1, lockOutcome = false,
 }) {
   const roundedEv = Math.round(ev * 10) / 10;
   const roundedLa = Math.round(la * 10) / 10;
   let dist = estimateHitDistance(roundedEv, roundedLa);
   const battedBallType = classifyBattedBall(roundedLa);
-  const finalOutcome = reconcileOutcome(outcome, roundedEv, roundedLa, dist, parkHr);
+  const finalOutcome = lockOutcome
+    ? outcome
+    : reconcileOutcome(outcome, roundedEv, roundedLa, dist, parkHr);
 
   if (finalOutcome === 'HR' && dist < 340) {
     dist = Math.round(340 + Math.max(0, roundedEv - 95) * 2.5 + Math.random() * 25);
@@ -119,6 +121,72 @@ export function buildBipResult({
     field: sprayToField(spray),
     fieldPhrase: fieldPhrase(spray, battedBallType, dist),
     outcome: finalOutcome,
+  };
+}
+
+/**
+ * Generate EV/LA/spray consistent with a forced PA outcome (outcome-first sim).
+ */
+export function bipForForcedOutcome(outcome, batter, pitchType, plateX, parkHr = 1) {
+  let ev;
+  let la;
+
+  switch (outcome) {
+    case 'HR':
+      ev = 100 + Math.random() * 12 + randn() * 2;
+      la = 22 + Math.random() * 12;
+      break;
+    case '3B':
+      ev = 95 + Math.random() * 10;
+      la = 14 + Math.random() * 14;
+      break;
+    case '2B':
+      ev = 92 + Math.random() * 12;
+      la = Math.random() < 0.45 ? (8 + Math.random() * 12) : (18 + Math.random() * 14);
+      break;
+    case '1B':
+      ev = 78 + Math.random() * 18;
+      la = Math.random() < 0.55 ? (-4 + Math.random() * 14) : (8 + Math.random() * 14);
+      break;
+    default: { // OUT
+      const roll = Math.random();
+      if (roll < 0.4) {
+        ev = 70 + Math.random() * 25;
+        la = -8 + Math.random() * 16; // GB
+      } else if (roll < 0.75) {
+        ev = 82 + Math.random() * 18;
+        la = 22 + Math.random() * 20; // FB
+      } else {
+        ev = 75 + Math.random() * 15;
+        la = 48 + Math.random() * 25; // PU
+      }
+      break;
+    }
+  }
+
+  // Nudge EV from batter power proxy when available
+  const avgEv = batter?.statcastStats?.avgHitSpeed
+    ?? batter?.statcastStats?.avgExitVelocity
+    ?? null;
+  if (avgEv != null && outcome !== 'OUT') {
+    ev = ev * 0.7 + avgEv * 0.3;
+  }
+
+  const spray = simulateSprayAngle(batter, plateX ?? 0, pitchType || 'FF');
+  const bip = buildBipResult({
+    ev: Math.max(50, ev),
+    la,
+    spray,
+    outcome,
+    parkHr,
+    batter,
+    lockOutcome: true,
+  });
+
+  return {
+    ...bip,
+    hardHit: bip.ev >= 95,
+    barrel: bip.ev >= 98 && bip.la >= 8 && bip.la <= 32,
   };
 }
 

@@ -5,13 +5,19 @@ import { SegmentedControl, BaseballSpinner, stickyHead, stickyCell, statHead, st
 import { TABLE_TEXT_CLASS } from '../../theme/tableTheme';
 import TeamAbbrCell from '../../components/TeamAbbrCell';
 import { DEFAULT_PARK, PARK_FACTORS, PITCH_DEFS, PITCH_RESULT_BG, PITCH_RESULT_LABELS } from '../constants';
+import PlayerCard, { CardRatingsInline } from './PlayerCard';
 
 export const teamLogoUrl = (id) => `https://www.mlbstatic.com/team-logos/team-cap-on-light/${id}.svg`;
 
 export function LineupBuilder({
   lineup, onMove, starters, selectedStarterId, onPickStarter, title, loading, mode, onModeChange,
+  selectedPlayerId, onSelectPlayer,
 }) {
   const ordSuffix = (n) => ['st', 'nd', 'rd'][n - 1] || 'th';
+  const selected = lineup?.find((p) => p.id === selectedPlayerId)
+    || starters?.find((p) => p.id === selectedPlayerId)
+    || null;
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
@@ -35,19 +41,31 @@ export function LineupBuilder({
       </div>
       <div className="divide-y divide-slate-800/50">
         {lineup.map((player, idx) => (
-          <div key={player.id} className="flex items-center gap-2 px-4 py-2.5">
+          <div
+            key={player.id}
+            className={[
+              'flex items-center gap-2 px-4 py-2.5 transition-colors',
+              selectedPlayerId === player.id ? `bg-${THEME_COLOR}-500/10` : 'hover:bg-slate-800/40',
+            ].join(' ')}
+          >
             <span className="text-slate-600 font-mono text-xs w-4 shrink-0">{idx + 1}</span>
             <span className="text-[10px] text-slate-500 w-7 shrink-0 font-mono">{player.gamePos || player.pos}</span>
-            <div className="flex-1 min-w-0">
+            <button
+              type="button"
+              onClick={() => onSelectPlayer?.(player)}
+              className="flex-1 min-w-0 text-left"
+            >
               <span className="text-sm text-slate-200 truncate block">{player.name}</span>
-              {player.slotABs >= 5 ? (
+              {player.card ? (
+                <CardRatingsInline card={player.card} className="mt-0.5" />
+              ) : player.slotABs >= 5 ? (
                 <span className={`text-[10px] text-${THEME_COLOR}-500/80 font-mono`}>
                   {player.slotABs} ABs batting {idx + 1}{ordSuffix(idx + 1)}
                 </span>
               ) : player.selectionReason ? (
                 <span className="text-[10px] text-slate-600 font-mono">{player.selectionReason}</span>
               ) : null}
-            </div>
+            </button>
             <div className="flex gap-1 shrink-0">
               <button type="button" onClick={() => onMove(idx, -1)} disabled={idx === 0}
                 className="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:text-white disabled:opacity-20 text-xs">▲</button>
@@ -65,7 +83,10 @@ export function LineupBuilder({
               <button
                 key={pitcher.id}
                 type="button"
-                onClick={() => onPickStarter(pitcher)}
+                onClick={() => {
+                  onPickStarter(pitcher);
+                  onSelectPlayer?.(pitcher);
+                }}
                 className={[
                   'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
                   selectedStarterId === pitcher.id
@@ -74,12 +95,21 @@ export function LineupBuilder({
                 ].join(' ')}
               >
                 {pitcher.name.split(' ').pop()}
-                {pitcher.pitchingStats && (
+                {pitcher.card ? (
+                  <span className={`ml-1 font-mono ${pitcher.card.OVR >= 80 ? 'text-emerald-300' : 'text-slate-400'}`}>
+                    {pitcher.card.OVR}
+                  </span>
+                ) : pitcher.pitchingStats ? (
                   <span className="ml-1 text-slate-500 font-mono">{pitcher.pitchingStats.era}</span>
-                )}
+                ) : null}
               </button>
             ))}
           </div>
+        </div>
+      )}
+      {selected?.card && (
+        <div className="px-3 py-3 border-t border-slate-800">
+          <PlayerCard player={selected.card.role === 'pitcher' ? { ...selected, card: selected.card } : selected} compact />
         </div>
       )}
     </div>

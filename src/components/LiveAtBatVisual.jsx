@@ -127,6 +127,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   showHotZones = false,
   usePurpleInPlayOuts = false,
   immersiveField = false,
+  onPitchLanded: onPitchLandedProp = null,
   className = '',
 }) {
   const incomingAtBatIndex = currentPlay?.about?.atBatIndex ?? null;
@@ -210,6 +211,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   }, [sig, stablePlayEvents, visualCurrentPlay, showPitchToast]);
 
   const showLandedPitchToast = useCallback((pitch) => {
+    onPitchLandedProp?.(pitch);
     if (!showPitchToast) return;
     const pitchId = pitch?.event?.playId ?? pitch?.num;
     if (pitchId != null && String(lastLandedPitchIdRef.current) === String(pitchId)) return;
@@ -223,7 +225,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       ...item,
       rowKey: latestPitchRowKey(stablePlayEvents, visualCurrentPlay),
     });
-  }, [stablePlayEvents, visualCurrentPlay, showPitchToast]);
+  }, [stablePlayEvents, visualCurrentPlay, showPitchToast, onPitchLandedProp]);
 
   const revealToastRecentRow = useCallback(() => {
     const rowKey = toastItemRef.current?.rowKey;
@@ -231,7 +233,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   }, [onRecentRowReady]);
 
   const clearToast = useCallback(() => {
-    setToastItem((current) => {
+    setToastItem(() => {
       const pending = pendingToastRef.current;
       if (pending) {
         pendingToastRef.current = null;
@@ -426,7 +428,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
               showPitchTrails={showPitchTrails}
               showHotZones={showHotZones}
               usePurpleInPlayOuts={usePurpleInPlayOuts}
-              onPitchLanded={showPitchToast ? showLandedPitchToast : undefined}
+              onPitchLanded={(showPitchToast || onPitchLandedProp) ? showLandedPitchToast : undefined}
               baseballModelUrl={baseballModelUrl}
               className="mx-auto shrink-0"
             />

@@ -1,67 +1,52 @@
-import { describeBipPlay } from './battedBall';
-import { DEFAULT_PARK, LEAGUE_AVG, PARK_FACTORS } from './constants';
-import { classifyBattedBall, normalizeProbabilities, weightedOutcome } from './math';
+import { describeBipPlay } from './battedBall.js';
+import { DEFAULT_PARK, LEAGUE_AVG, PARK_FACTORS } from './constants.js';
+import { classifyBattedBall, normalizeProbabilities, weightedOutcome } from './math.js';
+import {
+  batterRatesFromStats,
+  OUTCOME_KEYS,
+  pitcherRatesFromStats,
+  pureRates,
+} from './playerCard.js';
 
+/** @deprecated prefer batterRatesFromStats / player.rates — kept for callers. */
 export function batterProbabilities(stats) {
-  if (!stats) return { ...LEAGUE_AVG };
-  const pa = stats.plateAppearances || stats.atBats || 400;
-  if (pa < 30) return { ...LEAGUE_AVG };
-
-  const hr = (stats.homeRuns || 0) / pa;
-  const triple = (stats.triples || 0) / pa;
-  const doubles = (stats.doubles || 0) / pa;
-  const singles = Math.max(0, ((stats.hits || 0) - (stats.homeRuns || 0) - (stats.triples || 0) - (stats.doubles || 0))) / pa;
-  const bb = (stats.baseOnBalls || 0) / pa;
-  const hbp = (stats.hitByPitch || 0) / pa;
-  const k = (stats.strikeOuts || 0) / pa;
-  const out = Math.max(0.05, 1 - hr - triple - doubles - singles - bb - hbp - k);
-
-  return normalizeProbabilities({
-    HR: hr, '3B': triple, '2B': doubles, '1B': singles,
-    BB: bb, HBP: hbp, K: k, OUT: out,
-  });
+  return pureRates(batterRatesFromStats(stats, { shrink: true }));
 }
 
-const OUTCOME_KEYS = ['HR', '3B', '2B', '1B', 'BB', 'HBP', 'K', 'OUT'];
-
-/** Prefer platoon split (vl/vr) when the sample is large enough. */
+/**
+ * Prefer precomputed player.rates; fall back to platoon split rates when sample is large.
+ * Rates (not 0–99 ratings) drive the engine.
+ */
 export function batterProbabilitiesForMatchup(batter, pitcherHand) {
   const sit = batter?.sitSplits;
   if (sit && pitcherHand) {
     const key = pitcherHand === 'L' ? 'vl' : 'vr';
     const split = sit[key];
     const pa = split?.plateAppearances || split?.atBats || 0;
-    if (pa >= 25) return batterProbabilities(split);
+    if (pa >= 25) return pureRates(batterRatesFromStats(split, { shrink: true }));
   }
-  return batterProbabilities(batter?.stats);
+  if (batter?.rates) return pureRates(batter.rates);
+  return pureRates(batterRatesFromStats(batter?.stats, { shrink: true }));
 }
 
-export function pitcherAllowedProbabilities(pitcherStats) {
-  if (!pitcherStats) return null;
-  const ip = pitcherStats.inningsPitched || 0;
-  if (ip < 5) return null;
+/** Pitcher allowed rates per BF. Prefer player.pitchRates when present. */
+export function pitcherAllowedProbabilities(pitcherOrStats) {
+  if (!pitcherOrStats) return null;
 
-  const bf = Math.max(ip * 4.3, 1);
-  const hits = pitcherStats.hits || 0;
-  const hr = pitcherStats.homeRuns || 0;
-  const triple = pitcherStats.triples || 0;
-  const doubles = pitcherStats.doubles || 0;
-  const singles = Math.max(0, hits - hr - triple - doubles);
-  const bb = pitcherStats.baseOnBalls || 0;
-  const hbp = pitcherStats.hitByPitch || 0;
-  const k = pitcherStats.strikeOuts || 0;
-  const out = Math.max(0.05, 1 - (hr + triple + doubles + singles + bb + hbp + k) / bf);
+  if (pitcherOrStats.pitchRates && pitcherOrStats.pitchRates.sample > 0) {
+    return pureRates(pitcherOrStats.pitchRates);
+  }
 
-  return normalizeProbabilities({
-    HR: hr / bf,
-    '3B': triple / bf,
-    '2B': doubles / bf,
-    '1B': singles / bf,
-    BB: bb / bf,
-    HBP: hbp / bf,
-    K: k / bf,
-    OUT: out,
-  });
+  const stats = pitcherOrStats.pitchingStats ?? (
+    pitcherOrStats.inningsPitched != null || pitcherOrStats.strikeOuts != null
+      ? pitcherOrStats
+      : null
+  );
+  if (!stats) return null;
+
+  const rates = pitcherRatesFromStats(stats, { shrink: true });
+  if (!rates.sample || rates.sample < 5) return null;
+  return pureRates(rates);
 }
 
 /** Bill James Log5 — both batter skill and pitcher allowance shape the rate. */
@@ -74,8 +59,12 @@ export function log5Blend(batterP, pitcherP, leagueP) {
   return denominator > 0 ? numerator / denominator : leagueP;
 }
 
-export function applyStatcastAdjustments(probs, statcastStats) {
-  if (!statcastStats) return probs;
+/**
+ * Statcast used to nudge rates; disabled by default so counting-stat rates stay calibrated.
+ * Kept for optional BIP flavor / experiments — pass `{ apply: true }` to enable.
+ */
+export function applyStatcastAdjustments(probs, statcastStats, { apply = false } = {}) {
+  if (!apply || !statcastStats) return probs;
 
   const hhRate = statcastStats.hardHitPercent ?? statcastStats.hardHitRate ?? null;
   const brlRate = statcastStats.barrelBatRate ?? statcastStats.barrelPercent ?? null;
@@ -100,9 +89,12 @@ export function applyStatcastAdjustments(probs, statcastStats) {
   });
 }
 
-/** Log5 blend of batter rates with pitcher allowed rates for every outcome. */
-export function blendWithPitcher(batterProbs, pitcherStats) {
-  const pitcherProbs = pitcherAllowedProbabilities(pitcherStats);
+/**
+ * Log5 blend of batter rates with pitcher allowed rates.
+ * Accepts raw pitching stats OR a full pitcher player (`pitchRates`).
+ */
+export function blendWithPitcher(batterProbs, pitcherOrStats) {
+  const pitcherProbs = pitcherAllowedProbabilities(pitcherOrStats);
   if (!pitcherProbs) return batterProbs;
 
   const blended = {};

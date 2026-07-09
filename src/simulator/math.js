@@ -1,4 +1,4 @@
-import { LEAGUE_AVG } from './constants';
+import { LEAGUE_AVG } from './constants.js';
 
 export function randn() {
   let u = 0;
