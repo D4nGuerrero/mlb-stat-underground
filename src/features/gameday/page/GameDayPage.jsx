@@ -33,6 +33,7 @@ import { mergeLiveFeed, isValidLiveFeed, compareTimecodes } from '../../../utils
 import { assetUrl } from '../../../utils/baseUrl.js';
 import LiveRecentPlaysTimeline from '../../../components/LiveRecentPlaysTimeline';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
+import PitchCanvas from '../../../components/PitchCanvas';
 import ScoresListGameRow from '../../../components/ScoresListGameRow';
 import {
   BaseDiamondIndicator,
@@ -440,6 +441,7 @@ function buildPitchCountByInning(allPlays = [], away, home) {
         id: pitcher.id,
         name: pitcher.fullName || pitcher.name || 'Pitcher',
         byInning: {},
+        pitchEvents: [],
         total: 0,
       });
     }
@@ -447,6 +449,20 @@ function buildPitchCountByInning(allPlays = [], away, home) {
     const row = side.pitchers.get(pitcher.id);
     row.byInning[inning] = (row.byInning[inning] ?? 0) + pitchCount;
     row.total += pitchCount;
+    const pitchEvents = (play.playEvents ?? []).filter((event) => event?.isPitch);
+    row.pitchEvents.push(
+      ...pitchEvents
+        .map((event, pitchIndex) => ({
+          ...event,
+          __pitchNumberOverride: row.pitchEvents.length + pitchIndex + 1,
+          __playContext: play,
+          __playScored: Boolean(
+            play?.about?.isScoringPlay ||
+            play?.about?.hasScoreChange ||
+            play?.result?.isScoringPlay,
+          ),
+        })),
+    );
   });
 
   return {
@@ -456,7 +472,7 @@ function buildPitchCountByInning(allPlays = [], away, home) {
   };
 }
 
-function PitchCountTeamTable({ data, innings }) {
+function PitchCountTeamTable({ data, innings, onPitcherSelect }) {
   return (
     <div className="min-w-0 rounded-2xl border border-slate-700/60 bg-slate-950/50 overflow-hidden">
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
@@ -470,7 +486,12 @@ function PitchCountTeamTable({ data, innings }) {
       <div className="space-y-2 p-2">
         {data.pitchers.length ? (
           data.pitchers.map((pitcher) => (
-            <div key={pitcher.id} className="rounded-xl border border-slate-800 bg-slate-900/70 px-2.5 py-2">
+            <button
+              key={pitcher.id}
+              type="button"
+              onClick={() => onPitcherSelect?.(pitcher, data.team)}
+              className={`block w-full rounded-xl border border-slate-800 bg-slate-900/70 px-2.5 py-2 text-left transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-slate-800/80 focus:outline-none focus:ring-1 focus:ring-${THEME_COLOR}-400/70`}
+            >
               {(() => {
                 const pitchedInnings = innings.filter((inning) => pitcher.byInning[inning] != null);
                 return (
@@ -480,6 +501,7 @@ function PitchCountTeamTable({ data, innings }) {
                   <div className="truncate text-xs font-bold text-slate-100">{pitcher.name}</div>
                   <div className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Pitch count</div>
                 </div>
+                <i className={`fa-solid fa-location-dot text-xs text-${THEME_COLOR}-300`} aria-hidden />
               </div>
               <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/60">
                 <div
@@ -508,7 +530,7 @@ function PitchCountTeamTable({ data, innings }) {
                   </>
                 );
               })()}
-            </div>
+            </button>
           ))
         ) : (
           <div className="rounded-xl border border-dashed border-slate-800 px-3 py-6 text-center text-xs text-slate-500">
@@ -520,9 +542,261 @@ function PitchCountTeamTable({ data, innings }) {
   );
 }
 
-function PitchCountByInningSheet({ open, onClose, allPlays, away, home }) {
+function pitchMapKind(event) {
+  const details = event?.details ?? {};
+  if (details.isInPlay || details.code === 'X' || details.code === 'Y') return 'inPlay';
+  if (details.isBall) return 'balls';
+  return 'strikes';
+}
+
+function strikeSubtype(event) {
+  const details = event?.details ?? {};
+  const code = details.code;
+  const text = String(details.description || details.call?.description || '').toLowerCase();
+  if (code === 'C' || text.includes('called strike')) return 'called';
+  if (code === 'F' || code === 'T' || code === 'L' || text.includes('foul')) return 'foul';
+  if (code === 'S' || code === 'W' || code === 'M' || text.includes('swinging')) return 'swinging';
+  return 'other';
+}
+
+function pitchKindCounts(playEvents = []) {
+  return playEvents.reduce((totals, event) => {
+    const kind = pitchMapKind(event);
+    totals[kind] += 1;
+    if (kind === 'strikes') totals.strikeSubtypes[strikeSubtype(event)] += 1;
+    return totals;
+  }, {
+    balls: 0,
+    strikes: 0,
+    inPlay: 0,
+    strikeSubtypes: { called: 0, swinging: 0, foul: 0, other: 0 },
+  });
+}
+
+function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
+  const [visiblePitchKinds, setVisiblePitchKinds] = useState({
+    balls: true,
+    strikes: true,
+    inPlay: true,
+  });
+  const [calledOnly, setCalledOnly] = useState(false);
+  const open = Boolean(pitcher);
+  const pitchEvents = pitcher?.pitchEvents ?? [];
+  const counts = pitchKindCounts(pitchEvents);
+  const visiblePitchEvents = pitchEvents.filter((event) => {
+    if (calledOnly) return pitchMapKind(event) === 'strikes' && strikeSubtype(event) === 'called';
+    return visiblePitchKinds[pitchMapKind(event)];
+  });
+  const latestPitchData = [...pitchEvents].reverse().find((event) => event?.pitchData)?.pitchData;
+  const szTop = latestPitchData?.strikeZoneTop ?? 3.55;
+  const szBot = latestPitchData?.strikeZoneBottom ?? 1.47;
+  const togglePitchKind = (kind) => {
+    setVisiblePitchKinds((current) => ({
+      ...current,
+      [kind]: !current[kind],
+    }));
+  };
+  const goToPitch = (value) => {
+    const pitchNumber = Number(value);
+    const event = pitchEvents.find((pitchEvent) => Number(pitchEvent.__pitchNumberOverride) === pitchNumber);
+    if (event?.__playContext) {
+      onOpenPlay?.(event.__playContext, {
+        highlightedPitchKey: event.playId ?? event.index,
+      });
+    }
+  };
+  const filterCards = [
+    {
+      key: 'balls',
+      label: 'Balls',
+      count: counts.balls,
+      border: 'border-emerald-500/20',
+      activeBg: 'bg-emerald-500/10',
+      text: 'text-emerald-300',
+      subText: 'text-emerald-200/70',
+    },
+    {
+      key: 'strikes',
+      label: 'Strikes',
+      count: counts.strikes,
+      border: 'border-red-500/20',
+      activeBg: 'bg-red-500/10',
+      text: 'text-red-300',
+      subText: 'text-red-200/70',
+    },
+    {
+      key: 'inPlay',
+      label: 'In Play',
+      count: counts.inPlay,
+      border: 'border-blue-500/20',
+      activeBg: 'bg-blue-500/10',
+      text: 'text-blue-300',
+      subText: 'text-blue-200/70',
+    },
+  ];
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      backDismiss
+      historyKey="pitcherPitchMap"
+      align="bottom"
+      size="full"
+      className="px-0 sm:px-6"
+      panelClassName="max-h-[88vh] bg-[#101827] border-slate-700/70"
+    >
+      <div className="sm:hidden flex justify-center pt-3 pb-1">
+        <div className="h-1 w-10 rounded-full bg-slate-600" />
+      </div>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <img src={teamLogoUrl(team?.id)} alt="" className="h-9 w-9 flex-shrink-0 object-contain" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-white">{pitcher?.name}</div>
+            <div className="text-xs text-slate-500">
+              {team?.abbreviation || team?.name} · {pitchEvents.length} pitches
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+          aria-label="Close pitcher pitch map"
+        >
+          <i className="fa-solid fa-xmark" aria-hidden />
+        </button>
+      </div>
+
+      <div className="gameday-scroll-rail max-h-[calc(88vh-5.5rem)] overflow-y-auto p-4">
+        <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs">
+          {filterCards.map((card) => {
+            const active = visiblePitchKinds[card.key];
+            return (
+              <button
+                key={card.key}
+                type="button"
+                onClick={() => togglePitchKind(card.key)}
+                className={[
+                  'rounded-2xl border px-2 py-2 transition-all focus:outline-none focus:ring-1',
+                  card.border,
+                  active ? `${card.activeBg} focus:ring-white/30` : 'bg-slate-950/70 opacity-45 grayscale focus:ring-slate-500',
+                ].join(' ')}
+                aria-pressed={active}
+              >
+                <div className={`font-mono text-lg font-black ${card.text}`}>{card.count}</div>
+                <div className={`text-[9px] uppercase tracking-widest ${card.subText}`}>{card.label}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-[10px] text-slate-400">
+          <div>
+            <span className="font-bold uppercase tracking-[0.14em] text-slate-500">Strike mix:</span>{' '}
+            Called {counts.strikeSubtypes.called}, Swinging {counts.strikeSubtypes.swinging}, Foul {counts.strikeSubtypes.foul}
+            {counts.strikeSubtypes.other ? `, Other ${counts.strikeSubtypes.other}` : ''}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCalledOnly((value) => !value)}
+            className={[
+              'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
+              calledOnly
+                ? `border-${THEME_COLOR}-400/50 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`
+                : 'border-slate-700 bg-slate-900 text-slate-500 hover:text-slate-200',
+            ].join(' ')}
+            aria-pressed={calledOnly}
+          >
+            <i className="fa-solid fa-eye" aria-hidden />
+            Called only
+          </button>
+        </div>
+
+        <div className="mx-auto w-full max-w-[520px] overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70 p-3 sm:max-w-[600px]">
+          {visiblePitchEvents.length ? (
+            <PitchCanvas
+              playEvents={visiblePitchEvents}
+              cropPlayEvents={pitchEvents}
+              szTop={szTop}
+              szBot={szBot}
+              gamePk={gamePk ? `${gamePk}:${pitcher?.id}:pitch-map` : null}
+              responsive
+              viewMode="strikeZone"
+              showPitchTrails={false}
+              usePurpleInPlayOuts
+              preserveCropAspect
+              showCalledStrikeMarker={calledOnly}
+            />
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-500">
+              No visible pitch locations with the current filters.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" /> Ball</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-700" /> Strike</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> In Play</span>
+          </div>
+          <label className="ml-auto flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Go to
+            <select
+              value=""
+              onChange={(event) => goToPitch(event.target.value)}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-2 py-1 text-xs font-bold normal-case tracking-normal text-slate-200 outline-none focus:border-slate-500"
+            >
+              <option value="" disabled>Pitch #</option>
+              {pitchEvents.map((event) => {
+                const play = event.__playContext;
+                const batterName = play?.matchup?.batter?.fullName || 'At bat';
+                const result = play?.result?.event || event.details?.description || 'Pitch';
+                return (
+                  <option key={`${event.playId ?? event.index}-${event.__pitchNumberOverride}`} value={event.__pitchNumberOverride}>
+                    #{event.__pitchNumberOverride} - {batterName} ({result})
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PitchCountByInningSheet({
+  open,
+  onClose,
+  allPlays,
+  away,
+  home,
+  gamePk,
+  onOpenPlay,
+  restorePitcherId = null,
+  restoreNonce = null,
+}) {
+  const [selectedPitcher, setSelectedPitcher] = useState(null);
   const data = useMemo(() => buildPitchCountByInning(allPlays, away, home), [allPlays, away, home]);
   const innings = data.innings.length ? data.innings : [1];
+  const closePitcherMap = () => setSelectedPitcher(null);
+  const openPlayFromPitchMap = (play, options = {}) => {
+    onOpenPlay?.(play, options);
+  };
+
+  useEffect(() => {
+    if (!open || !restorePitcherId) return;
+    const restored =
+      data.away.pitchers.find((pitcher) => Number(pitcher.id) === Number(restorePitcherId))
+        ? { pitcher: data.away.pitchers.find((pitcher) => Number(pitcher.id) === Number(restorePitcherId)), team: data.away.team }
+        : data.home.pitchers.find((pitcher) => Number(pitcher.id) === Number(restorePitcherId))
+          ? { pitcher: data.home.pitchers.find((pitcher) => Number(pitcher.id) === Number(restorePitcherId)), team: data.home.team }
+          : null;
+    if (restored?.pitcher) setSelectedPitcher(restored);
+  }, [open, restorePitcherId, restoreNonce, data]);
 
   return (
     <Modal
@@ -553,10 +827,25 @@ function PitchCountByInningSheet({ open, onClose, allPlays, away, home }) {
       </div>
       <div className="max-h-[calc(82vh-5.5rem)] overflow-y-auto p-3">
         <div className="space-y-3">
-          <PitchCountTeamTable data={data.away} innings={innings} />
-          <PitchCountTeamTable data={data.home} innings={innings} />
+          <PitchCountTeamTable
+            data={data.away}
+            innings={innings}
+            onPitcherSelect={(pitcher, team) => setSelectedPitcher({ pitcher, team })}
+          />
+          <PitchCountTeamTable
+            data={data.home}
+            innings={innings}
+            onPitcherSelect={(pitcher, team) => setSelectedPitcher({ pitcher, team })}
+          />
         </div>
       </div>
+      <PitcherPitchMapSheet
+        pitcher={selectedPitcher?.pitcher}
+        team={selectedPitcher?.team}
+        onClose={closePitcherMap}
+        gamePk={gamePk}
+        onOpenPlay={openPlayFromPitchMap}
+      />
     </Modal>
   );
 }
@@ -1424,6 +1713,8 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [error, setError] = useState(null);
   const [wsReconnectKey, setWsReconnectKey] = useState(0);
   const [selectedPlay, setSelectedPlay] = useState(null);
+  const [selectedPlayTargetPitchKey, setSelectedPlayTargetPitchKey] = useState(null);
+  const [pitchCountReturn, setPitchCountReturn] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState(() => location.state?.activeTab ?? 'live');
   const [leftRailView, setLeftRailView] = useState('live');
@@ -1739,31 +2030,47 @@ function GamePageContent({ gamePk, navigate, location }) {
   }, [exteriorSrc]);
 
   // History API: push state when sheet opens so back button closes it
-  const openSheet = useCallback((play) => {
+  const restorePitchCountView = useCallback((returnState = pitchCountReturn) => {
+    if (!returnState) return;
+    window.setTimeout(() => {
+      setPitchCountSheetOpen(true);
+    }, 120);
+  }, [pitchCountReturn]);
+
+  const openSheet = useCallback((play, options = {}) => {
     setSelectedPlay(play);
+    setSelectedPlayTargetPitchKey(options.highlightedPitchKey ?? null);
+    setPitchCountReturn(options.returnToPitchCount
+      ? { ...options.returnToPitchCount, nonce: Date.now() }
+      : null);
     window.history.pushState({ mlbSheet: true }, '');
     sheetHistoryRef.current = true;
   }, []);
 
   const closeSheet = useCallback(() => {
+    const returnState = pitchCountReturn;
     setSelectedPlay(null);
+    setSelectedPlayTargetPitchKey(null);
+    restorePitchCountView(returnState);
     if (sheetHistoryRef.current) {
       sheetHistoryRef.current = false;
       window.history.back();
     }
-  }, []);
+  }, [pitchCountReturn, restorePitchCountView]);
 
   useEffect(() => {
     const onPopState = () => {
       if (selectedPlay) {
         sheetHistoryRef.current = false;
         setSelectedPlay(null);
+        setSelectedPlayTargetPitchKey(null);
+        restorePitchCountView();
         // Prevent route navigation — do nothing else
       }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [selectedPlay]);
+  }, [selectedPlay, restorePitchCountView]);
 
   const handlePlayDetailPlayerSelect = useCallback(
     (playerId) => {
@@ -2723,9 +3030,24 @@ function GamePageContent({ gamePk, navigate, location }) {
           </div>
         )}
 
+        <PitchCountByInningSheet
+          open={pitchCountSheetOpen}
+          onClose={() => {
+            setPitchCountSheetOpen(false);
+            setPitchCountReturn(null);
+          }}
+          allPlays={allPlays}
+          away={away}
+          home={home}
+          gamePk={gamePk}
+          onOpenPlay={openSheet}
+          restorePitcherId={pitchCountReturn?.pitcherId}
+          restoreNonce={pitchCountReturn?.nonce}
+        />
         <PlayDetailSheet
           selectedPlay={selectedPlay}
           closeSheet={closeSheet}
+          highlightedPitchKey={selectedPlayTargetPitchKey}
           away={away}
           home={home}
           allPlays={allPlays}
@@ -2742,13 +3064,6 @@ function GamePageContent({ gamePk, navigate, location }) {
           getPlayHitData={getPlayHitData}
           renderHitDataPanel={(hitData) => <HitDataPanel hitData={hitData} />}
           showPitchTrails={SHOW_PLAY_DETAIL_PITCH_TRAILS}
-        />
-        <PitchCountByInningSheet
-          open={pitchCountSheetOpen}
-          onClose={() => setPitchCountSheetOpen(false)}
-          allPlays={allPlays}
-          away={away}
-          home={home}
         />
           </>
         )}

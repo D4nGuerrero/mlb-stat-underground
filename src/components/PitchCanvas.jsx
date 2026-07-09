@@ -135,6 +135,9 @@ export default function PitchCanvas({
   showPitchTrails = false,
   showHotZones = false,
   usePurpleInPlayOuts = false,
+  preserveCropAspect = false,
+  cropPlayEvents = null,
+  showCalledStrikeMarker = false,
   onPitchLanded,
   baseballModelUrl = null,
 }) {
@@ -259,7 +262,7 @@ export default function PitchCanvas({
     for (const [eventIdx, ev] of playEvents.entries()) {
       if (!ev.isPitch || !hasRenderablePitchData(ev.pitchData)) continue;
       n += 1;
-      const pitch = buildPitchFromEvent(ev, n, null, playEvents, eventIdx);
+      const pitch = buildPitchFromEvent(ev, ev.__pitchNumberOverride ?? n, null, playEvents, eventIdx);
       if (pitch) {
         pitch.playScored = Boolean(
           ev.__playScored ||
@@ -267,11 +270,35 @@ export default function PitchCanvas({
           ev.__playContext?.about?.hasScoreChange ||
           ev.__playContext?.result?.isScoringPlay,
         );
+        pitch.showCalledStrikeMarker = Boolean(
+          showCalledStrikeMarker &&
+          pitch.isStrike &&
+          !pitch.isInPlay &&
+          (
+            ev.details?.code === 'C' ||
+            String(ev.details?.description || ev.details?.call?.description || '')
+              .toLowerCase()
+              .includes('called strike')
+          ),
+        );
       }
       if (pitch) list.push(pitch);
     }
     return list;
-  }, [playEvents]);
+  }, [playEvents, showCalledStrikeMarker]);
+
+  const cropPitches = useMemo(() => {
+    if (!cropPlayEvents) return null;
+    const list = [];
+    let n = 0;
+    for (const [eventIdx, ev] of cropPlayEvents.entries()) {
+      if (!ev.isPitch || !hasRenderablePitchData(ev.pitchData)) continue;
+      n += 1;
+      const pitch = buildPitchFromEvent(ev, ev.__pitchNumberOverride ?? n, null, cropPlayEvents, eventIdx);
+      if (pitch) list.push(pitch);
+    }
+    return list;
+  }, [cropPlayEvents]);
 
   const refPitchForCrop = useMemo(() => resolveStrikeZoneDims({
     strikeZoneTop: szTop,
@@ -280,17 +307,46 @@ export default function PitchCanvas({
 
   const crop = useMemo(() => {
     if (!strikeZoneView) return null;
-    const ref = pitches.length
-      ? pitches[pitches.length - 1]
+    const cropSourcePitches = cropPitches ?? pitches;
+    const ref = cropSourcePitches.length
+      ? cropSourcePitches[cropSourcePitches.length - 1]
       : refPitchForCrop;
     const baseCrop = computeAtBatStrikeZoneCrop(scaler, ref);
-    const pitchPoints = pitches
+    const pitchPoints = cropSourcePitches
       .map((pitch) => {
         const traj = buildPitchTrajectory(pitch, scaler);
         return traj?.[traj.length - 1] ?? null;
       })
       .filter(Boolean);
-    if (!pitchPoints.length) return baseCrop;
+    const matchAspect = (rawCrop) => {
+      if (!preserveCropAspect) return rawCrop;
+      const targetAspect = baseWidth / baseHeight;
+      const cropAspect = rawCrop.w / rawCrop.h;
+      if (!Number.isFinite(cropAspect) || !Number.isFinite(targetAspect)) return rawCrop;
+
+      const cx = rawCrop.x + rawCrop.w / 2;
+      const cy = rawCrop.y + rawCrop.h / 2;
+      let w = rawCrop.w;
+      let h = rawCrop.h;
+
+      // Keep the same center while expanding the smaller crop axis so canvas
+      // scaling remains uniform. This prevents pitch-map clouds from stretching
+      // the strike zone when a pitcher has lots of outlier locations.
+      if (cropAspect > targetAspect) {
+        h = w / targetAspect;
+      } else if (cropAspect < targetAspect) {
+        w = h * targetAspect;
+      }
+
+      return {
+        x: cx - w / 2,
+        y: cy - h / 2,
+        w,
+        h,
+      };
+    };
+
+    if (!pitchPoints.length) return matchAspect(baseCrop);
 
     const pad = 28;
     let left = baseCrop.x;
@@ -304,18 +360,23 @@ export default function PitchCanvas({
       top = Math.min(top, point[1] - r - pad);
       bottom = Math.max(bottom, point[1] + r + pad);
     }
-    return {
+    return matchAspect({
       x: left,
       y: top,
       w: right - left,
       h: bottom - top,
-    };
-  }, [strikeZoneView, scaler, pitches, refPitchForCrop]);
+    });
+  }, [strikeZoneView, scaler, pitches, cropPitches, refPitchForCrop, preserveCropAspect, baseWidth, baseHeight]);
 
   const trajectories = useMemo(
     () => pitches.map((p) => buildPitchTrajectory(p, scaler)),
     [pitches, scaler],
   );
+
+  const stableRefPitch = useMemo(() => {
+    if (cropPitches?.length) return cropPitches[cropPitches.length - 1];
+    return null;
+  }, [cropPitches]);
 
   const setupCanvas = useCallback(
     (canvas) => {
@@ -411,7 +472,7 @@ export default function PitchCanvas({
       ctx.clearRect(crop?.x ?? 0, crop?.y ?? 0, crop?.w ?? W, crop?.h ?? H);
       renderModelBaseball(null, progress, null, false);
 
-      const refPitch = pitchList[pitchList.length - 1] || refPitchForCrop;
+      const refPitch = stableRefPitch || pitchList[pitchList.length - 1] || refPitchForCrop;
       drawAtBatStrikeZone(ctx, refPitch, scaler);
       if (showHotZones) drawAtBatHotZones(ctx, refPitch, scaler);
 
@@ -441,7 +502,7 @@ export default function PitchCanvas({
       }
       drawAtBatSpinningBaseball(ctx, animatedPoint, progress, scaler, pitch, 1);
     },
-    [W, H, scaler, setupCanvas, refPitchForCrop, crop, baseballModelUrl, renderModelBaseball, showHotZones],
+    [W, H, scaler, setupCanvas, refPitchForCrop, stableRefPitch, crop, baseballModelUrl, renderModelBaseball, showHotZones],
   );
 
   const animate = useCallback(

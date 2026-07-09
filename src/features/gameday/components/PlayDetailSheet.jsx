@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Modal } from '../../../components/ui';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
 import { formatPitchDescriptionWithAbsContext } from '../../../utils/absChallenge';
@@ -27,6 +28,7 @@ export default function PlayDetailSheet({
   baseballModelUrl,
   singleFieldImageUrl = null,
   strikeZoneTopImageUrl = null,
+  highlightedPitchKey = null,
 }) {
   if (!selectedPlay) return null;
 
@@ -55,6 +57,16 @@ export default function PlayDetailSheet({
   const batSide = play.matchup?.batSide?.code || 'R';
   const batterIsAway = play.about?.halfInning === 'top';
   const batterTeamId = batterIsAway ? away.id : home.id;
+  const pitchRowRefs = useRef({});
+
+  useEffect(() => {
+    if (!highlightedPitchKey) return;
+    const node = pitchRowRefs.current[highlightedPitchKey];
+    if (!node) return;
+    window.setTimeout(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 180);
+  }, [highlightedPitchKey]);
 
   return (
     <Modal
@@ -191,6 +203,8 @@ export default function PlayDetailSheet({
             </div> */}
             <div className="space-y-2">
               {pitches.map(({ event: pitch, eventIdx }, index) => {
+                const pitchKey = pitch.playId ?? pitch.index ?? eventIdx;
+                const isHighlighted = highlightedPitchKey != null && String(pitchKey) === String(highlightedPitchKey);
                 const desc = formatPitchDescriptionWithAbsContext(
                   pitch.details?.description || '',
                   pitch,
@@ -237,7 +251,11 @@ export default function PlayDetailSheet({
                 return (
                   <div
                     key={index}
-                    className={`flex items-center gap-3 rounded-2xl  border bg-[#0f1a23] ${rowBg}`}
+                    ref={(node) => {
+                      if (node) pitchRowRefs.current[pitchKey] = node;
+                      else delete pitchRowRefs.current[pitchKey];
+                    }}
+                    className={`flex items-center gap-3 rounded-2xl border bg-[#0f1a23] ${rowBg} ${isHighlighted ? 'pitch-sequence-target-pulse' : ''}`}
                   >
                     <div
                       className={`w-8 h-8  rounded-full flex-shrink-0 flex items-center justify-center text-2xl  font-extrabold text-white  shadow-sm ${dotColor}`}

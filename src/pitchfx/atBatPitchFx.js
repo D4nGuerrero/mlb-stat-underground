@@ -304,6 +304,30 @@ function pitchNumberFontSize(scalers, radius) {
   return Math.max(baseFontSize, radius * PITCH_NUMBER_RADIUS_SCALE, minFontSize);
 }
 
+function drawCalledStrikeEye(ctx, x, y, radius) {
+  const eyeW = Math.max(7, radius * 1.05);
+  const eyeH = Math.max(4, radius * 0.52);
+  const cx = x + radius * 0.72;
+  const cy = y - radius * 0.72;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.lineWidth = Math.max(1, radius * 0.12);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, eyeW / 2, eyeH / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(1.2, eyeH * 0.24), 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.fill();
+  ctx.restore();
+}
+
 function points2D(pitch, scalers) {
   const coords = pitch.coords;
   if (pitch.is3DPitch) {
@@ -636,6 +660,7 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = shader.ballStroke;
   // ctx.stroke();
+  if (pitch.showCalledStrikeMarker) drawCalledStrikeEye(ctx, x, y, radius);
   ctx.restore();
 }
 
@@ -740,6 +765,7 @@ export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.
   // ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
   // ctx.strokeText(String(pitch.num ?? ''), x, y);
   ctx.fillText(String(pitch.num ?? ''), x, y);
+  if (pitch.showCalledStrikeMarker) drawCalledStrikeEye(ctx, x, y, radius);
   ctx.restore();
 }
 

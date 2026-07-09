@@ -189,6 +189,23 @@ body {
   }
 }
 
+.pitch-sequence-target-pulse {
+  animation: pitchSequenceTargetPulse 1100ms ease-in-out 3;
+}
+
+@keyframes pitchSequenceTargetPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(250, 204, 21, 0);
+    border-color: rgba(250, 204, 21, 0.15);
+  }
+  45% {
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.35), 0 0 22px rgba(250, 204, 21, 0.28);
+    border-color: rgba(250, 204, 21, 0.78);
+    background-color: rgba(120, 83, 12, 0.32);
+  }
+}
+
 @keyframes recentPlayInsertContent {
   0% {
     opacity: 1;
