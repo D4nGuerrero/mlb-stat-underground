@@ -43,6 +43,7 @@ import {
 import LiveMatchupStrip from '../components/LiveMatchupStrip';
 import PlayDetailSheet from '../components/PlayDetailSheet';
 import SummarySection, { ScoringPlayVideo } from '../components/SummarySection';
+import SavantStatcastSection from '../components/SavantStatcastSection';
 import TeamBoxSection, { TeamReservesSection } from '../components/TeamBoxSection';
 import { useDaySchedule } from '../hooks/useDaySchedule';
 import { useGameContent } from '../hooks/useGameContent';
@@ -1426,6 +1427,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState(() => location.state?.activeTab ?? 'live');
   const [leftRailView, setLeftRailView] = useState('live');
+  const [finalRailView, setFinalRailView] = useState('summary');
   const [boxScoreSide, setBoxScoreSide] = useState('away');
   const [usePurpleInPlayOuts, setUsePurpleInPlayOuts] = useLocalStorageState(
     GAMEDAY_IN_PLAY_OUTS_PURPLE_KEY,
@@ -1937,6 +1939,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     ...(isLive ? [{ key: 'live', label: 'Live At Bat' }] : []),
     { key: 'boxscore', label: 'Box Score' },
     { key: 'summary', label: 'Summary' },
+    { key: 'savant', label: '⚾ Savant' },
   ];
 
   const currentTab = !isLive && activeTab === 'live' ? 'boxscore' : activeTab;
@@ -2111,6 +2114,14 @@ function GamePageContent({ gamePk, navigate, location }) {
       summaryItemGroups={summaryItemGroups}
       summaryLeadIn={summaryLeadIn}
       onSummaryFilterChange={setSummaryFilter}
+    />
+  );
+
+  const savantPanel = (
+    <SavantStatcastSection
+      gamePk={gamePk}
+      allPlays={allPlays}
+      onOpenPlay={openSheet}
     />
   );
 
@@ -2322,8 +2333,30 @@ function GamePageContent({ gamePk, navigate, location }) {
         </div>
       </section>
 
-      <aside className="gameday-scroll-rail min-w-0 min-h-0 overflow-y-auto rounded-2xl">
-        {summaryPanel}
+      <aside className="min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              Game Feed
+            </div>
+            <div className="text-sm font-black text-white">
+              {finalRailView === 'savant' ? 'Statcast Metrics' : 'Summary'}
+            </div>
+          </div>
+          <SegmentedControl
+            value={finalRailView}
+            onChange={setFinalRailView}
+            variant="pill"
+            size="sm"
+            options={[
+              { value: 'summary', label: 'Summary' },
+              { value: 'savant', label: '⚾ Savant' },
+            ]}
+          />
+        </div>
+        <div className="gameday-scroll-rail h-[calc(100%-4.5rem)] min-h-0 overflow-y-auto">
+          {finalRailView === 'savant' ? savantPanel : summaryPanel}
+        </div>
       </aside>
     </div>
   ) : null;
@@ -2681,6 +2714,12 @@ function GamePageContent({ gamePk, navigate, location }) {
         {currentTab === 'summary' && (
           <div className={isFinal ? 'xl:hidden' : ''}>
             {summaryPanel}
+          </div>
+        )}
+
+        {currentTab === 'savant' && (
+          <div className={isFinal ? 'xl:hidden' : ''}>
+            {savantPanel}
           </div>
         )}
 
