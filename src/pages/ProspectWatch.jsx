@@ -9,6 +9,7 @@ import {
   Search,
   Star,
   StickyNote,
+  Table2,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -307,8 +308,32 @@ function mapStatSplitPlayer(split, kind, affiliate, mode) {
     score: kind === 'batting' ? hitterScore(stat) : pitcherScore(stat),
     kind,
     mode,
+    position:
+      split?.position?.abbreviation ??
+      split?.player?.primaryPosition?.abbreviation ??
+      split?.player?.position?.abbreviation ??
+      '—',
   };
   return { ...mapped, tags: buildDiscoveryTags(mapped) };
+}
+
+function mapRosterPlayer(entry, affiliate) {
+  const position = entry.position?.abbreviation ?? '—';
+  const kind = position === 'P' ? 'pitching' : 'batting';
+  return {
+    id: entry.person?.id,
+    name: entry.person?.fullName,
+    boxscoreName: entry.person?.boxscoreName ?? entry.person?.fullName,
+    affiliate,
+    stat: {},
+    season: {},
+    summary: 'No stat line for this lens',
+    score: null,
+    kind,
+    mode: 'roster',
+    position,
+    tags: [],
+  };
 }
 
 function extractTeamPlayers(boxscore, side, affiliate) {
@@ -380,19 +405,25 @@ async function fetchStatGroup(team, group, mode, endDate) {
   return data.stats?.[0]?.splits ?? [];
 }
 
-async function fetchAffiliateActiveRosterIds(team) {
+async function fetchAffiliateActiveRoster(team) {
   const response = await fetch(
     `https://statsapi.mlb.com/api/v1/teams/${team.id}/roster?rosterType=active&season=${CURRENT_SEASON}&hydrate=person(currentTeam)`,
   );
   const data = await response.json();
-  const entries = data.roster ?? [];
+  const entries = (data.roster ?? []).filter(
+    (entry) => entry.status?.code === 'A' && entry.person?.currentTeam?.id === team.id,
+  );
 
-  return new Set(
-    entries
-      .filter((entry) => entry.status?.code === 'A' && entry.person?.currentTeam?.id === team.id)
+  return {
+    ids: new Set(
+      entries
       .map((entry) => Number(entry.person?.id))
       .filter(Boolean),
-  );
+    ),
+    players: entries
+      .filter((entry) => entry.person?.id)
+      .map((entry) => mapRosterPlayer(entry, team)),
+  };
 }
 
 function AffiliateLogo({ team, className = 'w-16 h-16' }) {
@@ -603,6 +634,311 @@ function LeaderboardTile({ label, player, value, accent = 'text-emerald-300' }) 
   );
 }
 
+const PROSPECT_RATE_MIN_PA = 30;
+const PROSPECT_RATE_SORT_KEYS = new Set(['avg', 'obp', 'slg', 'ops']);
+
+function hitterPlateAppearances(stat = {}) {
+  const explicitPa = Number(stat.plateAppearances);
+  if (Number.isFinite(explicitPa) && explicitPa > 0) return explicitPa;
+
+  return (
+    (Number(stat.atBats) || 0) +
+    (Number(stat.baseOnBalls) || 0) +
+    (Number(stat.hitByPitch) || 0) +
+    (Number(stat.sacFlies) || 0) +
+    (Number(stat.sacBunts) || 0)
+  );
+}
+
+function isQualifiedProspectRate(player) {
+  if (player.kind !== 'batting') return false;
+  return hitterPlateAppearances(player.stat) >= PROSPECT_RATE_MIN_PA;
+}
+
+function prospectSortValue(player, key) {
+  const stat = player.stat ?? {};
+  const affiliateLevel = player.affiliate?.sport?.id ?? player.affiliate?.sportId ?? 99;
+
+  switch (key) {
+    case 'name':
+      return player.name ?? '';
+    case 'position':
+      return player.position ?? '';
+    case 'level':
+      return LEVEL_ORDER[affiliateLevel] ?? 99;
+    case 'score':
+      return player.score == null ? -999 : Number(player.score) || 0;
+    case 'pa':
+      return hitterPlateAppearances(stat);
+    case 'avg':
+      return Number(stat.avg) || -1;
+    case 'obp':
+      return Number(stat.obp) || -1;
+    case 'slg':
+      return Number(stat.slg) || -1;
+    case 'ops':
+      return Number(stat.ops) || -1;
+    case 'hr':
+      return Number(stat.homeRuns) || 0;
+    case 'rbi':
+      return Number(stat.rbi) || 0;
+    case 'sb':
+      return Number(stat.stolenBases) || 0;
+    case 'bb':
+      return Number(stat.baseOnBalls) || 0;
+    case 'era':
+      return Number(stat.era) || 99;
+    case 'whip':
+      return Number(stat.whip) || 99;
+    case 'k':
+      return Number(stat.strikeOuts) || 0;
+    case 'ip':
+      return parseInnings(stat.inningsPitched);
+    default:
+      return '';
+  }
+}
+
+function ProspectOrgTable({
+  players,
+  modeLabel,
+  sort,
+  onSort,
+  onSelectPlayer,
+  isWatched,
+  onToggleWatch,
+}) {
+  const [activeKind, setActiveKind] = useState('batting');
+  const hitters = players.filter((player) => player.kind === 'batting');
+  const pitchers = players.filter((player) => player.kind === 'pitching');
+  const activePlayers = activeKind === 'batting' ? hitters : pitchers;
+  const columns = activeKind === 'batting'
+    ? [
+        { key: 'name', label: 'Player', className: 'text-left min-w-52' },
+        { key: 'position', label: 'POS' },
+        { key: 'level', label: 'Lvl' },
+        { key: 'score', label: 'Score' },
+        { key: 'pa', label: 'PA' },
+        { key: 'avg', label: 'AVG' },
+        { key: 'obp', label: 'OBP' },
+        { key: 'slg', label: 'SLG' },
+        { key: 'ops', label: 'OPS' },
+        { key: 'hr', label: 'HR' },
+        { key: 'rbi', label: 'RBI' },
+        { key: 'sb', label: 'SB' },
+        { key: 'bb', label: 'BB' },
+        { key: 'k', label: 'K' },
+      ]
+    : [
+        { key: 'name', label: 'Player', className: 'text-left min-w-52' },
+        { key: 'position', label: 'POS' },
+        { key: 'level', label: 'Lvl' },
+        { key: 'score', label: 'Score' },
+        { key: 'ip', label: 'IP' },
+        { key: 'era', label: 'ERA' },
+        { key: 'whip', label: 'WHIP' },
+        { key: 'k', label: 'K' },
+        { key: 'bb', label: 'BB' },
+        { key: 'hr', label: 'HR' },
+      ];
+  const columnKeys = new Set(columns.map((col) => col.key));
+  const effectiveSort = columnKeys.has(sort.key) ? sort : { key: 'score', direction: 'desc' };
+
+  const sortedPlayers = useMemo(() => {
+    const direction = effectiveSort.direction === 'asc' ? 1 : -1;
+    const isRateSort = PROSPECT_RATE_SORT_KEYS.has(effectiveSort.key);
+    return [...activePlayers].sort((a, b) => {
+      if (isRateSort) {
+        const aq = isQualifiedProspectRate(a);
+        const bq = isQualifiedProspectRate(b);
+        if (aq !== bq) return aq ? -1 : 1;
+      }
+
+      const av = prospectSortValue(a, effectiveSort.key);
+      const bv = prospectSortValue(b, effectiveSort.key);
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return String(av).localeCompare(String(bv)) * direction;
+      }
+      if (av === bv) return (Number(b.score) || 0) - (Number(a.score) || 0);
+      return (av - bv) * direction;
+    });
+  }, [activePlayers, effectiveSort]);
+
+  const sortLabel = columns.find((col) => col.key === effectiveSort.key)?.label ?? 'Score';
+  const toggleSort = (key) => {
+    const lowIsBest = new Set(['era', 'whip']);
+    onSort((current) => ({
+      key,
+      direction: current.key === key
+        ? current.direction === 'desc' ? 'asc' : 'desc'
+        : lowIsBest.has(key) ? 'asc' : 'desc',
+    }));
+  };
+
+  const battingValue = (player, key) => (
+    player.kind === 'batting' ? cleanNumber(player.stat?.[key], key === 'avg' || key === 'ops' ? '—' : 0) : '—'
+  );
+  const pitchingValue = (player, key, fallback = '—') => (
+    player.kind === 'pitching' ? cleanNumber(player.stat?.[key], fallback) : '—'
+  );
+  const activeLabel = activeKind === 'batting' ? 'hitters' : 'pitchers';
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-slate-900/85 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/55 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+            <Table2 size={14} />
+            Org Prospect Table
+          </div>
+          <div className="mt-1 text-sm text-slate-400">
+            {activePlayers.length} {activeLabel} · {modeLabel} lens · sorted by {sortLabel}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-950 p-1">
+            {[
+              { key: 'batting', label: `Hitters ${hitters.length}` },
+              { key: 'pitching', label: `Pitchers ${pitchers.length}` },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveKind(tab.key)}
+                className={[
+                  'rounded-xl px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-colors',
+                  activeKind === tab.key
+                    ? 'bg-emerald-400 text-slate-950'
+                    : 'text-slate-500 hover:text-slate-200',
+                ].join(' ')}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs text-slate-500">
+            Tap a header to sort. Tap a player for notes/profile preview.
+            {activeKind === 'batting' && PROSPECT_RATE_SORT_KEYS.has(effectiveSort.key) ? (
+              <span className="ml-1 text-emerald-300/80">
+                Rate sorts use {PROSPECT_RATE_MIN_PA}+ PA first.
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-h-[70vh] overflow-auto app-scrollbar">
+        <table className="min-w-[780px] w-full text-xs">
+          <thead className="sticky top-0 z-10 bg-slate-950 text-slate-400 shadow-[0_1px_0_rgba(30,41,59,1)]">
+            <tr>
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  className={[
+                    'px-3 py-2 text-right font-black uppercase tracking-wider',
+                    col.className ?? '',
+                  ].join(' ')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(col.key)}
+                    className={[
+                      'inline-flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-800 hover:text-white',
+                      effectiveSort.key === col.key ? 'text-emerald-300' : '',
+                      col.key === 'name' ? 'justify-start' : 'justify-end',
+                    ].join(' ')}
+                  >
+                    {col.label}
+                    {effectiveSort.key === col.key && (
+                      <span className="text-[9px]">{effectiveSort.direction === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedPlayers.length ? sortedPlayers.map((player) => {
+              const level = playerAffiliationLabel(player);
+              return (
+                <tr
+                  key={`${player.mode}-${player.kind}-${player.id}`}
+                  className="border-b border-slate-900/90 odd:bg-slate-950/35 even:bg-slate-900/35 hover:bg-emerald-500/10"
+                >
+                  <td className="px-3 py-2 text-left">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <img
+                        src={prospectHeadshotUrl(player.id)}
+                        alt=""
+                        className="h-8 w-8 rounded-xl bg-slate-800 object-cover"
+                        onError={(e) => attachHeadshotFallback(e, player.id)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onSelectPlayer?.(player)}
+                        className="min-w-0 text-left"
+                      >
+                        <div className="truncate font-black text-slate-100 hover:text-emerald-300">
+                          {player.name}
+                        </div>
+                        <div className="truncate text-[10px] text-slate-500">
+                          {player.affiliate?.name}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onToggleWatch?.(player)}
+                        className={`ml-auto rounded-full p-1 ${isWatched?.(player.id) ? 'text-yellow-300' : 'text-slate-600 hover:text-yellow-300'}`}
+                        aria-label={isWatched?.(player.id) ? 'Remove from prospect watchlist' : 'Add to prospect watchlist'}
+                      >
+                        <Star size={13} fill={isWatched?.(player.id) ? 'currentColor' : 'none'} />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right font-bold text-slate-300">{player.position || '—'}</td>
+                  <td className="px-3 py-2 text-right font-bold text-emerald-300">{level ?? '—'}</td>
+                  <td className="px-3 py-2 text-right font-black text-white">
+                    {player.score == null ? '—' : cleanNumber((Number(player.score) || 0).toFixed(1))}
+                  </td>
+                  {activeKind === 'batting' ? (
+                    <>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{cleanNumber(hitterPlateAppearances(player.stat), 0)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'avg')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'obp')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'slg')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-bold text-emerald-300">{battingValue(player, 'ops')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'homeRuns')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'rbi')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'stolenBases')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'baseOnBalls')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{battingValue(player, 'strikeOuts')}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{pitchingValue(player, 'inningsPitched')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-bold text-orange-300">{pitchingValue(player, 'era')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{pitchingValue(player, 'whip')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{pitchingValue(player, 'strikeOuts', 0)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{pitchingValue(player, 'baseOnBalls', 0)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-300">{pitchingValue(player, 'homeRuns', 0)}</td>
+                    </>
+                  )}
+                </tr>
+              );
+            }) : (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-10 text-center text-sm text-slate-500">
+                  No active roster or stat data loaded for this org yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function FormPlayerBoard({ title, players, onSelectPlayer, isWatched, onToggleWatch }) {
   return (
     <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
@@ -653,7 +989,16 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
       )}
       <div className="relative p-4 sm:p-5">
         <div className="flex items-start gap-4">
-          <AffiliateLogo team={affiliate} className="w-16 h-16 sm:w-20 sm:h-20" />
+          <Link
+            to={`/team/${affiliate.id}`}
+            className="group flex-shrink-0 rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            aria-label={`Open ${affiliate.name} team page`}
+          >
+            <AffiliateLogo
+              team={affiliate}
+              className="w-16 h-16 sm:w-20 sm:h-20 transition-transform duration-200 group-hover:scale-105"
+            />
+          </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-300">
@@ -661,9 +1006,14 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
               </span>
               <span className="text-[11px] text-slate-500">{affiliate.league?.name}</span>
             </div>
-            <h2 className="mt-1 text-xl sm:text-2xl font-display tracking-tight text-white">
+            <Link
+              to={`/team/${affiliate.id}`}
+              className="mt-1 inline-block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
+              <h2 className="text-xl sm:text-2xl font-display tracking-tight text-white transition-colors hover:text-emerald-200">
               {affiliate.name}
-            </h2>
+              </h2>
+            </Link>
             <p className="text-sm text-slate-400">{affiliate.venue?.name ?? affiliate.locationName}</p>
           </div>
         </div>
@@ -891,6 +1241,8 @@ export default function ProspectWatch() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showProspectTable, setShowProspectTable] = useState(false);
+  const [prospectTableSort, setProspectTableSort] = useState({ key: 'score', direction: 'desc' });
   const [watchlist, setWatchlist] = useState(loadProspectWatchlist);
   const [notes, setNotes] = useState(loadProspectNotes);
   const selectedOrg =
@@ -934,7 +1286,7 @@ export default function ProspectWatch() {
                 fetch(
                   `https://statsapi.mlb.com/api/v1/schedule?teamId=${affiliate.id}&sportId=${affiliate.sport.id}&date=${date}&hydrate=team,linescore`,
                 ),
-                fetchAffiliateActiveRosterIds(affiliate),
+                fetchAffiliateActiveRoster(affiliate),
                 fetchStatGroup(affiliate, 'hitting', 'season', date),
                 fetchStatGroup(affiliate, 'pitching', 'season', date),
                 fetchStatGroup(affiliate, 'hitting', 'last7', date),
@@ -964,31 +1316,32 @@ export default function ProspectWatch() {
                 ...affiliate,
                 game,
                 side,
+                rosterPlayers: activeRosterIds.players,
                 hitters,
                 pitchers,
                 forms: {
                   season: {
                     hitters: seasonHitters
-                      .filter((split) => activeRosterIds.has(Number(split?.player?.id)))
+                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'batting', affiliate, 'season')),
                     pitchers: seasonPitchers
-                      .filter((split) => activeRosterIds.has(Number(split?.player?.id)))
+                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'pitching', affiliate, 'season')),
                   },
                   last7: {
                     hitters: last7Hitters
-                      .filter((split) => activeRosterIds.has(Number(split?.player?.id)))
+                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'batting', affiliate, 'last7')),
                     pitchers: last7Pitchers
-                      .filter((split) => activeRosterIds.has(Number(split?.player?.id)))
+                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'pitching', affiliate, 'last7')),
                   },
                   last14: {
                     hitters: last14Hitters
-                      .filter((split) => activeRosterIds.has(Number(split?.player?.id)))
+                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'batting', affiliate, 'last14')),
                     pitchers: last14Pitchers
-                      .filter((split) => activeRosterIds.has(Number(split?.player?.id)))
+                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'pitching', affiliate, 'last14')),
                   },
                 },
@@ -998,6 +1351,7 @@ export default function ProspectWatch() {
                 ...affiliate,
                 game: null,
                 side: null,
+                rosterPlayers: [],
                 hitters: [],
                 pitchers: [],
                 forms: emptyForm,
@@ -1053,6 +1407,7 @@ export default function ProspectWatch() {
     cards.forEach((card) => {
       card.hitters.forEach(register);
       card.pitchers.forEach(register);
+      (card.rosterPlayers ?? []).forEach(register);
       Object.values(card.forms ?? {}).forEach((bucket) => {
         bucket.hitters.forEach(register);
         bucket.pitchers.forEach(register);
@@ -1066,6 +1421,35 @@ export default function ProspectWatch() {
     () => [...insightPlayers.hitters, ...insightPlayers.pitchers].sort((a, b) => b.score - a.score).slice(0, 6),
     [insightPlayers],
   );
+
+  const prospectTablePlayers = useMemo(() => {
+    const rows = [];
+    const seen = new Map();
+    const add = (player) => {
+      if (!player?.id) return;
+      const key = `${player.kind}-${Number(player.id)}`;
+      const existingIndex = seen.get(key);
+      if (existingIndex != null) {
+        const existing = rows[existingIndex];
+        if ((!existing.position || existing.position === '—') && player.position && player.position !== '—') {
+          rows[existingIndex] = { ...existing, position: player.position };
+        }
+        return;
+      }
+      seen.set(key, rows.length);
+      rows.push(player);
+    };
+
+    visibleCards.forEach((card) => {
+      (card.forms?.season?.hitters ?? []).forEach(add);
+      (card.forms?.season?.pitchers ?? []).forEach(add);
+    });
+    visibleCards.forEach((card) => {
+      (card.rosterPlayers ?? []).forEach(add);
+    });
+
+    return rows;
+  }, [visibleCards]);
 
   const watchlistPlayers = useMemo(
     () =>
@@ -1225,6 +1609,19 @@ export default function ProspectWatch() {
             >
               {favoritesLabel}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowProspectTable((value) => !value)}
+              className={[
+                'inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-bold transition-colors',
+                showProspectTable
+                  ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
+                  : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-emerald-500/35 hover:text-emerald-300',
+              ].join(' ')}
+            >
+              <Table2 size={16} />
+              Prospect Table
+            </button>
           </div>
         </div>
 
@@ -1310,6 +1707,18 @@ export default function ProspectWatch() {
             </div>
           )}
         </section>
+
+        {showProspectTable && (
+          <ProspectOrgTable
+            players={prospectTablePlayers}
+            modeLabel="Season"
+            sort={prospectTableSort}
+            onSort={setProspectTableSort}
+            onSelectPlayer={setSelectedPlayer}
+            isWatched={isWatched}
+            onToggleWatch={toggleWatch}
+          />
+        )}
 
         {isLoading ? (
           <div className="py-20 flex justify-center">
