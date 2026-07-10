@@ -40,10 +40,24 @@ export function getAbsChallengeOutcome(event) {
   if (/\b(upheld|confirmed|stands|unsuccessful)\b/.test(haystack)) return 'Upheld';
   if (/\b(overturn|overturned|reversed|changed|successful)\b/.test(haystack)) return 'Overturned';
   if (event?.reviewDetails?.isOverturned === true) return 'Overturned';
+  if (event?.reviewDetails?.isOverturned === false && isAbsChallengeSignal(event)) return 'Upheld';
   return null;
 }
 
 function isAbsChallengeSignal(event) {
+  if (event?.details?.hasReview === true) return true;
+  if (
+    event?.reviewDetails &&
+    (
+      typeof event.reviewDetails.isOverturned === 'boolean' ||
+      event.reviewDetails.inProgress === true ||
+      event.reviewDetails.reviewType ||
+      event.reviewDetails.challengeTeamId
+    )
+  ) {
+    return true;
+  }
+
   const haystack = collectChallengeValues(event).join(' ').toLowerCase();
   return /(abs|automated\s*ball|ball.?strike|challenge|challenged|under review|reviewing)/i.test(haystack);
 }
@@ -103,9 +117,9 @@ export function formatPitchDescriptionWithAbs(description, event) {
   if (automaticCall) return automaticCall;
 
   const text = description || 'Pitch';
-  if (/\((overturned|upheld|under review)\)$/i.test(text)) return text;
+  if (/(?:\s[-–]\s|\()(overturned|upheld|under review)\)?$/i.test(text)) return text;
   const label = getAbsChallengePitchLabel(event);
-  return label ? `${text} (${label})` : text;
+  return label ? `${text} - ${label}` : text;
 }
 
 export function getAbsChallengeOutcomeForPitch(playEvents = [], pitchEventIndex = -1) {
@@ -133,11 +147,11 @@ export function formatPitchDescriptionWithAbsContext(description, event, playEve
   if (automaticCall) return automaticCall;
 
   const text = description || 'Pitch';
-  if (/\((overturned|upheld|under review)\)$/i.test(text)) return text;
+  if (/(?:\s[-–]\s|\()(overturned|upheld|under review)\)?$/i.test(text)) return text;
   const label =
     getAbsChallengePitchLabel(event) ||
     getAbsChallengePitchLabelForPitch(playEvents, pitchEventIndex);
-  return label ? `${text} (${label})` : text;
+  return label ? `${text} - ${label}` : text;
 }
 
 export function getAbsChallengeOutcomeFromPlay(play) {

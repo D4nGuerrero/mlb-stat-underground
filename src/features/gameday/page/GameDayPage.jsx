@@ -1394,12 +1394,13 @@ function WatchInlineLink({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
   );
 }
 
-function GamedayGamePicker({ games, currentGamePk, loading, onSelect, label = 'Gameday' }) {
+function GamedayGamePicker({ games, currentGamePk, loading, onSelect, onOpen, label = 'Gameday' }) {
   const count = games.length;
   return (
     <Menu as="div" className="relative justify-self-center">
       <MenuButton
         type="button"
+        onClick={() => { onOpen?.(); }}
         className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-bold text-sm text-slate-100 transition-colors hover:bg-slate-800/70 active:text-white"
       >
         <span>{label}</span>
@@ -1745,7 +1746,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const batterId = feed?.liveData?.linescore?.offense?.batter?.id;
   const pitcherId = feed?.liveData?.linescore?.defense?.pitcher?.id;
   const activeStripDate = stripDate ?? officialDate;
-  const { daySchedule, dayScheduleLoading } = useDaySchedule(activeStripDate, dedupeDaySchedule, gameSportId);
+  const { daySchedule, dayScheduleLoading, refreshDaySchedule } = useDaySchedule(activeStripDate, dedupeDaySchedule, gameSportId);
   const { gameContent } = useGameContent(gamePk, scoringCount);
   const { previewLineups, previewLineupsLoading } = usePreviewLineups(
     gamePk,
@@ -2693,6 +2694,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           games={daySchedule}
           currentGamePk={gamePk}
           loading={dayScheduleLoading}
+          onOpen={() => refreshDaySchedule()}
           onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
         />
         <div className="justify-self-end flex items-center justify-end gap-2 min-w-[4.5rem]">
