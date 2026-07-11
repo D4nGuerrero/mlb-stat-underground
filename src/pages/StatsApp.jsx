@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { THEME_COLOR } from '../theme/theme.js';
 import { Link } from 'react-router-dom';
 import {
@@ -163,12 +163,43 @@ const getLastSeasonPlayed = (person) => {
   return 0;
 };
 
+const hasMlbTeamInStats = (person) =>
+  (person.stats ?? []).some((block) =>
+    (block.splits ?? []).some((split) => MLB_TEAM_ID_SET.has(Number(split.team?.id))),
+  );
+
+const isMlbPerson = (person) =>
+  MLB_TEAM_ID_SET.has(Number(person.currentTeam?.id)) ||
+  Boolean(person.mlbDebutDate) ||
+  hasMlbTeamInStats(person);
+
+const isCurrentMlbPerson = (person) =>
+  MLB_TEAM_ID_SET.has(Number(person.currentTeam?.id));
+
 const sortSearchResults = (people) =>
   [...people].sort((a, b) => {
+    const currentMlbDiff = Number(isCurrentMlbPerson(b)) - Number(isCurrentMlbPerson(a));
+    if (currentMlbDiff !== 0) return currentMlbDiff;
+    const mlbDiff = Number(isMlbPerson(b)) - Number(isMlbPerson(a));
+    if (mlbDiff !== 0) return mlbDiff;
     if (a.active !== b.active) return a.active ? -1 : 1;
     const seasonDiff = getLastSeasonPlayed(b) - getLastSeasonPlayed(a);
     if (seasonDiff !== 0) return seasonDiff;
     const gpDiff = getGamesPlayed(b) - getGamesPlayed(a);
+    if (gpDiff !== 0) return gpDiff;
+    return (a.fullName ?? '').localeCompare(b.fullName ?? '');
+  });
+
+const sortMappedSearchResults = (players) =>
+  [...players].sort((a, b) => {
+    const currentMlbDiff = Number(b.isCurrentMlb) - Number(a.isCurrentMlb);
+    if (currentMlbDiff !== 0) return currentMlbDiff;
+    const mlbDiff = Number(b.isMlb) - Number(a.isMlb);
+    if (mlbDiff !== 0) return mlbDiff;
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    const seasonDiff = (b.lastSeasonPlayed ?? 0) - (a.lastSeasonPlayed ?? 0);
+    if (seasonDiff !== 0) return seasonDiff;
+    const gpDiff = (b.gamesPlayed ?? 0) - (a.gamesPlayed ?? 0);
     if (gpDiff !== 0) return gpDiff;
     return (a.fullName ?? '').localeCompare(b.fullName ?? '');
   });
@@ -178,15 +209,33 @@ const findStatBlock = (person, group, type) =>
     (s) => s.group?.displayName?.toLowerCase() === group && s.type?.displayName === type,
   )?.splits?.[0]?.stat;
 
+const isPitcherPerson = (person) => person?.primaryPosition?.abbreviation === 'P';
+
 const extractStatPreview = (person) => {
+  const kind = isPitcherPerson(person) ? 'pitching' : 'hitting';
   const statType = person.active ? 'season' : 'career';
   const label = person.active ? String(CURRENT_SEASON) : 'Career';
-  let stat = findStatBlock(person, 'hitting', statType);
-  if (!stat && person.active) stat = findStatBlock(person, 'hitting', 'career');
-  if (!stat) return { label, kind: 'hitting', avg: '—', homeRuns: '—', rbi: '—', ops: '—' };
+  let stat = findStatBlock(person, kind, statType);
+  if (!stat && person.active) stat = findStatBlock(person, kind, 'career');
+  if (!stat && kind === 'pitching') stat = findStatBlock(person, 'hitting', statType);
+  if (!stat) {
+    return kind === 'pitching'
+      ? { label, kind, era: '—', record: '—', strikeOuts: '—', whip: '—' }
+      : { label, kind, avg: '—', homeRuns: '—', rbi: '—', ops: '—' };
+  }
+  if (kind === 'pitching') {
+    return {
+      label,
+      kind,
+      era: stat.era ?? '—',
+      record: stat.wins != null || stat.losses != null ? `${stat.wins ?? 0}-${stat.losses ?? 0}` : '—',
+      strikeOuts: stat.strikeOuts ?? '—',
+      whip: stat.whip ?? '—',
+    };
+  }
   return {
     label,
-    kind: 'hitting',
+    kind,
     avg: stat.avg ?? '—',
     homeRuns: stat.homeRuns ?? '—',
     rbi: stat.rbi ?? '—',
@@ -236,17 +285,29 @@ const mapSearchPerson = (person) => ({
       position: person.primaryPosition?.abbreviation ?? '',
       headshot: playerHeadshotUrl(person.id),
       active: person.active,
+      isCurrentMlb: isCurrentMlbPerson(person),
+      isMlb: isMlbPerson(person) || MLB_TEAM_ID_SET.has(Number(displayTeam?.id)),
+      lastSeasonPlayed: getLastSeasonPlayed(person),
+      gamesPlayed: getGamesPlayed(person),
       statsPreview: extractStatPreview(person),
     };
   })(),
 });
 
-const STAT_PREVIEW_COLS = [
-  { key: 'avg', label: 'AVG' },
-  { key: 'homeRuns', label: 'HR' },
-  { key: 'rbi', label: 'RBI' },
-  { key: 'ops', label: 'OPS' },
-];
+const STAT_PREVIEW_COLS_BY_KIND = {
+  hitting: [
+    { key: 'avg', label: 'AVG' },
+    { key: 'homeRuns', label: 'HR' },
+    { key: 'rbi', label: 'RBI' },
+    { key: 'ops', label: 'OPS' },
+  ],
+  pitching: [
+    { key: 'era', label: 'ERA' },
+    { key: 'record', label: 'W-L' },
+    { key: 'strikeOuts', label: 'K' },
+    { key: 'whip', label: 'WHIP' },
+  ],
+};
 
 const processPlayerSeason = (person, season) => {
   const group = person.primaryPosition?.abbreviation === 'P' ? 'pitching' : 'hitting';
@@ -317,12 +378,13 @@ const SCORE_TONE_STYLES = {
 // ─── Sub-components ───────────────────────────────────────────────────────
 function StatPreviewStrip({ preview }) {
   if (!preview) return null;
+  const columns = STAT_PREVIEW_COLS_BY_KIND[preview.kind] ?? STAT_PREVIEW_COLS_BY_KIND.hitting;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 ">
       <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
         {preview.label}
       </span>
-      {STAT_PREVIEW_COLS.map(({ key, label }) => (
+      {columns.map(({ key, label }) => (
         <span key={key} className="text-[11px] sm:text-xs tabular-nums">
           <span className="text-slate-500 mr-1">{label}</span>
           <span className="text-slate-200 font-medium">{preview[key] ?? '—'}</span>
@@ -756,7 +818,10 @@ export default function StatsApp() {
   const [playerName, setPlayerName] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearchEnriching, setIsSearchEnriching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState('');
   const [error, setError] = useState(null);
+  const searchSeqRef = useRef(0);
   const [activeTab, setActiveTab] = useState(initialReturnState?.activeTab ?? 'search');
   const [rosterImpactView, setRosterImpactView] = useState(initialReturnState?.rosterImpactView ?? 'exodus');
 
@@ -801,13 +866,12 @@ export default function StatsApp() {
     const refreshSavedWatchlist = async () => {
       try {
         const saved = JSON.parse(localStorage.getItem('mlbWatchlist') ?? '[]');
-        if (!saved.length || saved.every((p) => p.statsPreview)) return;
+        if (!saved.length) return;
         const hydrate = encodeURIComponent(
           `currentTeam,rosterEntries,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
         );
         const updated = await Promise.all(
           saved.map(async (p) => {
-            if (p.statsPreview) return p;
             try {
               const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${p.id}?hydrate=${hydrate}`);
               const person = (await res.json()).people?.[0];
@@ -828,7 +892,11 @@ export default function StatsApp() {
   const searchPlayers = async (nameOverride) => {
     const name = (nameOverride ?? playerName).trim();
     if (!name) return;
+    const seq = searchSeqRef.current + 1;
+    searchSeqRef.current = seq;
     setIsLoading(true);
+    setIsSearchEnriching(false);
+    setSearchMessage('Searching players...');
     setError(null);
     setSearchResults([]);
     try {
@@ -836,20 +904,60 @@ export default function StatsApp() {
         `currentTeam,rosterEntries,stats(group=[hitting,pitching],type=[season,career,yearByYear],season=${CURRENT_SEASON})`,
       );
 
-      const ALL_SPORTS = '1,11,12,13,14,16';
+      const ALL_SPORTS = '1,11,12,13,14,16,23';
 
 
       const searchRes = await fetch(
-        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=${ALL_SPORTS}&hydrate=${hydrate}`,
+        `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}&sportIds=${ALL_SPORTS}&hydrate=currentTeam`,
       );
       if (!searchRes.ok) throw new Error(`HTTP ${searchRes.status}`);
       const searchData = await searchRes.json();
       if (!searchData.people?.length) throw new Error(`No players found matching "${name}"`);
-      setSearchResults(sortSearchResults(searchData.people).map(mapSearchPerson));
-    } catch (err) {
-      setError(err.message);
-    } finally {
+
+      const sortedPeople = sortSearchResults(searchData.people);
+      if (seq !== searchSeqRef.current) return;
+      setSearchResults(sortMappedSearchResults(sortedPeople.map(mapSearchPerson)));
       setIsLoading(false);
+      setIsSearchEnriching(true);
+      setSearchMessage(`Found ${sortedPeople.length} player${sortedPeople.length !== 1 ? 's' : ''}. Loading stat previews...`);
+
+      let completed = 0;
+      await Promise.allSettled(
+        sortedPeople.map(async (p) => {
+          try {
+            const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${p.id}?hydrate=${hydrate}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const person = (await res.json()).people?.[0];
+            if (!person || seq !== searchSeqRef.current) return;
+            const mapped = mapSearchPerson(person);
+            setSearchResults((current) =>
+              sortMappedSearchResults(current.map((row) => (row.id === mapped.id ? { ...row, ...mapped } : row))),
+            );
+            setWatchlist((current) =>
+              current.map((row) => (row.id === mapped.id ? { ...row, ...mapped } : row)),
+            );
+          } finally {
+            completed += 1;
+            if (seq === searchSeqRef.current) {
+              setSearchMessage(
+                completed < sortedPeople.length
+                  ? `Loading stat previews ${completed}/${sortedPeople.length}...`
+                  : '',
+              );
+            }
+          }
+        }),
+      );
+    } catch (err) {
+      if (seq === searchSeqRef.current) {
+        setError(err.message);
+        setSearchMessage('');
+      }
+    } finally {
+      if (seq === searchSeqRef.current) {
+        setIsLoading(false);
+        setIsSearchEnriching(false);
+      }
     }
   };
 
@@ -1235,12 +1343,18 @@ export default function StatsApp() {
             </div>
           )}
 
-          {isLoading && <LoadingSpinner size="lg" py="py-12" />}
+          {(isLoading || isSearchEnriching || searchMessage) && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-400 flex items-center gap-3">
+              {(isLoading || isSearchEnriching) && <BaseballSpinner size="xs" inline />}
+              <span>{searchMessage || 'Loading...'}</span>
+            </div>
+          )}
 
-          {!isLoading && searchResults.length > 0 && (
+          {searchResults.length > 0 && (
             <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-800 text-xs text-slate-500">
                 {searchResults.length} player{searchResults.length !== 1 ? 's' : ''} found · active players first
+                {isSearchEnriching ? ' · stat previews updating' : ''}
               </div>
               {searchResults.map((player) => (
                 <PlayerSearchRow
