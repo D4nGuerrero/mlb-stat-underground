@@ -245,7 +245,7 @@ export function spotracPlayerUrl(player = {}) {
 
   const teamCode = getTeamAbbr(player.currentTeam);
   const hasTeamCode = teamCode && teamCode !== '—';
-  const query = [playerQuery, hasTeamCode ? teamCode : null].filter(Boolean).join(' ');
+  const query = [playerQuery, hasTeamCode ? `(${teamCode})` : null].filter(Boolean).join(' ');
   return `https://www.spotrac.com/search?q=${encodeURIComponent(query)}`;
 }
 
