@@ -60,8 +60,10 @@ export function parseGameHighlightVideos(content) {
   const inGameHighlights = activeVideos
     .filter((it) => hasKeyword(it.keywordsAll, 'in-game-highlight'));
 
-  // Newer MLB clips include game-action-tracking, which is a safer signal for
-  // play matching. Older seasons (roughly 2019-2022) often omit it entirely.
+  // Newer MLB clips often include game-action-tracking, which is a safer signal
+  // for play matching. Some real play clips still omit it, though, so keep the
+  // tracked clips first and append the rest of the in-game highlights. The
+  // matcher below stays strict enough to avoid attaching general/nearby clips.
   const trackedHighlights = inGameHighlights.filter((it) =>
     hasKeyword(it.keywordsAll, 'game-action-tracking')
   );
@@ -69,11 +71,13 @@ export function parseGameHighlightVideos(content) {
   // keywords and direct legacy media URLs. Only use this broad pool as a last
   // resort so newer games keep the stricter matching behavior.
   const legacyGameClips = activeVideos.filter(isLegacyGameClip);
-  const playableHighlights = trackedHighlights.length
-    ? trackedHighlights
-    : inGameHighlights.length
-      ? inGameHighlights
-      : legacyGameClips;
+  const trackedIds = new Set(trackedHighlights.map((it) => it.id));
+  const playableHighlights = inGameHighlights.length
+    ? [
+        ...trackedHighlights,
+        ...inGameHighlights.filter((it) => !trackedIds.has(it.id)),
+      ]
+    : legacyGameClips;
 
   return playableHighlights
     .map((it) => ({
@@ -265,6 +269,24 @@ const HEADLINE_ORDINALS = [
   ['fourth', 4],
 ];
 
+const INNING_WORDS = new Map([
+  ['first', 1],
+  ['second', 2],
+  ['third', 3],
+  ['fourth', 4],
+  ['fifth', 5],
+  ['sixth', 6],
+  ['seventh', 7],
+  ['eighth', 8],
+  ['ninth', 9],
+  ['tenth', 10],
+  ['eleventh', 11],
+  ['twelfth', 12],
+  ['thirteenth', 13],
+  ['fourteenth', 14],
+  ['fifteenth', 15],
+]);
+
 function playSlugCandidates(item) {
   const play = item?.play;
   const description = item?.description ?? play?.result?.description ?? '';
@@ -311,6 +333,38 @@ function headlineOrdinalMismatch(item, highlight, priorBatterScoringCount = 0) {
   return false;
 }
 
+function extractMentionedInnings(highlight) {
+  const text = rawHighlightText(highlight);
+  const innings = new Set();
+
+  for (const match of text.matchAll(
+    /\b(?:top|bottom)?(?:\s+of)?(?:\s+the)?\s*(\d{1,2})(?:st|nd|rd|th)\s+inning\b/g,
+  )) {
+    innings.add(Number(match[1]));
+  }
+
+  for (const match of text.matchAll(
+    /\b(?:in|during|through|close|closes|closing|end|ends|ending|open|opens|opening)\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/g,
+  )) {
+    innings.add(Number(match[1]));
+  }
+
+  for (const match of text.matchAll(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth)\s+inning\b/g)) {
+    const inning = INNING_WORDS.get(match[1]);
+    if (inning) innings.add(inning);
+  }
+
+  return innings;
+}
+
+function highlightInningMismatch(item, highlight) {
+  const itemInning = Number(item?.about?.inning ?? item?.play?.about?.inning);
+  if (!itemInning) return false;
+
+  const mentionedInnings = extractMentionedInnings(highlight);
+  return mentionedInnings.size > 0 && !mentionedInnings.has(itemInning);
+}
+
 function scoreHighlightMatch(item, highlight) {
   const desc = normalizeSearchText(item.description);
   const headline = normalizeSearchText(highlight.headline);
@@ -324,13 +378,14 @@ function scoreHighlightMatch(item, highlight) {
 
   const eventType = item.eventType ?? '';
   if (eventType === 'home_run' && highlight.taxonomies.includes('home-run')) score += 5;
-  if (['single', 'double', 'triple', 'sac_fly'].includes(eventType) && eventTypeMatchesHighlight(item, highlight)) {
+  if (['single', 'double', 'triple', 'sac_fly', 'hit_by_pitch'].includes(eventType) && eventTypeMatchesHighlight(item, highlight)) {
     score += 3;
   }
   if (eventType.includes('stolen') && /steal/i.test(highlight.headline)) score += 5;
   if (/grand slam/i.test(desc) && /grand slam/i.test(highlight.headline)) score += 8;
   if (/solo home run/i.test(headline) && /homers?\s*\(\d+\)/i.test(desc)) score += 4;
   if (/rbi/i.test(headline) && (item.isScoring || /\bscores?\b/i.test(desc))) score += 2;
+  if (isCompilationHighlight(highlight)) score -= 6;
 
   return score;
 }
@@ -341,6 +396,17 @@ function highlightText(highlight) {
 
 function rawHighlightText(highlight) {
   return `${highlight?.headline ?? ''} ${highlight?.description ?? ''}`.toLowerCase();
+}
+
+function isCompilationHighlight(highlight) {
+  const text = rawHighlightText(highlight);
+  return (
+    highlight?.taxonomies?.includes('highlight-reel-offense') ||
+    highlight?.taxonomies?.includes('highlight-reel-defense') ||
+    /\b(two|three|four|multi)[-\s]?homer\b/.test(text) ||
+    /\b(?:plates?|scores?)\s+\w+\s+(?:runs?\s+)?in\s+the\s+\d/.test(text) ||
+    /\bcondensed game|game recap\b/.test(text)
+  );
 }
 
 function extractPlayStatNumber(text) {
@@ -363,6 +429,7 @@ function eventTypeMatchesHighlight(item, highlight) {
   if (eventType === 'triple') return /\btriple|triples\b/.test(text);
   if (eventType === 'single') return /\bsingle|singles\b/.test(text);
   if (eventType === 'sac_fly') return /sacrifice|sac fly/.test(text);
+  if (eventType === 'hit_by_pitch') return /hit by (a )?pitch|hit-by-pitch|plunk|cartwheel/.test(text);
   if (eventType.includes('stolen')) return /steal|stolen/.test(text);
 
   return true;
@@ -376,6 +443,7 @@ const BATTER_OWNED_EVENTS = new Set([
   'field_error',
   'fielders_choice',
   'fielders_choice_out',
+  'hit_by_pitch',
   'sac_fly',
   'sac_bunt',
 ]);
@@ -406,18 +474,18 @@ function playerIdentityMatches(item, highlight) {
 }
 
 function isReliableHighlightMatch(item, highlight, { priorBatterScoringCount = 0 } = {}) {
-  if (!item?.isScoring || !highlight) return false;
+  if (!item || !highlight) return false;
   if (!highlight.mp4Url && !highlight.hlsUrl) return false;
 
-  // While MLB is still processing a new scoring-play video, older highlights
-  // can look "close enough" by text. Require a real player overlap. Some MLB
-  // scoring clips are tagged to the scoring runner instead of the batter
-  // (example: "Caleb Durbin scores on groundout"), so participantIds includes
-  // the batter plus runners who scored on the play.
+  // MLB highlights can arrive later than the play text. Older clips can look
+  // "close enough" by text, so require a real player overlap unless the
+  // content slug is a very strong exact match. Some scoring clips are tagged to
+  // the scoring runner instead of the batter, so participantIds includes both.
   const strongSlugMatch = slugHighlightScore(item, highlight) >= 45;
   if (!playerIdentityMatches(item, highlight) && !strongSlugMatch) return false;
   if (!eventTypeMatchesHighlight(item, highlight)) return false;
-  if (headlineOrdinalMismatch(item, highlight, priorBatterScoringCount)) return false;
+  if (highlightInningMismatch(item, highlight)) return false;
+  if (item.isScoring && headlineOrdinalMismatch(item, highlight, priorBatterScoringCount)) return false;
 
   const itemStatNumber = extractPlayStatNumber(item.description);
   const highlightStatNumbers = extractHighlightStatNumbers(highlight);
@@ -430,12 +498,12 @@ function isReliableHighlightMatch(item, highlight, { priorBatterScoringCount = 0
     return false;
   }
 
-  return scoreHighlightMatch(item, highlight) >= 7;
+  return scoreHighlightMatch(item, highlight) >= (item.isScoring ? 7 : 9);
 }
 
-/** Match a scoring summary item to the best highlight video, if any. */
+/** Match a summary item to the best highlight video, if any. */
 export function matchHighlightForItem(item, highlights) {
-  if (!item?.isScoring || !highlights?.length) return null;
+  if (!item || !highlights?.length) return null;
 
   const participantIds = itemParticipantIds(item);
   let pool = highlights;
@@ -447,7 +515,7 @@ export function matchHighlightForItem(item, highlights) {
 
   const ranked = pool
     .map((h) => ({ h, score: scoreHighlightMatch(item, h) }))
-    .filter(({ h, score }) => score >= 7 && isReliableHighlightMatch(item, h))
+    .filter(({ h, score }) => score >= (item.isScoring ? 7 : 9) && isReliableHighlightMatch(item, h))
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0]?.h;
@@ -461,8 +529,13 @@ export function buildHighlightMap(summaryItems, highlights) {
   const used = new Set();
   const batterScoringCount = new Map();
 
-  const scoringItems = summaryItems.filter((i) => i.isScoring);
-  for (const item of scoringItems) {
+  const playableItems = (summaryItems ?? []).filter((i) => i?.play && i?.eventType);
+  const orderedItems = [
+    ...playableItems.filter((i) => i.isScoring),
+    ...playableItems.filter((i) => !i.isScoring),
+  ];
+
+  for (const item of orderedItems) {
     const batterId = Number(item?.batterId);
     const priorBatterScoringCount = batterId ? (batterScoringCount.get(batterId) ?? 0) : 0;
     const matchContext = { priorBatterScoringCount };
@@ -470,7 +543,7 @@ export function buildHighlightMap(summaryItems, highlights) {
     const candidates = highlights
       .filter((h) => !used.has(h.id))
       .map((h) => ({ h, score: scoreHighlightMatch(item, h) }))
-      .filter(({ h, score }) => score >= 7 && isReliableHighlightMatch(item, h, matchContext))
+      .filter(({ h, score }) => score >= (item.isScoring ? 7 : 9) && isReliableHighlightMatch(item, h, matchContext))
       .sort((a, b) => b.score - a.score);
 
     const pick = candidates[0]?.h;
@@ -479,7 +552,7 @@ export function buildHighlightMap(summaryItems, highlights) {
       used.add(pick.id);
     }
 
-    if (batterId) batterScoringCount.set(batterId, priorBatterScoringCount + 1);
+    if (item.isScoring && batterId) batterScoringCount.set(batterId, priorBatterScoringCount + 1);
   }
 
   return map;

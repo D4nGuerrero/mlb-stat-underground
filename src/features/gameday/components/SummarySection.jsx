@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { SegmentedControl } from '../../../components/ui';
 import { playerHeadshotUrl } from '../../../utils/mlbHelpers';
@@ -12,6 +13,102 @@ import {
   getHighlightVideoUrl,
   shareHighlightVideo,
 } from '../../../utils/gameContent';
+
+function getFullscreenElement() {
+  if (typeof document === 'undefined') return null;
+  return (
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.msFullscreenElement ||
+    null
+  );
+}
+
+async function requestElementFullscreen(el) {
+  if (!el) return false;
+  const req =
+    el.requestFullscreen?.bind(el) ||
+    el.webkitRequestFullscreen?.bind(el) ||
+    el.msRequestFullscreen?.bind(el);
+  if (!req) return false;
+  try {
+    await req();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function exitDocumentFullscreen() {
+  if (typeof document === 'undefined' || !getFullscreenElement()) return;
+  const exit =
+    document.exitFullscreen?.bind(document) ||
+    document.webkitExitFullscreen?.bind(document) ||
+    document.msExitFullscreen?.bind(document);
+  try {
+    await exit?.();
+  } catch {
+    // ignore
+  }
+}
+
+/** Prefer landscape lock only on phone-sized / coarse-pointer viewports. */
+function shouldLockLandscapeOnFullscreen() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.matchMedia('(max-width: 900px)').matches ||
+      window.matchMedia('(pointer: coarse) and (max-width: 1200px)').matches
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function lockLandscapeOrientation() {
+  if (typeof screen === 'undefined') return false;
+
+  try {
+    const orientation = screen.orientation;
+    if (orientation?.lock) {
+      await orientation.lock('landscape');
+      return true;
+    }
+  } catch {
+    // Not allowed outside fullscreen / unsupported type / user gesture expired.
+  }
+
+  // Legacy prefixes (older Android WebViews).
+  try {
+    const legacy =
+      screen.lockOrientation?.bind(screen) ||
+      screen.mozLockOrientation?.bind(screen) ||
+      screen.msLockOrientation?.bind(screen);
+    if (legacy) return Boolean(legacy('landscape'));
+  } catch {
+    // ignore
+  }
+
+  return false;
+}
+
+function unlockOrientation() {
+  if (typeof screen === 'undefined') return;
+
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    // ignore
+  }
+
+  try {
+    screen.unlockOrientation?.();
+    screen.mozUnlockOrientation?.();
+    screen.msUnlockOrientation?.();
+  } catch {
+    // ignore
+  }
+}
 
 function SummaryPlayAvatar({ item, onPlayerClick }) {
   const iconKind = getSummaryPlayIconKind(item);
@@ -152,7 +249,15 @@ function SummarySubstitutionRow({ item, badge }) {
   );
 }
 
-function VideoShareMenu({ video }) {
+function formatVideoTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function VideoShareMenu({ video, className = 'relative', buttonClassName }) {
   const videoUrl = getHighlightVideoUrl(video);
   const pageUrl = getHighlightShareUrl(video);
   const canNativeShare = typeof navigator !== 'undefined' && Boolean(navigator.share);
@@ -203,21 +308,25 @@ function VideoShareMenu({ video }) {
 
   if (!videoUrl && !pageUrl && !canNativeShare) return null;
 
+  const btnClass =
+    buttonClassName ||
+    'gameday-highlight-ctrl-btn';
+
   return (
-    <Menu as="div" className="absolute top-2 right-2 z-20">
+    <Menu as="div" className={className}>
       <MenuButton
         type="button"
         onClick={(e) => e.stopPropagation()}
-        className="w-8 h-8 rounded-full bg-black/55 hover:bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-white transition-colors"
+        className={btnClass}
         aria-label="Video options"
       >
         <i className="fa-solid fa-ellipsis-vertical text-sm" aria-hidden />
       </MenuButton>
 
       <MenuItems
-        anchor="bottom end"
+        anchor="top end"
         transition
-        className="z-50 mt-1 min-w-[10.5rem] rounded-xl bg-slate-900 border border-slate-700 py-1 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+        className="z-[2147483646] mt-1 min-w-[10.5rem] rounded-xl bg-slate-900 border border-slate-700 py-1 shadow-xl focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
       >
         {canNativeShare && (
           <MenuItem>
@@ -282,11 +391,217 @@ function VideoShareMenu({ video }) {
   );
 }
 
+function HighlightVideoControls({
+  video,
+  videoRef,
+  isFullscreen,
+  onToggleFullscreen,
+  forceVisible = false,
+}) {
+  const [paused, setPaused] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [hovering, setHovering] = useState(false);
+  const hideTimerRef = useRef(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return undefined;
+
+    const sync = () => {
+      setPaused(el.paused);
+      setCurrentTime(el.currentTime || 0);
+      setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+      setMuted(el.muted);
+      setVolume(el.volume);
+    };
+
+    const onTime = () => setCurrentTime(el.currentTime || 0);
+    const onMeta = () => {
+      setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+      sync();
+    };
+
+    sync();
+    el.addEventListener('play', sync);
+    el.addEventListener('pause', sync);
+    el.addEventListener('ended', sync);
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('durationchange', onMeta);
+    el.addEventListener('volumechange', sync);
+    return () => {
+      el.removeEventListener('play', sync);
+      el.removeEventListener('pause', sync);
+      el.removeEventListener('ended', sync);
+      el.removeEventListener('timeupdate', onTime);
+      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('durationchange', onMeta);
+      el.removeEventListener('volumechange', sync);
+    };
+  }, [videoRef, isFullscreen]);
+
+  useEffect(() => () => {
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+  }, []);
+
+  const bumpActivity = useCallback(() => {
+    setHovering(true);
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    if (paused) return;
+    hideTimerRef.current = window.setTimeout(() => setHovering(false), 2200);
+  }, [paused]);
+
+  const togglePlay = useCallback((e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) el.play().catch(() => {});
+    else el.pause();
+    bumpActivity();
+  }, [videoRef, bumpActivity]);
+
+  const toggleMute = useCallback((e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = !el.muted;
+    if (!el.muted && el.volume === 0) el.volume = 0.6;
+    bumpActivity();
+  }, [videoRef, bumpActivity]);
+
+  const onSeek = useCallback((e) => {
+    const el = videoRef.current;
+    if (!el) return;
+    const next = Number(e.target.value);
+    if (!Number.isFinite(next)) return;
+    el.currentTime = next;
+    setCurrentTime(next);
+    bumpActivity();
+  }, [videoRef, bumpActivity]);
+
+  const onVolume = useCallback((e) => {
+    const el = videoRef.current;
+    if (!el) return;
+    const next = Number(e.target.value);
+    if (!Number.isFinite(next)) return;
+    el.volume = next;
+    el.muted = next === 0;
+    setVolume(next);
+    setMuted(next === 0);
+    bumpActivity();
+  }, [videoRef, bumpActivity]);
+
+  const visible = forceVisible || hovering || paused;
+  const progress = duration > 0 ? Math.min(currentTime, duration) : 0;
+
+  return (
+    <div
+      className={`gameday-highlight-controls ${visible ? 'is-visible' : ''}`}
+      onMouseEnter={() => {
+        setHovering(true);
+        if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+      }}
+      onMouseLeave={() => {
+        if (paused) return;
+        hideTimerRef.current = window.setTimeout(() => setHovering(false), 600);
+      }}
+      onMouseMove={bumpActivity}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <input
+        type="range"
+        className="gameday-highlight-seek"
+        min={0}
+        max={duration > 0 ? duration : 0}
+        step={0.05}
+        value={progress}
+        onChange={onSeek}
+        aria-label="Seek"
+      />
+      <div className="gameday-highlight-controls-row">
+        <button type="button" className="gameday-highlight-ctrl-btn" onClick={togglePlay} aria-label={paused ? 'Play' : 'Pause'}>
+          <i className={`fa-solid ${paused ? 'fa-play' : 'fa-pause'}`} aria-hidden />
+        </button>
+        <span className="gameday-highlight-time tabular-nums">
+          {formatVideoTime(currentTime)}
+          <span className="text-white/45"> / {formatVideoTime(duration)}</span>
+        </span>
+        <div className="flex-1" />
+        <button type="button" className="gameday-highlight-ctrl-btn" onClick={toggleMute} aria-label={muted || volume === 0 ? 'Unmute' : 'Mute'}>
+          <i
+            className={`fa-solid ${muted || volume === 0 ? 'fa-volume-xmark' : volume < 0.45 ? 'fa-volume-low' : 'fa-volume-high'}`}
+            aria-hidden
+          />
+        </button>
+        <input
+          type="range"
+          className="gameday-highlight-volume"
+          min={0}
+          max={1}
+          step={0.05}
+          value={muted ? 0 : volume}
+          onChange={onVolume}
+          aria-label="Volume"
+        />
+        <VideoShareMenu video={video} />
+        <button
+          type="button"
+          className="gameday-highlight-ctrl-btn"
+          onClick={onToggleFullscreen}
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        >
+          <i className={`fa-solid ${isFullscreen ? 'fa-compress' : 'fa-expand'}`} aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
   const videoRef = useRef(null);
+  const overlayRootRef = useRef(null);
   const playOnExpandRef = useRef(false);
+  const resumeRef = useRef(null);
+  const clickTimerRef = useRef(null);
+  const [overlayFs, setOverlayFs] = useState(false);
   const src = video?.mp4Url || video?.hlsUrl;
   const externalUrl = !src ? getHighlightShareUrl(video) : null;
+
+  const capturePlayback = useCallback(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    resumeRef.current = {
+      time: el.currentTime || 0,
+      paused: el.paused,
+      rate: el.playbackRate || 1,
+      muted: el.muted,
+      volume: el.volume,
+    };
+  }, []);
+
+  const restorePlayback = useCallback(() => {
+    const el = videoRef.current;
+    const resume = resumeRef.current;
+    if (!el || !resume) return;
+    try {
+      if (Math.abs((el.currentTime || 0) - resume.time) > 0.15) {
+        el.currentTime = resume.time;
+      }
+      el.playbackRate = resume.rate || 1;
+      if (typeof resume.volume === 'number') el.volume = resume.volume;
+      if (typeof resume.muted === 'boolean') el.muted = resume.muted;
+    } catch {
+      // ignore seek errors
+    }
+    if (!resume.paused) el.play().catch(() => {});
+  }, []);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -296,10 +611,149 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
     }
   }, [isExpanded]);
 
+  // If the scoring-play row collapses, drop fullscreen state (render-time adjust).
+  if (!isExpanded && overlayFs) {
+    setOverlayFs(false);
+  }
+
+  const showOverlayFs = Boolean(isExpanded && overlayFs);
+
+  /**
+   * Highlight videos live inside Gameday's nested overflow/scroll layout.
+   * Custom controls + a body portal shell avoid native <video> fullscreen bugs
+   * (especially from a half-snapped desktop window).
+   * On mobile, lock landscape while fullscreen and unlock on exit.
+   */
+  useLayoutEffect(() => {
+    if (!showOverlayFs) return undefined;
+
+    restorePlayback();
+
+    const overlayRoot = overlayRootRef.current;
+    let cancelled = false;
+    let didLockOrientation = false;
+
+    const applyMobileLandscape = async () => {
+      if (cancelled || !shouldLockLandscapeOnFullscreen()) return;
+      const locked = await lockLandscapeOrientation();
+      if (cancelled) return;
+      didLockOrientation = locked;
+      // iOS / some mobile browsers refuse orientation.lock without native FS.
+      // Force a CSS landscape layout so the video is still watchable sideways.
+      if (!locked && overlayRoot) {
+        overlayRoot.classList.add('is-forced-landscape');
+      }
+    };
+
+    if (overlayRoot) {
+      requestElementFullscreen(overlayRoot).then(async (ok) => {
+        if (cancelled) return;
+        // Orientation lock generally requires an active fullscreen element.
+        await applyMobileLandscape();
+        if (!ok) {
+          // CSS fixed overlay still covers the viewport without the Fullscreen API.
+        }
+      });
+    } else {
+      applyMobileLandscape();
+    }
+
+    const onFsChange = () => {
+      if (cancelled) return;
+      // User left native fullscreen (Esc / browser UI) — tear down portal.
+      if (!getFullscreenElement()) {
+        capturePlayback();
+        setOverlayFs(false);
+      }
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        capturePlayback();
+        setOverlayFs(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    document.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      overlayRoot?.classList.remove('is-forced-landscape');
+      if (didLockOrientation || shouldLockLandscapeOnFullscreen()) {
+        unlockOrientation();
+      }
+      if (getFullscreenElement()) exitDocumentFullscreen();
+    };
+  }, [showOverlayFs, restorePlayback, capturePlayback]);
+
+  // After leaving overlay, restore time/play on the inline player.
+  useLayoutEffect(() => {
+    if (showOverlayFs || !isExpanded) return;
+    restorePlayback();
+  }, [showOverlayFs, isExpanded, restorePlayback]);
+
+  const enterOverlayFullscreen = useCallback((e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    capturePlayback();
+    setOverlayFs(true);
+  }, [capturePlayback]);
+
+  const exitOverlayFullscreen = useCallback((e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    capturePlayback();
+    setOverlayFs(false);
+  }, [capturePlayback]);
+
+  const toggleOverlayFullscreen = useCallback((e) => {
+    if (showOverlayFs) exitOverlayFullscreen(e);
+    else enterOverlayFullscreen(e);
+  }, [showOverlayFs, enterOverlayFullscreen, exitOverlayFullscreen]);
+
   const handleExpand = () => {
     playOnExpandRef.current = true;
     onToggle();
   };
+
+  const togglePlayFromVideo = useCallback(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) el.play().catch(() => {});
+    else el.pause();
+  }, []);
+
+  const handleVideoClick = useCallback((e) => {
+    e?.stopPropagation?.();
+    // Delay single-click play/pause so double-click can take fullscreen instead.
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
+      togglePlayFromVideo();
+    }, 200);
+  }, [togglePlayFromVideo]);
+
+  const handleVideoDoubleClick = useCallback((e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    toggleOverlayFullscreen(e);
+  }, [toggleOverlayFullscreen]);
+
+  useEffect(() => () => {
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+  }, []);
 
   if (!video?.thumbnail && !src && !externalUrl) return null;
 
@@ -307,7 +761,12 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
     return (
       <div className="mt-3 max-w-md" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <div className="relative rounded-xl overflow-hidden border border-slate-700/60 bg-slate-950">
-          <VideoShareMenu video={video} />
+          <div className="absolute top-2 right-2 z-20">
+            <VideoShareMenu
+              video={video}
+              buttonClassName="w-8 h-8 rounded-full bg-black/55 hover:bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-white transition-colors"
+            />
+          </div>
           <a
             href={externalUrl}
             target="_blank"
@@ -330,29 +789,81 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
     );
   }
 
+  const playerShell = (
+    <div
+      ref={showOverlayFs ? overlayRootRef : undefined}
+      className={
+        showOverlayFs
+          ? 'gameday-highlight-fs-shell'
+          : 'gameday-highlight-player relative w-full overflow-hidden rounded-xl bg-black'
+      }
+    >
+      <video
+        key={video.id ?? src}
+        ref={videoRef}
+        playsInline
+        poster={video.thumbnail}
+        className={
+          showOverlayFs
+            ? 'gameday-highlight-video gameday-highlight-video--overlay'
+            : 'gameday-highlight-video w-full aspect-video bg-black'
+        }
+        src={src}
+        onClick={handleVideoClick}
+        onDoubleClick={handleVideoDoubleClick}
+      >
+        <track kind="captions" />
+      </video>
+      <HighlightVideoControls
+        video={video}
+        videoRef={videoRef}
+        isFullscreen={showOverlayFs}
+        onToggleFullscreen={toggleOverlayFullscreen}
+        forceVisible={!showOverlayFs}
+      />
+    </div>
+  );
+
+  const overlayPortal =
+    showOverlayFs &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="gameday-highlight-fs-portal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={video.headline || 'Highlight video fullscreen'}
+      >
+        {playerShell}
+      </div>,
+      document.body
+    );
+
   return (
     <div className="mt-3 max-w-md" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       {isExpanded && src ? (
-        <div className="relative rounded-xl overflow-hidden border border-slate-700/60 bg-black">
-          <VideoShareMenu video={video} />
-          <video
-            key={video.id ?? src}
-            ref={videoRef}
-            controls
-            playsInline
-            poster={video.thumbnail}
-            className="w-full aspect-video"
-            src={src}
-          >
-            <track kind="captions" />
-          </video>
-          {video.headline && (
-            <div className="px-3 py-2 text-xs text-slate-400 border-t border-slate-800">{video.headline}</div>
+        <div className="relative rounded-xl border border-slate-700/60 bg-black">
+          <div className="gameday-highlight-home-slot relative">
+            {showOverlayFs ? (
+              <div className="aspect-video w-full rounded-xl bg-black" aria-hidden />
+            ) : (
+              playerShell
+            )}
+          </div>
+          {video.headline && !showOverlayFs && (
+            <div className="px-3 py-2 text-xs text-slate-400 border-t border-slate-800 rounded-b-xl">
+              {video.headline}
+            </div>
           )}
         </div>
       ) : (
         <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-700/60">
-          <VideoShareMenu video={video} />
+          <div className="absolute top-2 right-2 z-20">
+            <VideoShareMenu
+              video={video}
+              buttonClassName="w-8 h-8 rounded-full bg-black/55 hover:bg-black/70 backdrop-blur border border-white/20 flex items-center justify-center text-white transition-colors"
+            />
+          </div>
           <button
             type="button"
             onClick={handleExpand}
@@ -370,6 +881,7 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
           </button>
         </div>
       )}
+      {overlayPortal}
     </div>
   );
 }
@@ -430,7 +942,7 @@ function SummaryPlayItemRow({
         {scoreLine && (
           <p className="text-xl text-white-500 mt-1 font-bold">{scoreLine}</p>
         )}
-        {item.isScoring && video && (
+        {video && (
           <ScoringPlayVideo
             video={video}
             isExpanded={expandedVideoKey === item.key}
