@@ -1188,40 +1188,62 @@ function FinalGameHeader({
   logoSrc,
   onTeamSelect,
   onPlayerSelect,
+  onOpenPitchBreakdown,
 }) {
   return (
-    <div className="relative bg-[#121827] border border-slate-700/60 rounded-2xl overflow-visible">
-      <div className="absolute right-3 top-3 z-20 2xl:hidden">
-        <WatchMenu gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
-      </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_4rem_minmax(0,1fr)] items-center gap-4 px-5 py-4">
-        <FinalHeaderTeamBlock team={away} onTeamSelect={onTeamSelect} />
-        <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${awayRuns > homeRuns ? 'text-white' : 'text-slate-300'}`}>
-          {awayRuns}
+    <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 bg-[#121827]">
+      {/*
+        2×2 grid keeps:
+        - score row + Watch the same height
+        - linescore + W/L/S the same height
+        - score/linescore only as wide as the left column
+      */}
+      <div className="grid grid-cols-[minmax(0,1fr)_18rem] 2xl:grid-cols-[minmax(0,1fr)_22rem] grid-rows-[auto_auto]">
+        <div className="min-w-0 grid grid-cols-[minmax(0,1fr)_4rem_5rem_4rem_minmax(0,1fr)] items-center gap-4 px-5 py-4">
+          <FinalHeaderTeamBlock team={away} onTeamSelect={onTeamSelect} />
+          <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${awayRuns > homeRuns ? 'text-white' : 'text-slate-300'}`}>
+            {awayRuns}
+          </div>
+          <div className="justify-self-center text-center text-base font-extrabold tracking-wide text-white">
+            FINAL
+          </div>
+          <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${homeRuns > awayRuns ? 'text-white' : 'text-slate-300'}`}>
+            {homeRuns}
+          </div>
+          <FinalHeaderTeamBlock team={home} align="right" onTeamSelect={onTeamSelect} />
         </div>
-        <div className="justify-self-center text-center text-base font-extrabold text-white tracking-wide">
-          FINAL
-        </div>
-        <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${homeRuns > awayRuns ? 'text-white' : 'text-slate-300'}`}>
-          {homeRuns}
-        </div>
-        <FinalHeaderTeamBlock team={home} align="right" onTeamSelect={onTeamSelect} />
-      </div>
 
-      <div className="border-t border-slate-700/60 grid grid-cols-[minmax(0,1fr)_18rem] 2xl:grid-cols-[minmax(0,1fr)_13rem_22rem]">
-        <LinescoreBoard
-          key="final-header-line"
-          ls={ls}
-          away={away}
-          home={home}
-          awayRuns={awayRuns}
-          homeRuns={homeRuns}
-        />
-        <WatchInlineLink gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
-        <div className="border-l border-slate-700/60 px-4 py-3 space-y-1.5">
-          <FinalHeaderDecisionLine label="W" player={decisions?.winner} stats={getPitcherStats(decisions?.winner?.id)} onPlayerSelect={onPlayerSelect} />
-          <FinalHeaderDecisionLine label="L" player={decisions?.loser} stats={getPitcherStats(decisions?.loser?.id)} onPlayerSelect={onPlayerSelect} />
-          <FinalHeaderDecisionLine label="S" player={decisions?.save} stats={getPitcherStats(decisions?.save?.id)} onPlayerSelect={onPlayerSelect} />
+        <div className="min-h-0 border-l border-slate-700/60">
+          <WatchInlineLink gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
+        </div>
+
+        <div className="min-w-0">
+          <LinescoreBoard
+            key="final-header-line"
+            ls={ls}
+            away={away}
+            home={home}
+            awayRuns={awayRuns}
+            homeRuns={homeRuns}
+          />
+        </div>
+
+        <div className="flex min-h-0 flex-col justify-center gap-2.5 border-l border-t border-slate-700/60 px-4 py-3">
+          <div className="space-y-1.5">
+            <FinalHeaderDecisionLine label="W" player={decisions?.winner} stats={getPitcherStats(decisions?.winner?.id)} onPlayerSelect={onPlayerSelect} />
+            <FinalHeaderDecisionLine label="L" player={decisions?.loser} stats={getPitcherStats(decisions?.loser?.id)} onPlayerSelect={onPlayerSelect} />
+            <FinalHeaderDecisionLine label="S" player={decisions?.save} stats={getPitcherStats(decisions?.save?.id)} onPlayerSelect={onPlayerSelect} />
+          </div>
+          {onOpenPitchBreakdown && (
+            <button
+              type="button"
+              onClick={onOpenPitchBreakdown}
+              className={`mt-0.5 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200`}
+            >
+              <i className="fa-solid fa-chart-simple text-[10px]" aria-hidden />
+              Pitch breakdown
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1377,7 +1399,7 @@ function WatchInlineLink({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
       href={buildMlbTvUrl(gamePk)}
       target="_blank"
       rel="noreferrer"
-      className={`hidden h-full min-h-[76px] items-center gap-3 border-l border-slate-700/60 px-4 transition-colors hover:bg-${THEME_COLOR}-500/10 2xl:flex`}
+      className={`flex h-full min-h-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-${THEME_COLOR}-500/10`}
       aria-label={`Watch this ${leagueLabel} game`}
     >
       <img src={logoSrc} alt="" className="h-8 w-8 object-contain" draggable={false} />
@@ -2635,6 +2657,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           logoSrc={leagueLogoSrc}
           onTeamSelect={(teamId) => navigate(`/team/${teamId}`)}
           onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          onOpenPitchBreakdown={() => setPitchCountSheetOpen(true)}
         />
         <div className="min-h-0 flex-1 overflow-hidden">
           {desktopLiveBoxScorePanel}

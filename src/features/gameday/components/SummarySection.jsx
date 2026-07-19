@@ -52,6 +52,23 @@ async function exitDocumentFullscreen() {
   }
 }
 
+function currentScrollY() {
+  if (typeof window === 'undefined') return 0;
+  return window.scrollY || document.documentElement?.scrollTop || document.body?.scrollTop || 0;
+}
+
+function restoreScrollY(y) {
+  if (typeof window === 'undefined') return;
+  const top = Math.max(0, Number(y) || 0);
+  const restore = () => window.scrollTo({ top, left: 0, behavior: 'auto' });
+  restore();
+  window.requestAnimationFrame(() => {
+    restore();
+    window.requestAnimationFrame(restore);
+  });
+  window.setTimeout(restore, 80);
+}
+
 /** Prefer landscape lock only on phone-sized / coarse-pointer viewports. */
 function shouldLockLandscapeOnFullscreen() {
   if (typeof window === 'undefined') return false;
@@ -570,6 +587,8 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
   const playOnExpandRef = useRef(false);
   const resumeRef = useRef(null);
   const clickTimerRef = useRef(null);
+  const fullscreenScrollYRef = useRef(0);
+  const wasOverlayFullscreenRef = useRef(false);
   const [overlayFs, setOverlayFs] = useState(false);
   const src = video?.mp4Url || video?.hlsUrl;
   const externalUrl = !src ? getHighlightShareUrl(video) : null;
@@ -627,6 +646,7 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
   useLayoutEffect(() => {
     if (!showOverlayFs) return undefined;
 
+    wasOverlayFullscreenRef.current = true;
     restorePlayback();
 
     const overlayRoot = overlayRootRef.current;
@@ -698,11 +718,16 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
   useLayoutEffect(() => {
     if (showOverlayFs || !isExpanded) return;
     restorePlayback();
+    if (wasOverlayFullscreenRef.current) {
+      wasOverlayFullscreenRef.current = false;
+      restoreScrollY(fullscreenScrollYRef.current);
+    }
   }, [showOverlayFs, isExpanded, restorePlayback]);
 
   const enterOverlayFullscreen = useCallback((e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
+    fullscreenScrollYRef.current = currentScrollY();
     capturePlayback();
     setOverlayFs(true);
   }, [capturePlayback]);
@@ -712,6 +737,7 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
     e?.stopPropagation?.();
     capturePlayback();
     setOverlayFs(false);
+    restoreScrollY(fullscreenScrollYRef.current);
   }, [capturePlayback]);
 
   const toggleOverlayFullscreen = useCallback((e) => {
