@@ -40,6 +40,7 @@ import {
   OutsIndicator,
   formatLiveInningLabel,
   getRunnersOnBase,
+  getPlayDetailSituation,
 } from '../../../components/LiveGameIndicators';
 import LiveMatchupStrip from '../components/LiveMatchupStrip';
 import PlayDetailSheet from '../components/PlayDetailSheet';
@@ -329,6 +330,7 @@ function GamedayOptionsMenu({
   usePurpleInPlayOuts,
   onUsePurpleInPlayOutsChange,
   onOpenPitchCounts,
+  onOpenSituationBreakdown,
   showLiveOptions = true,
 }) {
   const buttonRef = useRef(null);
@@ -421,6 +423,17 @@ function GamedayOptionsMenu({
             >
               <span>Pitch breakdown</span>
               <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onOpenSituationBreakdown?.();
+                setOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
+            >
+              <span>Situation breakdown</span>
+              <i className={`fa-solid fa-diamond text-${THEME_COLOR}-300`} aria-hidden />
             </button>
           </div>
         </>
@@ -1028,6 +1041,512 @@ function PitchCountByInningSheet({
         gamePk={gamePk}
         onOpenPlay={openPlayFromPitchMap}
       />
+    </Modal>
+  );
+}
+
+const BASE_FILTERS = [
+  { key: 'onFirst', label: '1B', shortLabel: '1st', position: 'right-[7%] top-[48%]' },
+  { key: 'onSecond', label: '2B', shortLabel: '2nd', position: 'left-1/2 top-[4%] -translate-x-1/2' },
+  { key: 'onThird', label: '3B', shortLabel: '3rd', position: 'left-[7%] top-[48%]' },
+];
+
+function selectedBaseCount(bases) {
+  return BASE_FILTERS.reduce((sum, base) => sum + (bases[base.key] ? 1 : 0), 0);
+}
+
+function baseStateMatches(actual, selected, mode) {
+  const selectedCount = selectedBaseCount(selected);
+  const actualCount = selectedBaseCount(actual);
+
+  if (mode === 'contains') {
+    if (!selectedCount) return actualCount === 0;
+    return BASE_FILTERS.some((base) => selected[base.key] && actual[base.key]);
+  }
+
+  return BASE_FILTERS.every((base) => Boolean(actual[base.key]) === Boolean(selected[base.key]));
+}
+
+function baseSituationMatches(actual, selected, matchMode, baseMode) {
+  return baseStateMatches(actual, selected, matchMode);
+}
+
+function formatBaseStateLabel(bases, mode = 'custom') {
+  const selected = BASE_FILTERS.filter((base) => bases[base.key]);
+  if (!selected.length) return 'Bases empty';
+  if (selected.length === 3) return 'Bases loaded';
+  return selected.map((base) => base.shortLabel).join(' + ');
+}
+
+function getBattingSide(play) {
+  return play?.about?.halfInning === 'top' ? 'away' : 'home';
+}
+
+function getRunsOnPlay(play) {
+  if (Number.isFinite(Number(play?.result?.rbi))) return Number(play.result.rbi);
+  return (play?.runners ?? []).filter((runner) => runner?.movement?.end === 'score').length;
+}
+
+function isHitEvent(eventType = '') {
+  return ['single', 'double', 'triple', 'home_run'].includes(eventType);
+}
+
+function isWalkOrHbp(eventType = '') {
+  return ['walk', 'intent_walk', 'hit_by_pitch'].includes(eventType);
+}
+
+function isOfficialAtBat(play) {
+  const eventType = play?.result?.eventType ?? '';
+  if (!eventType) return false;
+  if (isWalkOrHbp(eventType)) return false;
+  if (['sac_fly', 'sac_bunt', 'catcher_interf', 'field_error'].includes(eventType)) return false;
+  return Boolean(play?.matchup?.batter?.id && play?.result?.event);
+}
+
+function buildSituationRows(allPlays = [], away, home) {
+  return allPlays
+    .filter((play) => play?.matchup?.batter?.id && play?.result?.event)
+    .map((play) => {
+      const side = getBattingSide(play);
+      const battingTeam = side === 'away' ? away : home;
+      const fieldingTeam = side === 'away' ? home : away;
+      const situation = getPlayDetailSituation(play, allPlays);
+      const eventType = play.result?.eventType ?? '';
+      const pitches = (play.playEvents ?? []).filter((event) => event?.isPitch).length;
+
+      return {
+        play,
+        side,
+        battingTeam,
+        fieldingTeam,
+        situation,
+        eventType,
+        pitches,
+        runs: getRunsOnPlay(play),
+        isHit: isHitEvent(eventType),
+        isWalkOrHbp: isWalkOrHbp(eventType),
+        isStrikeout: eventType === 'strikeout' || eventType === 'strikeout_double_play',
+        isAtBat: isOfficialAtBat(play),
+      };
+    });
+}
+
+function BaseModeButton({ value, active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick?.(value)}
+      className={[
+        'rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
+        active
+          ? `border-${THEME_COLOR}-300 bg-${THEME_COLOR}-400 text-slate-950`
+          : 'border-slate-700 bg-slate-900 text-slate-500 hover:border-slate-500 hover:text-slate-200',
+      ].join(' ')}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SituationBaseSelector({ value, mode, matchMode, onChange, onModeChange, onMatchModeChange }) {
+  const isRispPreset = mode === 'custom' &&
+    matchMode === 'contains' &&
+    !value.onFirst &&
+    value.onSecond &&
+    value.onThird;
+
+  const toggleBase = (baseKey) => {
+    const next = {
+      ...value,
+      [baseKey]: !value[baseKey],
+    };
+    onChange?.(next);
+    onModeChange?.('custom');
+  };
+
+  const chooseMode = (nextMode) => {
+    if (nextMode === 'risp') {
+      onChange?.({ onFirst: false, onSecond: true, onThird: true });
+      onMatchModeChange?.('contains');
+      onModeChange?.('custom');
+      return;
+    }
+    if (isRispPreset) onMatchModeChange?.('exact');
+    onModeChange?.(nextMode);
+  };
+
+  return (
+    <div className="rounded-3xl border border-slate-700/70 bg-slate-950/55 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Base State</div>
+          <div className="mt-0.5 text-lg font-black text-white">{formatBaseStateLabel(value, mode)}</div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-1.5">
+          <BaseModeButton value="custom" active={!isRispPreset} onClick={chooseMode}>Custom</BaseModeButton>
+          <BaseModeButton value="risp" active={isRispPreset} onClick={chooseMode}>RISP</BaseModeButton>
+      </div>
+
+      <div className="relative mx-auto h-44 w-full max-w-[18rem]">
+        <div className="absolute left-1/2 top-[22%] h-24 w-24 -translate-x-1/2 rotate-45 rounded-[1.75rem] border border-slate-800 bg-slate-900/45" />
+        {BASE_FILTERS.map((base) => {
+          const active = value[base.key];
+          return (
+            <button
+              key={base.key}
+              type="button"
+              onClick={() => toggleBase(base.key)}
+              className={[
+                'absolute grid h-20 w-20 place-items-center rounded-2xl border rotate-45 transition-all focus:outline-none focus:ring-2 focus:ring-white/25',
+                base.position,
+                active
+                  ? `border-${THEME_COLOR}-300 bg-${THEME_COLOR}-400 text-slate-950 shadow-lg shadow-${THEME_COLOR}-950/30`
+                  : 'border-slate-600 bg-slate-900 text-slate-300 hover:border-slate-400 hover:bg-slate-800',
+              ].join(' ')}
+              aria-pressed={active}
+              aria-label={`Toggle runner on ${base.shortLabel}`}
+            >
+              <span className="-rotate-45 text-lg font-black">{base.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SituationStatCard({ label, value, subLabel = null }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-3 py-2.5">
+      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</div>
+      <div className="mt-1 font-display text-2xl leading-none text-white tabular-nums">{value}</div>
+      {subLabel && <div className="mt-1 text-[10px] font-semibold text-slate-500">{subLabel}</div>}
+    </div>
+  );
+}
+
+function OutsFilterButton({ value, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick?.(value)}
+      className={[
+        'grid h-12 w-12 place-items-center rounded-[9999px] border text-lg font-black leading-none transition-all aspect-square',
+        active
+          ? 'border-red-300 bg-red-500 text-white shadow-lg shadow-red-950/30'
+          : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:text-white',
+      ].join(' ')}
+      aria-pressed={active}
+      aria-label={`${value} outs`}
+    >
+      {value}
+    </button>
+  );
+}
+
+function SituationOutsFilter({ value, onChange }) {
+  const choose = (nextValue) => {
+    onChange?.({
+      ...value,
+      [nextValue]: !value[nextValue],
+    });
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-3 rounded-2xl bg-slate-900/80 p-2">
+      {['0', '1', '2'].map((option) => (
+        <OutsFilterButton
+          key={option}
+          value={option}
+          active={Boolean(value[option])}
+          onClick={choose}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OutsLabelDots({ value = {} }) {
+  const selected = selectedOutValues(value);
+  const dotCount = hasActiveOutsFilter(value)
+    ? Math.max(...selected.map((out) => Number(out)))
+    : null;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span>Outs</span>
+      <span className="flex items-center gap-1" aria-hidden>
+        {[0, 1, 2].map((idx) => (
+          <span
+            key={idx}
+            className={[
+              'h-1.5 w-1.5 rounded-[9999px] border aspect-square',
+              dotCount != null && idx < dotCount
+                ? 'border-red-300 bg-red-500'
+                : 'border-slate-500 bg-slate-800',
+            ].join(' ')}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function selectedOutValues(outsFilter) {
+  return ['0', '1', '2'].filter((out) => outsFilter[out]);
+}
+
+function hasActiveOutsFilter(outsFilter) {
+  const selected = selectedOutValues(outsFilter);
+  return selected.length > 0 && selected.length < 3;
+}
+
+function formatOutsFilterLabel(outsFilter) {
+  const selected = selectedOutValues(outsFilter);
+  if (!hasActiveOutsFilter(outsFilter)) return 'Any outs';
+  if (selected.length === 2 && selected.includes('0') && selected.includes('1')) return '< 2 outs';
+  return `${selected.join(' or ')} out${selected.length === 1 && selected[0] === '1' ? '' : 's'}`;
+}
+
+function SituationBreakdownSheet({
+  open,
+  onClose,
+  allPlays,
+  away,
+  home,
+  onOpenPlay,
+  getPlayBadge,
+  restoreScrollTop = null,
+  restoreNonce = null,
+}) {
+  const [teamSide, setTeamSide] = useState('away');
+  const [baseMode, setBaseMode] = useState('custom');
+  const [baseFilter, setBaseFilter] = useState({ onFirst: false, onSecond: false, onThird: false });
+  const [matchMode, setMatchMode] = useState('exact');
+  const [outsFilter, setOutsFilter] = useState({ 0: false, 1: false, 2: false });
+  const scrollRef = useRef(null);
+  const rows = useMemo(() => buildSituationRows(allPlays, away, home), [allPlays, away, home]);
+  const filteredRows = useMemo(() => (
+    rows.filter((row) => {
+      if (teamSide !== 'both' && row.side !== teamSide) return false;
+      if (!baseSituationMatches(row.situation.bases, baseFilter, matchMode, baseMode)) return false;
+      const selectedOuts = selectedOutValues(outsFilter);
+      if (hasActiveOutsFilter(outsFilter) && !selectedOuts.includes(String(row.situation.outs))) return false;
+      return true;
+    })
+  ), [rows, teamSide, baseFilter, matchMode, baseMode, outsFilter]);
+
+  const totals = useMemo(() => {
+    const pa = filteredRows.length;
+    const atBats = filteredRows.filter((row) => row.isAtBat).length;
+    const hits = filteredRows.filter((row) => row.isHit).length;
+    const walksHbp = filteredRows.filter((row) => row.isWalkOrHbp).length;
+    const strikeouts = filteredRows.filter((row) => row.isStrikeout).length;
+    const runs = filteredRows.reduce((sum, row) => sum + row.runs, 0);
+    const avg = atBats ? (hits / atBats).toFixed(3).replace(/^0/, '') : '-';
+
+    return { pa, atBats, hits, walksHbp, strikeouts, runs, avg };
+  }, [filteredRows]);
+
+  const selectedTeam = teamSide === 'away' ? away : teamSide === 'home' ? home : null;
+  const selectedTeamLabel = selectedTeam?.teamName || selectedTeam?.name || 'Both Teams';
+  const outsFilterLabel = formatOutsFilterLabel(outsFilter);
+  const isRispPreset = baseMode === 'custom' &&
+    matchMode === 'contains' &&
+    !baseFilter.onFirst &&
+    baseFilter.onSecond &&
+    baseFilter.onThird;
+  const baseFilterLabel = isRispPreset
+    ? 'RISP'
+    : baseMode === 'custom'
+      ? `${matchMode === 'contains' && selectedBaseCount(baseFilter) > 0 ? 'Containing' : 'Exact'} ${formatBaseStateLabel(baseFilter, baseMode)}`
+      : formatBaseStateLabel(baseFilter, baseMode);
+
+  useEffect(() => {
+    if (!open || restoreScrollTop == null) return;
+    window.setTimeout(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = restoreScrollTop;
+    }, 140);
+  }, [open, restoreScrollTop, restoreNonce]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      backDismiss
+      historyKey="situationBreakdown"
+      align="bottom"
+      size="xl"
+      panelClassName="max-h-[90vh] bg-[#101827] border-slate-700/70 p-0"
+    >
+      <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 z-20 bg-[#101827]">
+        <div className="h-1 w-10 rounded-full bg-slate-600" />
+      </div>
+
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-[#101827]/95 px-4 py-3 backdrop-blur sm:px-5">
+        <div className="min-w-0">
+          <div className="text-xl font-black text-white">Situation Breakdown</div>
+          <div className="mt-0.5 text-xs text-slate-500">
+            Plate appearances by batting team and base state before the result.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-slate-900 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+          aria-label="Close situation breakdown"
+        >
+          <i className="fa-solid fa-xmark" aria-hidden />
+        </button>
+      </div>
+
+      <div ref={scrollRef} className="gameday-scroll-rail max-h-[calc(90vh-4.75rem)] overflow-y-auto p-4 sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+          <div className="space-y-3">
+            <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Batting Team</div>
+              <SegmentedControl
+                value={teamSide}
+                onChange={setTeamSide}
+                options={[
+                  { value: 'away', label: away.abbreviation || 'Away' },
+                  { value: 'home', label: home.abbreviation || 'Home' },
+                  { value: 'both', label: 'Both' },
+                ]}
+                variant="compact"
+                size="sm"
+                className="w-full"
+                optionClassName="flex-1"
+              />
+            </div>
+
+            <SituationBaseSelector
+                value={baseFilter}
+                mode={baseMode}
+                matchMode={matchMode}
+                onChange={setBaseFilter}
+                onModeChange={setBaseMode}
+                onMatchModeChange={setMatchMode}
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
+                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Match</div>
+                <SegmentedControl
+                  value={matchMode}
+                  onChange={setMatchMode}
+                  options={[
+                    { value: 'exact', label: 'Exact' },
+                    { value: 'contains', label: 'Contains' },
+                  ]}
+                  variant="compact"
+                  size="xs"
+                  wrap
+                />
+              </div>
+              <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
+                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  <OutsLabelDots value={outsFilter} />
+                </div>
+                <SituationOutsFilter value={outsFilter} onChange={setOutsFilter} />
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <div className="flex items-center gap-3 rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
+              {selectedTeam ? (
+                <img src={teamLogoUrl(selectedTeam.id)} alt="" className="h-12 w-12 object-contain" />
+              ) : (
+                <div className="relative h-12 w-16 flex-shrink-0">
+                  <img src={teamLogoUrl(away?.id)} alt="" className="absolute left-0 top-1 h-10 w-10 object-contain" />
+                  <img src={teamLogoUrl(home?.id)} alt="" className="absolute right-0 top-1 h-10 w-10 object-contain" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="truncate text-lg font-black text-white">{selectedTeamLabel}</div>
+                <div className="text-xs font-semibold text-slate-500">
+                  {baseFilterLabel}
+                  {`, ${outsFilterLabel}`}
+                </div>
+              </div>
+              <BaseDiamondIndicator {...baseFilter} size="lg" className="ml-auto text-white" />
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              <SituationStatCard label="PA" value={totals.pa} />
+              <SituationStatCard label="Runs" value={totals.runs} />
+              <SituationStatCard label="Hits" value={totals.hits} />
+              <SituationStatCard label="BB/HBP" value={totals.walksHbp} />
+              <SituationStatCard label="K" value={totals.strikeouts} />
+              <SituationStatCard label="AVG" value={totals.avg} subLabel={`${totals.atBats} AB`} />
+            </div>
+
+            <div className="overflow-hidden rounded-3xl border border-slate-700/70 bg-slate-950/45">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Results</div>
+                <div className="text-xs font-semibold text-slate-500">{filteredRows.length} PA</div>
+              </div>
+
+              {filteredRows.length ? (
+                <div className="divide-y divide-slate-800/80">
+                  {filteredRows.map((row) => {
+                    const play = row.play;
+                    const badge = getPlayBadge?.(play.result?.eventType, play);
+                    const inning = `${play.about?.halfInning === 'top' ? 'TOP' : 'BOT'} ${play.about?.inning ?? ''}`;
+                    const score = `${away.abbreviation} ${play.result?.awayScore ?? 0} - ${home.abbreviation} ${play.result?.homeScore ?? 0}`;
+                    return (
+                      <button
+                        key={play.about?.atBatIndex ?? `${play.about?.startTime}-${play.result?.event}`}
+                        type="button"
+                        onClick={() => {
+                          onOpenPlay?.(play, { scrollTop: scrollRef.current?.scrollTop ?? 0 });
+                        }}
+                        className="block w-full px-3 py-3 text-left transition-colors hover:bg-slate-900/70"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex w-16 flex-shrink-0 flex-col items-center gap-1">
+                            <span className="font-mono text-xs font-black text-slate-300">{inning}</span>
+                            <BaseDiamondIndicator {...row.situation.bases} size="sm" />
+                            <OutsIndicator outs={row.situation.outs} size="sm" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {badge && (
+                                <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black ${badge.cls}`}>
+                                  {badge.label}
+                                </span>
+                              )}
+                              <span className="font-mono text-[11px] font-semibold text-slate-500">{score}</span>
+                              <span className="font-mono text-[11px] font-semibold text-slate-500">{row.pitches} pitches</span>
+                            </div>
+                            <div className="mt-1 truncate text-sm font-black text-white">
+                              {play.matchup?.batter?.fullName || 'Batter'} vs {play.matchup?.pitcher?.fullName || 'Pitcher'}
+                            </div>
+                            <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-400">
+                              {play.result?.description || play.result?.event}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="px-4 py-10 text-center">
+                  <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full border border-slate-700 bg-slate-900 text-slate-500">
+                    <i className="fa-solid fa-diamond" aria-hidden />
+                  </div>
+                  <div className="text-sm font-black text-slate-200">No plate appearances found</div>
+                  <div className="mt-1 text-xs text-slate-500">Try switching teams, changing outs, selecting a different base state, or using Contains mode.</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -1920,6 +2439,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [selectedPlay, setSelectedPlay] = useState(null);
   const [selectedPlayTargetPitchKey, setSelectedPlayTargetPitchKey] = useState(null);
   const [pitchCountReturn, setPitchCountReturn] = useState(null);
+  const [situationReturn, setSituationReturn] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
   const [activeTab, setActiveTab] = useState(() => location.state?.activeTab ?? 'live');
   const [leftRailView, setLeftRailView] = useState('live');
@@ -1930,6 +2450,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     false,
   );
   const [pitchCountSheetOpen, setPitchCountSheetOpen] = useState(false);
+  const [situationBreakdownOpen, setSituationBreakdownOpen] = useState(false);
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
   const summaryScrollYRef = useRef(0);
@@ -2242,26 +2763,49 @@ function GamePageContent({ gamePk, navigate, location }) {
     }, 120);
   }, [pitchCountReturn]);
 
+  const restoreSituationBreakdownView = useCallback((returnState = situationReturn) => {
+    if (!returnState) return;
+    window.setTimeout(() => {
+      setSituationBreakdownOpen(true);
+    }, 120);
+  }, [situationReturn]);
+
   const openSheet = useCallback((play, options = {}) => {
     setSelectedPlay(play);
     setSelectedPlayTargetPitchKey(options.highlightedPitchKey ?? null);
     setPitchCountReturn(options.returnToPitchCount
       ? { ...options.returnToPitchCount, nonce: Date.now() }
       : null);
+    setSituationReturn(options.returnToSituation
+      ? { ...options.returnToSituation, nonce: Date.now() }
+      : null);
     window.history.pushState({ mlbSheet: true }, '');
     sheetHistoryRef.current = true;
   }, []);
 
+  const openSituationPlay = useCallback((play, options = {}) => {
+    setSituationBreakdownOpen(false);
+    window.setTimeout(() => {
+      openSheet(play, {
+        returnToSituation: {
+          scrollTop: options.scrollTop ?? 0,
+        },
+      });
+    }, 80);
+  }, [openSheet]);
+
   const closeSheet = useCallback(() => {
-    const returnState = pitchCountReturn;
+    const pitchReturnState = pitchCountReturn;
+    const situationReturnState = situationReturn;
     setSelectedPlay(null);
     setSelectedPlayTargetPitchKey(null);
-    restorePitchCountView(returnState);
+    restorePitchCountView(pitchReturnState);
+    restoreSituationBreakdownView(situationReturnState);
     if (sheetHistoryRef.current) {
       sheetHistoryRef.current = false;
       window.history.back();
     }
-  }, [pitchCountReturn, restorePitchCountView]);
+  }, [pitchCountReturn, situationReturn, restorePitchCountView, restoreSituationBreakdownView]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -2269,13 +2813,15 @@ function GamePageContent({ gamePk, navigate, location }) {
         sheetHistoryRef.current = false;
         setSelectedPlay(null);
         setSelectedPlayTargetPitchKey(null);
+        const situationReturnState = situationReturn;
         restorePitchCountView();
+        restoreSituationBreakdownView(situationReturnState);
         // Prevent route navigation — do nothing else
       }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [selectedPlay, restorePitchCountView]);
+  }, [selectedPlay, situationReturn, restorePitchCountView, restoreSituationBreakdownView]);
 
   const handlePlayDetailPlayerSelect = useCallback(
     (playerId) => {
@@ -2474,6 +3020,10 @@ function GamePageContent({ gamePk, navigate, location }) {
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           onUsePurpleInPlayOutsChange={setUsePurpleInPlayOuts}
           onOpenPitchCounts={() => setPitchCountSheetOpen(true)}
+          onOpenSituationBreakdown={() => {
+            setSituationReturn(null);
+            setSituationBreakdownOpen(true);
+          }}
           showLiveOptions={isLive}
         />
       )}
@@ -3274,6 +3824,20 @@ function GamePageContent({ gamePk, navigate, location }) {
           onOpenPlay={openSheet}
           restorePitcherId={pitchCountReturn?.pitcherId}
           restoreNonce={pitchCountReturn?.nonce}
+        />
+        <SituationBreakdownSheet
+          open={situationBreakdownOpen}
+          onClose={() => {
+            setSituationBreakdownOpen(false);
+            setSituationReturn(null);
+          }}
+          allPlays={allPlays}
+          away={away}
+          home={home}
+          onOpenPlay={openSituationPlay}
+          getPlayBadge={getPlayBadge}
+          restoreScrollTop={situationReturn?.scrollTop}
+          restoreNonce={situationReturn?.nonce}
         />
         <PlayDetailSheet
           selectedPlay={selectedPlay}
