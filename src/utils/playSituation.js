@@ -75,6 +75,27 @@ function seedOccupied(initial) {
   return { occupied, setRunner, clearRunner };
 }
 
+function normalizeBaseCode(base) {
+  if (base === 1 || base === '1' || base === '1B') return '1B';
+  if (base === 2 || base === '2' || base === '2B') return '2B';
+  if (base === 3 || base === '3' || base === '3B') return '3B';
+  return null;
+}
+
+function runnerNameFromPlacedDescription(description = '') {
+  return description.match(/^(.+?)\s+starts inning at\s+\d(?:st|nd|rd|th)\s+base\.?$/i)?.[1]?.trim() ?? null;
+}
+
+function runnerFromPlacedEvent(ev) {
+  if (ev?.details?.runner?.id) return ev.details.runner;
+  if (!ev?.player?.id) return null;
+  return {
+    id: ev.player.id,
+    link: ev.player.link,
+    fullName: runnerNameFromPlacedDescription(ev.details?.description) || ev.player.fullName || 'Runner',
+  };
+}
+
 /** Replay runner movements through a given play event index (inclusive). */
 export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity) {
   const initial = getInitialBasesForPlay(play, allPlays);
@@ -82,12 +103,14 @@ export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity
   const runnerMovements = [...(play.runners ?? [])];
 
   for (const ev of play.playEvents ?? []) {
-    if (ev?.details?.eventType !== 'runner_placed' || !ev.details?.runner?.id) continue;
+    if (ev?.details?.eventType !== 'runner_placed') continue;
+    const runner = runnerFromPlacedEvent(ev);
+    if (!runner?.id) continue;
     const playIndex = ev.index ?? 0;
-    const hasMovement = runnerMovements.some((runner) => (
-      runner?.details?.eventType === 'runner_placed' &&
-      runner?.details?.runner?.id === ev.details.runner.id &&
-      runner?.details?.playIndex === playIndex
+    const hasMovement = runnerMovements.some((movement) => (
+      movement?.details?.eventType === 'runner_placed' &&
+      movement?.details?.runner?.id === runner.id &&
+      movement?.details?.playIndex === playIndex
     ));
     if (hasMovement) continue;
 
@@ -95,11 +118,11 @@ export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity
       details: {
         eventType: 'runner_placed',
         playIndex,
-        runner: ev.details.runner,
+        runner,
       },
       movement: {
         start: null,
-        end: ev.details?.base || '2B',
+        end: normalizeBaseCode(ev.base ?? ev.details?.base) || '2B',
         isOut: false,
       },
     });
@@ -144,6 +167,7 @@ export function getTerminalPlayIndex(play) {
   }
 
   const runnerIndexes = (play.runners ?? [])
+    .filter((r) => r.details?.eventType !== 'runner_placed')
     .map((r) => r.details?.playIndex)
     .filter((n) => n != null);
   if (runnerIndexes.length) return Math.max(...runnerIndexes);
