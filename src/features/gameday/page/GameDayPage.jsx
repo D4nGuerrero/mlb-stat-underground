@@ -1228,16 +1228,45 @@ function SituationStatCard({ label, value, subLabel = null }) {
   );
 }
 
+function SituationMatchModeControl({ value, onChange }) {
+  return (
+    <div className="flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1">
+      {[
+        { value: 'exact', label: 'Exact' },
+        { value: 'contains', label: 'Contains' },
+      ].map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange?.(option.value)}
+            className={[
+              'flex-1 rounded-xl px-3 py-3 text-sm font-black transition-all',
+              active
+                ? `bg-${THEME_COLOR}-500 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16),0_10px_24px_rgba(15,23,42,0.35)]`
+                : 'text-slate-500 hover:bg-slate-900/80 hover:text-slate-200',
+            ].join(' ')}
+            aria-pressed={active}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function OutsFilterButton({ value, active, onClick }) {
   return (
     <button
       type="button"
       onClick={() => onClick?.(value)}
       className={[
-        'grid h-12 w-12 place-items-center rounded-[9999px] border text-lg font-black leading-none transition-all aspect-square',
+        'grid h-12 w-12 place-items-center rounded-[9999px] border text-xl font-black leading-none transition-all aspect-square sm:h-14 sm:w-14 sm:text-2xl',
         active
-          ? 'border-red-300 bg-red-500 text-white shadow-lg shadow-red-950/30'
-          : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:text-white',
+          ? 'border-red-300 bg-red-500 text-white shadow-lg shadow-red-950/35'
+          : 'border-slate-700 bg-slate-900/90 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-white',
       ].join(' ')}
       aria-pressed={active}
       aria-label={`${value} outs`}
@@ -1256,7 +1285,7 @@ function SituationOutsFilter({ value, onChange }) {
   };
 
   return (
-    <div className="flex items-center justify-center gap-3 rounded-2xl bg-slate-900/80 p-2">
+    <div className="flex items-center justify-center gap-3">
       {['0', '1', '2'].map((option) => (
         <OutsFilterButton
           key={option}
@@ -1276,14 +1305,14 @@ function OutsLabelDots({ value = {} }) {
     : null;
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex w-full items-center justify-between gap-2">
       <span>Outs</span>
       <span className="flex items-center gap-1" aria-hidden>
         {[0, 1, 2].map((idx) => (
           <span
             key={idx}
             className={[
-              'h-1.5 w-1.5 rounded-[9999px] border aspect-square',
+              'h-2 w-2 rounded-[9999px] border aspect-square',
               dotCount != null && idx < dotCount
                 ? 'border-red-300 bg-red-500'
                 : 'border-slate-500 bg-slate-800',
@@ -1433,22 +1462,12 @@ function SituationBreakdownSheet({
             />
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
-                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Match</div>
-                <SegmentedControl
-                  value={matchMode}
-                  onChange={setMatchMode}
-                  options={[
-                    { value: 'exact', label: 'Exact' },
-                    { value: 'contains', label: 'Contains' },
-                  ]}
-                  variant="compact"
-                  size="xs"
-                  wrap
-                />
+              <div className="rounded-2xl border border-slate-700/70 bg-slate-950/45 p-4">
+                <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Match</div>
+                <SituationMatchModeControl value={matchMode} onChange={setMatchMode} />
               </div>
-              <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
-                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+              <div className="rounded-2xl border border-slate-700/70 bg-slate-950/45 p-4">
+                <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
                   <OutsLabelDots value={outsFilter} />
                 </div>
                 <SituationOutsFilter value={outsFilter} onChange={setOutsFilter} />
