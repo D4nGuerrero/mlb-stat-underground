@@ -727,7 +727,7 @@ export default function Scores() {
                       </div>
                     </div>
                   </div>
-                  <span className={`font-mono text-base tabular-nums font-bold flex-shrink-0 ${awayWin ? 'text-white' : 'text-slate-400'}`}>
+                  <span className={`font-display text-3xl leading-none tabular-nums flex-shrink-0 ${awayWin ? 'text-white' : 'text-slate-400'}`}>
                     {(isLive || isFinal) ? (game.teams.away.score ?? 0) : '—'}
                   </span>
                 </div>
@@ -749,7 +749,7 @@ export default function Scores() {
                       </div>
                     </div>
                   </div>
-                  <span className={`font-mono text-base tabular-nums font-bold flex-shrink-0 ${homeWin ? 'text-white' : 'text-slate-400'}`}>
+                  <span className={`font-display text-3xl leading-none tabular-nums flex-shrink-0 ${homeWin ? 'text-white' : 'text-slate-400'}`}>
                     {(isLive || isFinal) ? (game.teams.home.score ?? 0) : '—'}
                   </span>
                 </div>
@@ -771,6 +771,10 @@ export default function Scores() {
           const noHitAlerts = getNoHitAlert(game);
           const expandedKey = `${dateKey}:${game.gamePk}`;
           const isExpanded = expandedCardGamePk === expandedKey;
+          const liveCountLabel = game.linescore
+            ? `${game.linescore.balls ?? 0}-${game.linescore.strikes ?? 0}`
+            : null;
+          const liveOuts = Number(game.linescore?.outs ?? 0);
           return (
             <div
               key={game.gamePk}
@@ -792,7 +796,15 @@ export default function Scores() {
               ].join(' ')}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] text-slate-600 truncate">{game.venue?.name}</span>
+                <div className="min-w-0">
+                  {isLive ? (
+                    <span className="inline-flex items-center gap-x-1 text-xs px-2 py-0.5 bg-red-500/10 text-red-400 rounded-lg font-bold">
+                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-700">&nbsp;</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {noHitAlerts?.map((a) => (
                     <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
@@ -809,9 +821,22 @@ export default function Scores() {
                   ) : isDelayed ? (
                     <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
                   ) : isLive ? (
-                    <span className="inline-flex items-center gap-x-1 text-xs px-2 py-0.5 bg-red-500/10 text-red-400 rounded-lg">
-                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
-                    </span>
+                    game.linescore ? (
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-slate-300">
+                        <span className="text-red-300">{formatLiveInningLabel(game.linescore)}</span>
+                        <BaseDiamondIndicator
+                          {...getRunnersOnBase(game.linescore)}
+                          size="xs"
+                          className="text-white"
+                        />
+                        {liveCountLabel && <span>{liveCountLabel}</span>}
+                        <span className="text-slate-400">
+                          {liveOuts} OUT{liveOuts === 1 ? '' : 'S'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-red-400 font-bold">LIVE</span>
+                    )
                   ) : isFinal ? (
                     <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">{formatFinalStatus(game.linescore)}</span>
                   ) : (
@@ -851,12 +876,6 @@ export default function Scores() {
                 </div>
                 <div className={`font-display text-2xl tabular-nums ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.home.score ?? ''}</div>
               </div>
-              {isLive && game.linescore && (
-                <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                  <span className="text-slate-500">{game.linescore.inningHalf === 'Top' ? '▲' : '▼'} {game.linescore.currentInningOrdinal}</span>
-                  <span className="text-slate-500 font-mono">{game.linescore.balls ?? 0}-{game.linescore.strikes ?? 0} · {game.linescore.outs ?? 0} out</span>
-                </div>
-              )}
               {!isLive && !isFinal && (
                 <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
                   <span>{compactPlayerName(game.teams.away.probablePitcher)}</span>

@@ -325,7 +325,12 @@ const HIT_TRAJECTORY_LABELS = {
   bunt_popup: 'Bunt Popup',
 };
 
-function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange, onOpenPitchCounts }) {
+function GamedayOptionsMenu({
+  usePurpleInPlayOuts,
+  onUsePurpleInPlayOutsChange,
+  onOpenPitchCounts,
+  showLiveOptions = true,
+}) {
   const buttonRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 8 });
@@ -342,7 +347,7 @@ function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange, 
   };
 
   const choose = (value) => {
-    onUsePurpleInPlayOutsChange(value);
+    onUsePurpleInPlayOutsChange?.(value);
     setOpen(false);
   };
 
@@ -372,32 +377,40 @@ function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange, 
             className="fixed z-[91] w-56 rounded-2xl border border-slate-700 bg-slate-950/95 p-1 shadow-2xl shadow-black/40 backdrop-blur"
             style={{ top: menuPos.top, right: menuPos.right }}
           >
-            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-              Live View
-            </div>
-            <button
-              type="button"
-              onClick={() => choose(false)}
-              className={[
-                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
-                !usePurpleInPlayOuts ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
-              ].join(' ')}
-            >
-              <span>In-play outs blue</span>
-              {!usePurpleInPlayOuts && <i className={`fa-solid fa-check text-${THEME_COLOR}-300`} aria-hidden />}
-            </button>
-            <button
-              type="button"
-              onClick={() => choose(true)}
-              className={[
-                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
-                usePurpleInPlayOuts ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
-              ].join(' ')}
-            >
-              <span>In-play outs purple</span>
-              {usePurpleInPlayOuts && <i className="fa-solid fa-check text-purple-300" aria-hidden />}
-            </button>
-            <div className="my-1 border-t border-slate-800" />
+            {showLiveOptions ? (
+              <>
+                <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                  Live View
+                </div>
+                <button
+                  type="button"
+                  onClick={() => choose(false)}
+                  className={[
+                    'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
+                    !usePurpleInPlayOuts ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
+                  ].join(' ')}
+                >
+                  <span>In-play outs blue</span>
+                  {!usePurpleInPlayOuts && <i className={`fa-solid fa-check text-${THEME_COLOR}-300`} aria-hidden />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => choose(true)}
+                  className={[
+                    'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
+                    usePurpleInPlayOuts ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
+                  ].join(' ')}
+                >
+                  <span>In-play outs purple</span>
+                  {usePurpleInPlayOuts && <i className="fa-solid fa-check text-purple-300" aria-hidden />}
+                </button>
+                <div className="my-1 border-t border-slate-800" />
+              </>
+            ) : (
+              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                Game Tools
+              </div>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -406,7 +419,7 @@ function GamedayOptionsMenu({ usePurpleInPlayOuts, onUsePurpleInPlayOutsChange, 
               }}
               className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
             >
-              <span>Pitch count by inning</span>
+              <span>Pitch breakdown</span>
               <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
             </button>
           </div>
@@ -449,20 +462,28 @@ function buildPitchCountByInning(allPlays = [], away, home) {
     const row = side.pitchers.get(pitcher.id);
     row.byInning[inning] = (row.byInning[inning] ?? 0) + pitchCount;
     row.total += pitchCount;
-    const pitchEvents = (play.playEvents ?? []).filter((event) => event?.isPitch);
-    row.pitchEvents.push(
-      ...pitchEvents
-        .map((event, pitchIndex) => ({
-          ...event,
-          __pitchNumberOverride: row.pitchEvents.length + pitchIndex + 1,
-          __playContext: play,
-          __playScored: Boolean(
-            play?.about?.isScoringPlay ||
-            play?.about?.hasScoreChange ||
-            play?.result?.isScoringPlay,
-          ),
-        })),
-    );
+    const basePitchNumber = row.pitchEvents.length;
+    let countBeforePitch = { balls: 0, strikes: 0 };
+    const enrichedPitchEvents = [];
+    for (const event of play.playEvents ?? []) {
+      if (!event?.isPitch) continue;
+      enrichedPitchEvents.push({
+        ...event,
+        __pitchNumberOverride: basePitchNumber + enrichedPitchEvents.length + 1,
+        __prePitchCount: { ...countBeforePitch },
+        __playContext: play,
+        __playScored: Boolean(
+          play?.about?.isScoringPlay ||
+          play?.about?.hasScoreChange ||
+          play?.result?.isScoringPlay,
+        ),
+      });
+      countBeforePitch = {
+        balls: Number(event?.count?.balls ?? countBeforePitch.balls ?? 0),
+        strikes: Number(event?.count?.strikes ?? countBeforePitch.strikes ?? 0),
+      };
+    }
+    row.pitchEvents.push(...enrichedPitchEvents);
   });
 
   return {
@@ -472,73 +493,102 @@ function buildPitchCountByInning(allPlays = [], away, home) {
   };
 }
 
-function PitchCountTeamTable({ data, innings, onPitcherSelect }) {
+function PitchCountTeamTable({ data, onPitcherSelect }) {
+  const accentClass = data.team?.abbreviation === 'SEA'
+    ? 'bg-teal-400'
+    : data.team?.abbreviation === 'SF'
+      ? 'bg-orange-500'
+      : `bg-${THEME_COLOR}-400`;
+
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-700/60 bg-slate-950/50 overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
-        <img src={teamLogoUrl(data.team?.id)} alt="" className="h-6 w-6 object-contain" />
+    <section className="min-w-0">
+      <div className="mb-3 flex items-center gap-3 sm:mb-6 sm:gap-4">
+        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-1.5 sm:w-16 sm:gap-2">
+          <img src={teamLogoUrl(data.team?.id)} alt="" className="h-9 w-9 object-contain sm:h-14 sm:w-14" />
+          <div className={`h-0.5 w-8 rounded-full sm:h-1 sm:w-12 ${accentClass}`} />
+        </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-white">{data.team?.abbreviation || data.team?.name}</div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Pitchers</div>
+          <div className="truncate text-xl font-black text-white sm:text-2xl">{data.team?.abbreviation || data.team?.name}</div>
+          <div className="text-[10px] uppercase tracking-[0.24em] text-slate-400 sm:text-sm sm:tracking-[0.32em]">Pitchers</div>
         </div>
       </div>
 
-      <div className="space-y-2 p-2">
+      <div className="space-y-0">
         {data.pitchers.length ? (
-          data.pitchers.map((pitcher) => (
-            <button
-              key={pitcher.id}
-              type="button"
-              onClick={() => onPitcherSelect?.(pitcher, data.team)}
-              className={`block w-full rounded-xl border border-slate-800 bg-slate-900/70 px-2.5 py-2 text-left transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-slate-800/80 focus:outline-none focus:ring-1 focus:ring-${THEME_COLOR}-400/70`}
-            >
-              {(() => {
-                const pitchedInnings = innings.filter((inning) => pitcher.byInning[inning] != null);
+          data.pitchers.map((pitcher, pitcherIndex) => {
+            const pitchedInnings = Object.keys(pitcher.byInning)
+              .map(Number)
+              .filter(Boolean)
+              .sort((a, b) => a - b);
+            const role = pitcherIndex === 0 ? 'Starter' : 'Relief';
+            const gridTemplateColumns = `repeat(${pitchedInnings.length + 1}, minmax(clamp(2.15rem, 9vw, 4.2rem), 1fr))`;
+
+            return (
+              <button
+                key={pitcher.id}
+                type="button"
+                onClick={() => onPitcherSelect?.(pitcher, data.team)}
+                className={`block w-full border-b border-slate-700/60 px-1 py-3 text-left transition-colors hover:bg-slate-900/35 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-${THEME_COLOR}-400/70 sm:py-6`}
+              >
+                {(() => {
                 return (
                   <>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-bold text-slate-100">{pitcher.name}</div>
-                  <div className="text-[9px] uppercase tracking-[0.14em] text-slate-500">Pitch count</div>
-                </div>
-                <i className={`fa-solid fa-location-dot text-xs text-${THEME_COLOR}-300`} aria-hidden />
-              </div>
-              <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/60">
-                <div
-                  className="grid divide-x divide-slate-800 text-center"
-                  style={{ gridTemplateColumns: `repeat(${pitchedInnings.length + 1}, minmax(2.25rem, 1fr))` }}
-                >
-                  {pitchedInnings.map((inning) => (
-                    <div key={`inning-${inning}`} className="px-1 py-1 text-[10px] font-bold text-slate-400">
-                      {inning}
+                    <div className="mb-3 flex items-start justify-between gap-2 sm:mb-6 sm:gap-4">
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-black leading-tight text-white sm:text-2xl">{pitcher.name}</div>
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-1.5 pt-0.5 text-[10px] sm:gap-3 sm:pt-1 sm:text-base">
+                        <span className={`inline-flex items-center gap-1 text-${THEME_COLOR}-300 sm:gap-1.5`}>
+                          <i className="fa-solid fa-location-dot" aria-hidden />
+                          {role}
+                        </span>
+                        <span className="h-4 w-px bg-slate-600 sm:h-5" aria-hidden />
+                        <span className="text-white">{pitcher.total}</span>
+                        <span className="text-slate-400">pitches</span>
+                      </div>
                     </div>
-                  ))}
-                  <div className={`px-1 py-1 text-[10px] font-black text-${THEME_COLOR}-300`}>Total</div>
-                </div>
-                <div
-                  className="grid divide-x divide-slate-800 border-t border-slate-800 text-center font-mono"
-                  style={{ gridTemplateColumns: `repeat(${pitchedInnings.length + 1}, minmax(2.25rem, 1fr))` }}
-                >
-                  {pitchedInnings.map((inning) => (
-                    <div key={`count-${inning}`} className="px-1 py-1 text-[11px] font-bold text-slate-100">
-                      {pitcher.byInning[inning]}
+
+                    <div className="overflow-x-auto pb-1">
+                      <div className="min-w-0">
+                        <div
+                          className="grid text-center"
+                          style={{ gridTemplateColumns }}
+                        >
+                          {pitchedInnings.map((inning) => (
+                            <div key={`inning-${inning}`} className="px-1 pb-1 text-xs font-black text-slate-400 sm:px-3 sm:pb-2 sm:text-base">
+                              {inning}
+                            </div>
+                          ))}
+                          <div className="px-1 pb-1 text-xs font-black uppercase text-slate-400 sm:px-3 sm:pb-2 sm:text-base">Tot</div>
+                        </div>
+                        <div
+                          className="grid overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/45 text-center font-mono shadow-inner shadow-black/20"
+                          style={{ gridTemplateColumns }}
+                        >
+                          {pitchedInnings.map((inning) => (
+                            <div key={`count-${inning}`} className="border-r border-slate-700/80 px-1.5 py-2 text-base font-black text-white last:border-r-0 sm:px-5 sm:py-3 sm:text-xl">
+                              {pitcher.byInning[inning]}
+                            </div>
+                          ))}
+                          <div className={`px-1.5 py-2 text-base font-black text-${THEME_COLOR}-300 sm:px-5 sm:py-3 sm:text-xl`}>
+                            {pitcher.total}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                  <div className="px-1 py-1 text-[11px] font-black text-white">{pitcher.total}</div>
-                </div>
-              </div>
                   </>
                 );
               })()}
-            </button>
-          ))
+              </button>
+            );
+          })
         ) : (
           <div className="rounded-xl border border-dashed border-slate-800 px-3 py-6 text-center text-xs text-slate-500">
             No pitch data yet.
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -579,14 +629,31 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
     strikes: true,
     inPlay: true,
   });
-  const [calledOnly, setCalledOnly] = useState(false);
+  const [visibleStrikeSubtypes, setVisibleStrikeSubtypes] = useState({
+    called: true,
+    swinging: true,
+    foul: true,
+    other: true,
+  });
+  const [twoStrikeOnly, setTwoStrikeOnly] = useState(false);
+  const [previewPitchNumber, setPreviewPitchNumber] = useState(null);
   const open = Boolean(pitcher);
   const pitchEvents = pitcher?.pitchEvents ?? [];
   const counts = pitchKindCounts(pitchEvents);
   const visiblePitchEvents = pitchEvents.filter((event) => {
-    if (calledOnly) return pitchMapKind(event) === 'strikes' && strikeSubtype(event) === 'called';
-    return visiblePitchKinds[pitchMapKind(event)];
+    const kind = pitchMapKind(event);
+    if (!visiblePitchKinds[kind]) return false;
+    if (kind === 'strikes' && !visibleStrikeSubtypes[strikeSubtype(event)]) return false;
+    if (twoStrikeOnly && Number(event.__prePitchCount?.strikes ?? -1) !== 2) return false;
+    return true;
   });
+  const previewPitchEvent = previewPitchNumber == null
+    ? null
+    : pitchEvents.find((event) => Number(event.__pitchNumberOverride) === Number(previewPitchNumber));
+  const canvasPitchEvents = previewPitchEvent && !visiblePitchEvents.includes(previewPitchEvent)
+    ? [...visiblePitchEvents, previewPitchEvent]
+    : visiblePitchEvents;
+  const twoStrikeCount = pitchEvents.filter((event) => Number(event.__prePitchCount?.strikes ?? -1) === 2).length;
   const latestPitchData = [...pitchEvents].reverse().find((event) => event?.pitchData)?.pitchData;
   const szTop = latestPitchData?.strikeZoneTop ?? 3.55;
   const szBot = latestPitchData?.strikeZoneBottom ?? 1.47;
@@ -594,6 +661,12 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
     setVisiblePitchKinds((current) => ({
       ...current,
       [kind]: !current[kind],
+    }));
+  };
+  const toggleStrikeSubtype = (subtype) => {
+    setVisibleStrikeSubtypes((current) => ({
+      ...current,
+      [subtype]: !current[subtype],
     }));
   };
   const goToPitch = (value) => {
@@ -605,6 +678,9 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
       });
     }
   };
+  useEffect(() => {
+    setPreviewPitchNumber(null);
+  }, [pitcher?.id]);
   const filterCards = [
     {
       key: 'balls',
@@ -634,6 +710,26 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
       subText: 'text-blue-200/70',
     },
   ];
+  const strikeSubtypeFilters = [
+    {
+      key: 'called',
+      label: 'Called',
+      count: counts.strikeSubtypes.called,
+      icon: 'fa-eye',
+    },
+    {
+      key: 'swinging',
+      label: 'Miss',
+      count: counts.strikeSubtypes.swinging,
+      icon: 'fa-wind',
+    },
+    {
+      key: 'foul',
+      label: 'Foul',
+      count: counts.strikeSubtypes.foul,
+      icon: 'fa-arrows-turn-to-dots',
+    },
+  ];
 
   return (
     <Modal
@@ -641,10 +737,10 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
       onClose={onClose}
       backDismiss
       historyKey="pitcherPitchMap"
-      align="bottom"
+      align="center"
       size="full"
-      className="px-0 sm:px-6"
-      panelClassName="max-h-[88vh] bg-[#101827] border-slate-700/70"
+      className="px-0 sm:px-3"
+      panelClassName="h-[94vh] bg-[#101827] border-slate-700/70 sm:mx-auto sm:max-w-[min(98vw,1280px)] flex flex-col"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1">
         <div className="h-1 w-10 rounded-full bg-slate-600" />
@@ -669,8 +765,8 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
         </button>
       </div>
 
-      <div className="gameday-scroll-rail max-h-[calc(88vh-5.5rem)] overflow-y-auto p-4">
-        <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs">
+      <div className="flex min-h-0 flex-1 flex-col px-3 py-3 sm:px-5">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           {filterCards.map((card) => {
             const active = visiblePitchKinds[card.key];
             return (
@@ -679,89 +775,178 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                 type="button"
                 onClick={() => togglePitchKind(card.key)}
                 className={[
-                  'rounded-2xl border px-2 py-2 transition-all focus:outline-none focus:ring-1',
+                  'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] transition-all focus:outline-none focus:ring-1',
                   card.border,
-                  active ? `${card.activeBg} focus:ring-white/30` : 'bg-slate-950/70 opacity-45 grayscale focus:ring-slate-500',
+                  active ? `${card.activeBg} ${card.subText} focus:ring-white/30` : 'bg-slate-950/70 text-slate-600 opacity-70 grayscale focus:ring-slate-500',
                 ].join(' ')}
                 aria-pressed={active}
               >
-                <div className={`font-mono text-lg font-black ${card.text}`}>{card.count}</div>
-                <div className={`text-[9px] uppercase tracking-widest ${card.subText}`}>{card.label}</div>
+                <span className={`font-mono text-sm ${active ? card.text : 'text-slate-500'}`}>{card.count}</span>
+                <span>{card.label}</span>
               </button>
             );
           })}
         </div>
 
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-[10px] text-slate-400">
-          <div>
-            <span className="font-bold uppercase tracking-[0.14em] text-slate-500">Strike mix:</span>{' '}
-            Called {counts.strikeSubtypes.called}, Swinging {counts.strikeSubtypes.swinging}, Foul {counts.strikeSubtypes.foul}
-            {counts.strikeSubtypes.other ? `, Other ${counts.strikeSubtypes.other}` : ''}
-          </div>
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-[10px] text-slate-400">
           <button
             type="button"
-            onClick={() => setCalledOnly((value) => !value)}
+            onClick={() => setTwoStrikeOnly((value) => !value)}
             className={[
-              'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
-              calledOnly
+              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
+              twoStrikeOnly
                 ? `border-${THEME_COLOR}-400/50 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`
                 : 'border-slate-700 bg-slate-900 text-slate-500 hover:text-slate-200',
             ].join(' ')}
-            aria-pressed={calledOnly}
+            aria-pressed={twoStrikeOnly}
           >
-            <i className="fa-solid fa-eye" aria-hidden />
-            Called only
+            <span className="font-mono text-xs">{twoStrikeCount}</span>
+            2 Strikes
+          </button>
+          {visiblePitchKinds.strikes && (
+            <>
+              <span className="hidden h-4 w-px bg-slate-700 sm:inline-block" aria-hidden />
+              {strikeSubtypeFilters.map((filter) => {
+                const active = visibleStrikeSubtypes[filter.key];
+                return (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => toggleStrikeSubtype(filter.key)}
+                    className={[
+                      'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
+                      active
+                        ? 'border-red-500/35 bg-red-500/10 text-red-200'
+                        : 'border-slate-700 bg-slate-900 text-slate-600 opacity-70 grayscale hover:text-slate-300',
+                    ].join(' ')}
+                    aria-pressed={active}
+                  >
+                    <i className={`fa-solid ${filter.icon}`} aria-hidden />
+                    <span className="font-mono text-xs">{filter.count}</span>
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setVisiblePitchKinds({ balls: true, strikes: true, inPlay: true });
+              setVisibleStrikeSubtypes({ called: true, swinging: true, foul: true, other: true });
+              setTwoStrikeOnly(false);
+            }}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 transition-colors hover:text-slate-200"
+          >
+            Reset
           </button>
         </div>
 
-        <div className="mx-auto w-full max-w-[520px] overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70 p-3 sm:max-w-[600px]">
-          {visiblePitchEvents.length ? (
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70 p-2 sm:p-3">
+          <div className="relative max-h-full w-full max-w-[min(100%,calc((94vh-12rem)*1.633))]">
             <PitchCanvas
-              playEvents={visiblePitchEvents}
+              playEvents={canvasPitchEvents}
               cropPlayEvents={pitchEvents}
               szTop={szTop}
               szBot={szBot}
               gamePk={gamePk ? `${gamePk}:${pitcher?.id}:pitch-map` : null}
-              responsive
               viewMode="strikeZone"
+              width={980}
+              height={600}
+              responsive
               showPitchTrails={false}
               usePurpleInPlayOuts
               preserveCropAspect
-              showCalledStrikeMarker={calledOnly}
+              showCalledStrikeMarker={canvasPitchEvents.length > 0 && visiblePitchKinds.strikes && visibleStrikeSubtypes.called}
+              focusPitchNumber={previewPitchNumber}
+              className="mx-auto w-full"
             />
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-500">
-              No visible pitch locations with the current filters.
+          </div>
+          {!canvasPitchEvents.length && (
+            <div className="pointer-events-none absolute inset-3 flex items-center justify-center rounded-2xl border border-dashed border-slate-600/80 bg-slate-950/75 px-4 text-center shadow-inner shadow-black/60 backdrop-blur-sm">
+              <div className="max-w-sm">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-slate-500/70 bg-slate-800/80 text-slate-200">
+                  <i className="fa-solid fa-filter-circle-xmark text-lg" aria-hidden />
+                </div>
+                <div className="text-base font-black text-slate-100">
+                  No visible pitch locations
+                </div>
+                <div className="mt-1 text-sm text-slate-400">
+                  Try turning a pitch type back on or clearing the filters.
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
             <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" /> Ball</span>
             <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-700" /> Strike</span>
             <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> In Play</span>
           </div>
-          <label className="ml-auto flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+          <div className="ml-auto flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
             Go to
-            <select
-              value=""
-              onChange={(event) => goToPitch(event.target.value)}
-              className="rounded-xl border border-slate-700 bg-slate-950 px-2 py-1 text-xs font-bold normal-case tracking-normal text-slate-200 outline-none focus:border-slate-500"
-            >
-              <option value="" disabled>Pitch #</option>
-              {pitchEvents.map((event) => {
-                const play = event.__playContext;
-                const batterName = play?.matchup?.batter?.fullName || 'At bat';
-                const result = play?.result?.event || event.details?.description || 'Pitch';
-                return (
-                  <option key={`${event.playId ?? event.index}-${event.__pitchNumberOverride}`} value={event.__pitchNumberOverride}>
-                    #{event.__pitchNumberOverride} - {batterName} ({result})
-                  </option>
-                );
-              })}
-            </select>
-          </label>
+            <Menu as="div" className="relative">
+              <MenuButton className="inline-flex min-w-[8rem] items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-left text-xs font-bold normal-case tracking-normal text-slate-200 outline-none transition-colors hover:border-slate-500">
+                Pitch #
+                <i className="fa-solid fa-chevron-up text-[9px] text-slate-500" aria-hidden />
+              </MenuButton>
+              <MenuItems
+                anchor="top end"
+                transition
+                onMouseLeave={() => setPreviewPitchNumber(null)}
+                className="z-50 mb-1 max-h-36 w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-1 shadow-2xl shadow-black/50 focus:outline-none transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+              >
+                {!visiblePitchEvents.length && (
+                  <div className="px-3 py-3 text-center text-xs font-semibold text-slate-500">
+                    No visible pitches
+                  </div>
+                )}
+                {visiblePitchEvents.map((event) => {
+                  const pitchNumber = Number(event.__pitchNumberOverride);
+                  const play = event.__playContext;
+                  const batterName = play?.matchup?.batter?.fullName || 'At bat';
+                  const result = play?.result?.event || event.details?.description || 'Pitch';
+                  const kind = pitchMapKind(event);
+                  const tone =
+                    kind === 'balls'
+                      ? 'text-emerald-300'
+                      : kind === 'inPlay'
+                        ? 'text-blue-300'
+                        : 'text-red-300';
+                  return (
+                    <MenuItem key={`${event.playId ?? event.index}-${pitchNumber}`}>
+                      {({ focus, close }) => (
+                        <button
+                          type="button"
+                          onMouseEnter={() => setPreviewPitchNumber(pitchNumber)}
+                          onFocus={() => setPreviewPitchNumber(pitchNumber)}
+                          onClick={() => {
+                            close?.();
+                            setPreviewPitchNumber(null);
+                            goToPitch(pitchNumber);
+                          }}
+                          className={[
+                            'flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors',
+                            focus ? 'bg-slate-800 text-white' : 'text-slate-300',
+                          ].join(' ')}
+                        >
+                          <span className={`w-9 flex-shrink-0 font-mono text-sm font-black ${tone}`}>
+                            #{pitchNumber}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-bold">{batterName}</span>
+                            <span className="block truncate text-[10px] text-slate-500">{result}</span>
+                          </span>
+                        </button>
+                      )}
+                    </MenuItem>
+                  );
+                })}
+              </MenuItems>
+            </Menu>
+          </div>
         </div>
       </div>
     </Modal>
@@ -781,7 +966,6 @@ function PitchCountByInningSheet({
 }) {
   const [selectedPitcher, setSelectedPitcher] = useState(null);
   const data = useMemo(() => buildPitchCountByInning(allPlays, away, home), [allPlays, away, home]);
-  const innings = data.innings.length ? data.innings : [1];
   const closePitcherMap = () => setSelectedPitcher(null);
   const openPlayFromPitchMap = (play, options = {}) => {
     onOpenPlay?.(play, options);
@@ -806,35 +990,33 @@ function PitchCountByInningSheet({
       historyKey="pitchCountByInning"
       align="bottom"
       size="lg"
-      panelClassName="max-h-[82vh] bg-[#101827] border-slate-700/70"
+      panelClassName="max-h-[88vh] bg-[radial-gradient(circle_at_top_left,rgba(30,64,175,0.18),transparent_38%),linear-gradient(135deg,#101827,#07101d)] border-slate-700/70"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1">
         <div className="h-1 w-10 rounded-full bg-slate-600" />
       </div>
-      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-5">
         <div>
-          <div className="text-sm font-bold text-white">Pitch Count By Inning</div>
-          <div className="text-xs text-slate-500">Live pitch totals grouped by pitcher</div>
+          <div className="text-xl font-black text-white sm:text-2xl">Pitch Count By Inning</div>
+          <div className="mt-0.5 text-xs text-slate-400 sm:mt-1 sm:text-base">Live pitch totals grouped by pitcher</div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-800 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white sm:h-12 sm:w-12"
           aria-label="Close pitch count by inning"
         >
-          <i className="fa-solid fa-xmark" aria-hidden />
+          <i className="fa-solid fa-xmark text-lg sm:text-xl" aria-hidden />
         </button>
       </div>
-      <div className="max-h-[calc(82vh-5.5rem)] overflow-y-auto p-3">
-        <div className="space-y-3">
+      <div className="gameday-scroll-rail max-h-[calc(88vh-5.75rem)] overflow-y-auto px-4 pb-4 sm:max-h-[calc(88vh-7rem)] sm:px-6 sm:pb-6">
+        <div className="space-y-5 sm:space-y-10">
           <PitchCountTeamTable
             data={data.away}
-            innings={innings}
             onPitcherSelect={(pitcher, team) => setSelectedPitcher({ pitcher, team })}
           />
           <PitchCountTeamTable
             data={data.home}
-            innings={innings}
             onPitcherSelect={(pitcher, team) => setSelectedPitcher({ pitcher, team })}
           />
         </div>
@@ -2235,6 +2417,9 @@ function GamePageContent({ gamePk, navigate, location }) {
     .join('  |  ');
 
   const allPlays = ld.plays?.allPlays || [];
+  const hasPitchBreakdownData = allPlays.some((play) =>
+    (play.playEvents || []).some((event) => event?.isPitch && event?.pitchData?.coordinates)
+  );
 
   const summaryLeadIn = buildSummaryLeadIn(gd);
   const allSummaryItems = buildSummaryItems(allPlays, gd);
@@ -2284,13 +2469,34 @@ function GamePageContent({ gamePk, navigate, location }) {
         className="min-w-0 flex-1"
         listClassName="border-b-0"
       />
-      {isLive && (
+      {hasPitchBreakdownData && (
         <GamedayOptionsMenu
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           onUsePurpleInPlayOutsChange={setUsePurpleInPlayOuts}
           onOpenPitchCounts={() => setPitchCountSheetOpen(true)}
+          showLiveOptions={isLive}
         />
       )}
+    </div>
+  );
+
+  const halfScreenPitchBreakdownButton = (
+    <button
+      type="button"
+      onClick={() => setPitchCountSheetOpen(true)}
+      className={`hidden sm:inline-flex xl:hidden items-center gap-2 border-l border-slate-800 px-4 text-xs font-black uppercase tracking-[0.12em] text-slate-400 transition-colors hover:bg-slate-800/45 hover:text-${THEME_COLOR}-300`}
+    >
+      <i className="fa-solid fa-location-dot" aria-hidden />
+      Pitch Breakdown
+    </button>
+  );
+
+  const halfScreenGameTabBar = (
+    <div className="flex items-stretch">
+      <div className="min-w-0 flex-1">
+        {gameTabBar}
+      </div>
+      {halfScreenPitchBreakdownButton}
     </div>
   );
 
@@ -2364,7 +2570,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           </div>
         </div>
         <div className="border-t border-slate-700/50 xl:hidden">
-          {gameTabBar}
+          {halfScreenGameTabBar}
         </div>
       </div>
 
@@ -2905,7 +3111,7 @@ function GamePageContent({ gamePk, navigate, location }) {
 
           {isLive && !isPreview && (
             <div className="border-t border-slate-700/50">
-              {gameTabBar}
+              {halfScreenGameTabBar}
             </div>
           )}
 
@@ -2994,7 +3200,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           <>
         {!isLive && (
           <div className={isFinal ? 'xl:hidden' : ''}>
-            {gameTabBar}
+            {halfScreenGameTabBar}
           </div>
         )}
 

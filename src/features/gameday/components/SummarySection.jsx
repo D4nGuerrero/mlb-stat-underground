@@ -274,6 +274,8 @@ function formatVideoTime(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+const VIDEO_CONTROLS_AUTO_HIDE_MS = 1000;
+
 function VideoShareMenu({ video, className = 'relative', buttonClassName }) {
   const videoUrl = getHighlightVideoUrl(video);
   const pageUrl = getHighlightShareUrl(video);
@@ -464,11 +466,31 @@ function HighlightVideoControls({
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    if (paused) {
+      setHovering(true);
+      return undefined;
+    }
+
+    setHovering(true);
+    hideTimerRef.current = window.setTimeout(
+      () => setHovering(false),
+      VIDEO_CONTROLS_AUTO_HIDE_MS
+    );
+    return () => {
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    };
+  }, [paused]);
+
   const bumpActivity = useCallback(() => {
     setHovering(true);
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     if (paused) return;
-    hideTimerRef.current = window.setTimeout(() => setHovering(false), 2200);
+    hideTimerRef.current = window.setTimeout(
+      () => setHovering(false),
+      VIDEO_CONTROLS_AUTO_HIDE_MS
+    );
   }, [paused]);
 
   const togglePlay = useCallback((e) => {
@@ -525,7 +547,10 @@ function HighlightVideoControls({
       }}
       onMouseLeave={() => {
         if (paused) return;
-        hideTimerRef.current = window.setTimeout(() => setHovering(false), 600);
+        hideTimerRef.current = window.setTimeout(
+          () => setHovering(false),
+          VIDEO_CONTROLS_AUTO_HIDE_MS
+        );
       }}
       onMouseMove={bumpActivity}
       onClick={(e) => e.stopPropagation()}
@@ -845,7 +870,7 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
         videoRef={videoRef}
         isFullscreen={showOverlayFs}
         onToggleFullscreen={toggleOverlayFullscreen}
-        forceVisible={!showOverlayFs}
+        forceVisible={false}
       />
     </div>
   );

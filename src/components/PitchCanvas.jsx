@@ -138,6 +138,7 @@ export default function PitchCanvas({
   preserveCropAspect = false,
   cropPlayEvents = null,
   showCalledStrikeMarker = false,
+  focusPitchNumber = null,
   onPitchLanded,
   baseballModelUrl = null,
 }) {
@@ -286,6 +287,11 @@ export default function PitchCanvas({
     }
     return list;
   }, [playEvents, showCalledStrikeMarker]);
+
+  const focusedPitchIndex = useMemo(() => {
+    if (focusPitchNumber == null) return -1;
+    return pitches.findIndex((pitch) => Number(pitch.num) === Number(focusPitchNumber));
+  }, [pitches, focusPitchNumber]);
 
   const cropPitches = useMemo(() => {
     if (!cropPlayEvents) return null;
@@ -476,7 +482,9 @@ export default function PitchCanvas({
       drawAtBatStrikeZone(ctx, refPitch, scaler);
       if (showHotZones) drawAtBatHotZones(ctx, refPitch, scaler);
 
+      const focusedIdx = Number.isInteger(focusedPitchIndex) ? focusedPitchIndex : -1;
       for (let i = 0; i < pitchList.length - 1; i += 1) {
+        if (i === focusedIdx) continue;
         const traj = trajList[i];
         if (!traj?.length) continue;
         const last = traj[traj.length - 1];
@@ -492,6 +500,14 @@ export default function PitchCanvas({
       if (phase === 'settled') {
         const last = traj[traj.length - 1];
         drawAtBatBall(ctx, last, pitch, scaler, shader, 1);
+        if (focusedIdx >= 0 && focusedIdx !== currentIdx) {
+          const focusedTraj = trajList[focusedIdx];
+          const focusedPitch = pitchList[focusedIdx];
+          const focusedLast = focusedTraj?.[focusedTraj.length - 1];
+          if (focusedLast && focusedPitch) {
+            drawAtBatBall(ctx, focusedLast, focusedPitch, scaler, getPitchShader(focusedPitch, scaler), 1);
+          }
+        }
         return;
       }
 
@@ -502,7 +518,7 @@ export default function PitchCanvas({
       }
       drawAtBatSpinningBaseball(ctx, animatedPoint, progress, scaler, pitch, 1);
     },
-    [W, H, scaler, setupCanvas, refPitchForCrop, stableRefPitch, crop, baseballModelUrl, renderModelBaseball, showHotZones],
+    [W, H, scaler, setupCanvas, refPitchForCrop, stableRefPitch, crop, baseballModelUrl, renderModelBaseball, showHotZones, focusedPitchIndex],
   );
 
   const animate = useCallback(
