@@ -213,6 +213,10 @@ const PLAY_BADGE = {
     label: 'Steal Home!',
     cls: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
   },
+  runner_placed: {
+    label: 'Runner Placed On Base',
+    cls: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+  },
   caught_stealing_2b: {
     label: 'Caught Stealing 2B',
     cls: 'bg-slate-600/40 text-slate-400 border-slate-600/40',

@@ -102,6 +102,14 @@ function LiveActionAvatar({ row, onPlayerClick }) {
     );
   }
 
+  if (iconKind === 'runner_placed') {
+    return (
+      <IconAvatar>
+        <i className="fa-solid fa-diamond text-base text-blue-300" />
+      </IconAvatar>
+    );
+  }
+
   if (!row.batterId) {
     return <div className={`${ICON_SIZE} rounded-full bg-slate-800/80 border-2 border-slate-600`} aria-hidden />;
   }

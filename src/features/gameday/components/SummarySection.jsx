@@ -184,6 +184,17 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
     );
   }
 
+  if (iconKind === 'runner_placed') {
+    return (
+      <div
+        className={iconShellClass}
+        aria-hidden
+      >
+        <i className={`fa-solid fa-diamond ${iconSize} text-blue-300`} />
+      </div>
+    );
+  }
+
   if (iconKind === 'shoe') {
     return (
       <div

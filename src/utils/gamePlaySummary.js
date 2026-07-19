@@ -6,6 +6,7 @@ import {
 
 /** Non-pitch action events shown as their own summary rows. */
 export const SUMMARY_ACTION_TYPES = new Set([
+  'runner_placed',
   'stolen_base_2b',
   'stolen_base_3b',
   'stolen_base_home',
@@ -60,6 +61,7 @@ export function getSummaryPlayIconKind(item) {
   if (item?.kind === 'offensive_substitution') return 'pitching_sub';
   if (item?.kind === 'defensive_substitution') return 'pitching_sub';
   const eventType = item?.eventType;
+  if (eventType === 'runner_placed') return 'runner_placed';
   if (SHOE_ICON_TYPES.has(eventType)) return 'shoe';
   if (PITCH_ICON_TYPES.has(eventType)) return 'pitch';
   return null;
@@ -245,6 +247,35 @@ export function buildPlayDescription(description, outs, outOccurred) {
   return { description: text, outsLabel };
 }
 
+function formatBaseName(base) {
+  if (base === '1B') return '1st base';
+  if (base === '2B') return '2nd base';
+  if (base === '3B') return '3rd base';
+  return 'base';
+}
+
+function findRunnerPlacedMovement(ev, play) {
+  const eventIndex = ev?.index;
+  const runnerId = ev?.details?.runner?.id;
+  return (play?.runners ?? []).find((runner) => {
+    if (runner?.details?.eventType !== 'runner_placed') return false;
+    if (runnerId && runner?.details?.runner?.id === runnerId) return true;
+    return eventIndex != null && runner?.details?.playIndex === eventIndex;
+  }) ?? null;
+}
+
+export function formatRunnerPlacedDescription(ev, play) {
+  const movement = findRunnerPlacedMovement(ev, play);
+  const runner = ev?.details?.runner ?? movement?.details?.runner;
+  const endBase = movement?.movement?.end || ev?.details?.base || '2B';
+  if (runner?.fullName) {
+    return `${runner.fullName} starts inning at ${formatBaseName(endBase)}.`;
+  }
+
+  const raw = ev?.details?.description || ev?.details?.call?.description || 'Runner starts inning at 2nd base.';
+  return normalizeDescription(raw);
+}
+
 function buildScoringParticipantIds(play, fallbackRunnerId = null) {
   const ids = new Set();
   const batterId = play?.matchup?.batter?.id;
@@ -317,11 +348,13 @@ export function buildSummaryItems(allPlays, gameData) {
       const rawDescription = ev.details?.description || ev.details?.call?.description || '';
       const outOccurred = playEventRecordedOut(play, eventIdx, ev);
       const runnerId = ev.details?.runner?.id;
-      const { description, outsLabel } = buildPlayDescription(
-        rawDescription,
-        ev.count?.outs ?? play.count?.outs,
-        outOccurred,
-      );
+      const { description, outsLabel } = eventType === 'runner_placed'
+        ? { description: formatRunnerPlacedDescription(ev, play), outsLabel: null }
+        : buildPlayDescription(
+            rawDescription,
+            ev.count?.outs ?? play.count?.outs,
+            outOccurred,
+          );
       const sortTime = ev.startTime || play.about?.startTime || null;
       items.push({
         kind: 'action',

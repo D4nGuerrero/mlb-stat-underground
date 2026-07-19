@@ -3,6 +3,7 @@ import {
   buildPlayDescription,
   playRecordedOut,
   formatPitchingChangeDescription,
+  formatRunnerPlacedDescription,
   formatSubstitutionDescription,
   formatGameAdvisoryDescription,
   isNotableGameAdvisory,
@@ -220,11 +221,13 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
   if (isPickoffEventType(eventType)) return;
 
   const raw = ev.details?.description || ev.details?.call?.description || '';
-  const { description, outsLabel } = buildPlayDescription(
-    raw,
-    ev.count?.outs ?? play.count?.outs,
-    false,
-  );
+  const { description, outsLabel } = eventType === 'runner_placed'
+    ? { description: formatRunnerPlacedDescription(ev, play), outsLabel: null }
+    : buildPlayDescription(
+        raw,
+        ev.count?.outs ?? play.count?.outs,
+        false,
+      );
   const meta = inningMeta(play.about, ordinals);
   const sortTime = ev.startTime || play.about?.startTime || null;
   rows.push({
@@ -238,6 +241,7 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
     ...meta,
     sortTime,
   });
+  if (eventType === 'runner_placed') return;
   pushRunnersRow(
     rows,
     play,

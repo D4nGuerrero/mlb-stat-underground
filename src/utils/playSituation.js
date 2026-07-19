@@ -79,8 +79,33 @@ function seedOccupied(initial) {
 export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity) {
   const initial = getInitialBasesForPlay(play, allPlays);
   const { occupied, setRunner, clearRunner } = seedOccupied(initial);
+  const runnerMovements = [...(play.runners ?? [])];
 
-  const sorted = [...(play.runners ?? [])].sort(
+  for (const ev of play.playEvents ?? []) {
+    if (ev?.details?.eventType !== 'runner_placed' || !ev.details?.runner?.id) continue;
+    const playIndex = ev.index ?? 0;
+    const hasMovement = runnerMovements.some((runner) => (
+      runner?.details?.eventType === 'runner_placed' &&
+      runner?.details?.runner?.id === ev.details.runner.id &&
+      runner?.details?.playIndex === playIndex
+    ));
+    if (hasMovement) continue;
+
+    runnerMovements.push({
+      details: {
+        eventType: 'runner_placed',
+        playIndex,
+        runner: ev.details.runner,
+      },
+      movement: {
+        start: null,
+        end: ev.details?.base || '2B',
+        isOut: false,
+      },
+    });
+  }
+
+  const sorted = runnerMovements.sort(
     (a, b) => (a.details?.playIndex ?? 0) - (b.details?.playIndex ?? 0),
   );
 
