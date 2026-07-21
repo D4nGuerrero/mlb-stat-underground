@@ -3544,15 +3544,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
         />
         <div className="justify-self-end flex items-center justify-end gap-2 min-w-[4.5rem]">
-          {isLive ? (
-            <div className="flex items-center gap-1 text-[10px] text-red-400">
-              <div className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" />
-              <span>
-                {ls?.inningHalf === 'Top' ? '▲' : '▼'}
-                {ls?.currentInning}
-              </span>
-            </div>
-          ) : null}
+         
           <WatchMenu
             gamePk={gamePk}
             logoSrc={leagueLogoSrc}

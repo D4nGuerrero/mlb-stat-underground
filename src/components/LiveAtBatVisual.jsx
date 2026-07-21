@@ -127,6 +127,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   showHotZones = false,
   usePurpleInPlayOuts = false,
   immersiveField = false,
+  fieldZoom = null,
+  fieldZoomFocusX = STRIKE_ZONE_FIELD_LEFT_PCT,
   onPitchLanded: onPitchLandedProp = null,
   className = '',
 }) {
@@ -293,15 +295,22 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     setBatterArtFailed(false);
   }, [batterLayerUrls.jersey, batterLayerUrls.pants]);
 
-  const fieldLayerClass = immersiveField
+  const defaultFieldLayerClass = immersiveField
     ? 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-[155%] 2xl:w-[145%]'
     : 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
-  const pitchOverlayFieldClass = immersiveField
-    ? 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-[155%] 2xl:w-[145%]'
-    : 'absolute left-1/2 top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[140%] lg:w-full';
+  const detailZoomPct = fieldZoom != null ? `${fieldZoom * 100}%` : null;
+  const detailZoomLeftPct = fieldZoom != null
+    ? `${50 + fieldZoom * (50 - fieldZoomFocusX)}%`
+    : undefined;
+  const fieldLayerClass = fieldZoom != null
+    ? 'absolute top-1/2 w-[285%] -translate-x-1/2 -translate-y-1/2 sm:w-[185%] md:w-[var(--field-zoom)]'
+    : defaultFieldLayerClass;
+  const pitchOverlayFieldClass = fieldLayerClass;
   const fieldAnchoredBatterClass = immersiveField
     ? 'absolute z-20 pointer-events-none'
-    : 'absolute z-20 pointer-events-none lg:hidden';
+    : fieldZoom != null
+      ? 'absolute z-20 pointer-events-none'
+      : 'absolute z-20 pointer-events-none lg:hidden';
 
   return (
     <div
@@ -316,6 +325,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
           className={fieldLayerClass}
           style={{
             aspectRatio: `${FIELD_ASPECT}`,
+            '--field-zoom': detailZoomPct,
+            left: detailZoomLeftPct,
             backgroundColor: !strikeZoneTopSrc && !singleFieldImageUrl ? '#0f172a' : undefined,
           }}
         >
@@ -361,7 +372,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
       </div>
 
       <div
-        className={`pointer-events-none absolute z-20 ${immersiveField ? 'hidden' : 'hidden lg:block'}`}
+        className={`pointer-events-none absolute z-20 ${immersiveField || fieldZoom != null ? 'hidden' : 'hidden lg:block'}`}
         style={{
           top: `${BATTER_FIELD_TOP_PCT}%`,
           width: `${BATTER_FIELD_WIDTH_PCT}%`,
@@ -393,7 +404,11 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
         {/* This overlay repeats the same field transform so the strike zone scales with the background. */}
         <div
           className={pitchOverlayFieldClass}
-          style={{ aspectRatio: `${FIELD_ASPECT}` }}
+          style={{
+            aspectRatio: `${FIELD_ASPECT}`,
+            '--field-zoom': detailZoomPct,
+            left: detailZoomLeftPct,
+          }}
         >
           <div
             className={fieldAnchoredBatterClass}
