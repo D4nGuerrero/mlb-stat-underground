@@ -61,6 +61,8 @@ export default function TeamPicker({ label, selected, onSelect, exclude, teams }
           setOpen(false);
           setQuery('');
         }}
+        backDismiss
+        historyKey={`teamPicker-${label}`}
         title={`Select ${label} Team`}
         size="sm"
         panelClassName="overflow-hidden"

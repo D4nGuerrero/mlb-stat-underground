@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'rea
 import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { compactPlayerName, mlbTeams, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
-import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
+import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, BottomSheetModal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
@@ -1726,7 +1726,6 @@ function RosterTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const countryListRef = useRef(null);
-  const countrySheetHistoryRef = useRef(false);
 
   const clearCountrySheetState = useCallback(() => {
     saveTeamPageState(teamId, { activeTab: 'roster', rosterCountry: null, rosterCountryScroll: 0 });
@@ -1756,13 +1755,6 @@ function RosterTab({
   const selectedCountryGroup = countryGroups.find((group) => group.country === selectedCountry);
 
   const closeCountrySheet = useCallback(() => {
-    if (countrySheetHistoryRef.current) {
-      countrySheetHistoryRef.current = false;
-      clearCountrySheetState();
-      window.history.back();
-      return;
-    }
-
     clearCountrySheetState();
   }, [clearCountrySheetState]);
 
@@ -1773,29 +1765,6 @@ function RosterTab({
       el.scrollTop = selectedCountryScroll || 0;
     });
   }, [selectedCountryGroup, selectedCountryScroll]);
-
-  useEffect(() => {
-    if (!selectedCountryGroup || countrySheetHistoryRef.current) return;
-
-    if (window.history.state?.rosterCountrySheet) {
-      countrySheetHistoryRef.current = true;
-      return;
-    }
-
-    window.history.pushState({ ...(window.history.state ?? {}), rosterCountrySheet: true }, '');
-    countrySheetHistoryRef.current = true;
-  }, [selectedCountryGroup]);
-
-  useEffect(() => {
-    const onPopState = () => {
-      if (!selectedCountryGroup) return;
-      countrySheetHistoryRef.current = false;
-      clearCountrySheetState();
-    };
-
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [clearCountrySheetState, selectedCountryGroup]);
 
   if (loading) return <LoadingSpinner size="lg" py="py-16" />;
   if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
@@ -1866,6 +1835,8 @@ function RosterTab({
       <Modal
         open={Boolean(selectedCountryGroup)}
         onClose={closeCountrySheet}
+        backDismiss
+        historyKey="rosterCountrySheet"
         title={selectedCountryGroup ? `${selectedCountryGroup.country} Players` : 'Players'}
         size="md"
         panelClassName="max-h-[85vh] overflow-hidden"
@@ -2155,93 +2126,92 @@ function InjuriesTab({ teamId, season, onNavigateAway }) {
 }
 
 function TeamTradeDetailModal({ txn, tradeBundle, tradeLoading, onClose, onNavigateAway }) {
-  if (!txn) return null;
-  const tradeGroups = groupTradePlayersByReceivingTeam(tradeBundle);
+  const isOpen = Boolean(txn);
+  const tradeGroups = txn ? groupTradePlayersByReceivingTeam(tradeBundle) : [];
 
   return (
-    <Modal
-      open={Boolean(txn)}
+    <BottomSheetModal
+      open={isOpen}
       onClose={onClose}
-      backDismiss
       historyKey="teamTradeDetail"
-      size="lg"
-      panelClassName="max-h-[90vh] sm:max-h-[85vh] overflow-y-auto bg-[#0d1520] border-slate-700/70"
     >
-      <div className="p-5 sm:p-6 space-y-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className={`text-lg sm:text-xl font-bold text-${THEME_COLOR}-300`}>Trade</div>
-            <p className="text-sm text-slate-500 mt-1">{fmtDateWithYear(txn.date)}</p>
+      {txn && (
+        <div className="p-5 sm:p-6 space-y-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className={`text-lg sm:text-xl font-bold text-${THEME_COLOR}-300`}>Trade</div>
+              <p className="text-sm text-slate-500 mt-1">{fmtDateWithYear(txn.date)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-lg flex-shrink-0"
+              aria-label="Close"
+            >
+              ×
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-lg flex-shrink-0"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
 
-        {tradeLoading ? (
-          <LoadingSpinner size="md" py="py-8" />
-        ) : tradeGroups.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {tradeGroups.map(({ team, players }) => (
-              <div key={team.id} className="rounded-3xl border border-slate-700/60 bg-slate-900/70 p-4">
-                <div className="mb-3 flex items-center gap-3">
-                  <img src={teamLogoUrl(team.id)} alt="" className="h-12 w-12 object-contain" />
-                  <div className="min-w-0">
-                    <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Receives</div>
-                    <div className="truncate font-bold text-slate-100">{team.name}</div>
+          {tradeLoading ? (
+            <LoadingSpinner size="md" py="py-8" />
+          ) : tradeGroups.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {tradeGroups.map(({ team, players }) => (
+                <div key={team.id} className="rounded-3xl border border-slate-700/60 bg-slate-900/70 p-4">
+                  <div className="mb-3 flex items-center gap-3">
+                    <img src={teamLogoUrl(team.id)} alt="" className="h-12 w-12 object-contain" />
+                    <div className="min-w-0">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Receives</div>
+                      <div className="truncate font-bold text-slate-100">{team.name}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {players.map((person) => (
+                      person.cash ? (
+                        <div
+                          key={person.id}
+                          className="flex items-center gap-2 rounded-2xl bg-slate-800/50 px-3 py-2"
+                        >
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-lg" aria-hidden>
+                            💵
+                          </span>
+                          <span className="text-sm font-semibold text-slate-200">Cash Considerations</span>
+                        </div>
+                      ) : (
+                        <Link
+                          key={person.id}
+                          to={`/player/${person.id}`}
+                          onClick={onNavigateAway}
+                          className="flex items-center gap-2 rounded-2xl bg-slate-800/50 px-3 py-2 transition-colors hover:bg-slate-800"
+                        >
+                          <img
+                            src={playerHeadshotUrl(person.id)}
+                            alt=""
+                            className="h-9 w-9 rounded-full object-cover bg-slate-700"
+                            onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+                          />
+                          <span className="text-sm font-semibold text-slate-200">{person.fullName}</span>
+                        </Link>
+                      )
+                    ))}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  {players.map((person) => (
-                    person.cash ? (
-                      <div
-                        key={person.id}
-                        className="flex items-center gap-2 rounded-2xl bg-slate-800/50 px-3 py-2"
-                      >
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-lg" aria-hidden>
-                          💵
-                        </span>
-                        <span className="text-sm font-semibold text-slate-200">Cash Considerations</span>
-                      </div>
-                    ) : (
-                      <Link
-                        key={person.id}
-                        to={`/player/${person.id}`}
-                        onClick={onNavigateAway}
-                        className="flex items-center gap-2 rounded-2xl bg-slate-800/50 px-3 py-2 transition-colors hover:bg-slate-800"
-                      >
-                        <img
-                          src={playerHeadshotUrl(person.id)}
-                          alt=""
-                          className="h-9 w-9 rounded-full object-cover bg-slate-700"
-                          onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-                        />
-                        <span className="text-sm font-semibold text-slate-200">{person.fullName}</span>
-                      </Link>
-                    )
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">
-            Trade details are unavailable for this row.
-          </div>
-        )}
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">
+              Trade details are unavailable for this row.
+            </div>
+          )}
 
-        {txn.description && (
-          <p className="border-t border-slate-800/60 pt-4 text-sm leading-relaxed text-slate-400">
-            {txn.description}
-          </p>
-        )}
-      </div>
-    </Modal>
+          {txn.description && (
+            <p className="border-t border-slate-800/60 pt-4 text-sm leading-relaxed text-slate-400">
+              {txn.description}
+            </p>
+          )}
+        </div>
+      )}
+    </BottomSheetModal>
   );
 }
 

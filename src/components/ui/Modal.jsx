@@ -8,6 +8,46 @@ import {
   TransitionChild,
 } from '@headlessui/react';
 
+const modalHistoryStack = [];
+let modalHistoryListenerInstalled = false;
+
+function getModalHistoryStack(state = window.history.state) {
+  return Array.isArray(state?.__modalStack) ? state.__modalStack : [];
+}
+
+function registerModalHistoryEntry(entry) {
+  const existingIndex = modalHistoryStack.findIndex((item) => item.key === entry.key);
+  if (existingIndex >= 0) {
+    modalHistoryStack.splice(existingIndex, 1, entry);
+  } else {
+    modalHistoryStack.push(entry);
+  }
+}
+
+function unregisterModalHistoryEntry(key) {
+  const existingIndex = modalHistoryStack.findIndex((item) => item.key === key);
+  if (existingIndex >= 0) modalHistoryStack.splice(existingIndex, 1);
+}
+
+function modalTokenBelongsToKey(token, key) {
+  return typeof token === 'string' && token.startsWith(`${key}:`);
+}
+
+function ensureModalHistoryListener() {
+  if (modalHistoryListenerInstalled || typeof window === 'undefined') return;
+  modalHistoryListenerInstalled = true;
+
+  window.addEventListener('popstate', (event) => {
+    const top = modalHistoryStack[modalHistoryStack.length - 1];
+    if (!top) return;
+
+    // If the new history entry still contains this modal, Back was for some
+    // deeper browser entry. Otherwise, dismiss exactly the top visible sheet.
+    if (getModalHistoryStack(event.state).includes(top.token)) return;
+    top.closeFromBack();
+  });
+}
+
 export default function Modal({
   open,
   onClose,
@@ -21,45 +61,70 @@ export default function Modal({
   historyKey = 'appModal',
 }) {
   const historyActiveRef = useRef(false);
-  const suppressNextPopRef = useRef(false);
+  const closedByBackRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const historyTokenRef = useRef(null);
 
   useEffect(() => {
-    if (!backDismiss) return undefined;
-
-    const onPopState = () => {
-      if (suppressNextPopRef.current) {
-        suppressNextPopRef.current = false;
-        return;
-      }
-      if (!open || !historyActiveRef.current) return;
-      historyActiveRef.current = false;
-      onClose?.();
-    };
-
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [backDismiss, onClose, open]);
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!backDismiss) return;
 
     const stateKey = `__${historyKey}`;
+    const entryKey = historyKey;
     if (open && !historyActiveRef.current) {
-      if (window.history.state?.[stateKey]) {
-        historyActiveRef.current = true;
-        return;
-      }
-      window.history.pushState({ ...(window.history.state ?? {}), [stateKey]: true }, '');
+      closedByBackRef.current = false;
+      ensureModalHistoryListener();
+      const entryToken = `${entryKey}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+      historyTokenRef.current = entryToken;
+      registerModalHistoryEntry({
+        key: entryKey,
+        token: entryToken,
+        closeFromBack: () => {
+          closedByBackRef.current = true;
+          historyActiveRef.current = false;
+          unregisterModalHistoryEntry(entryKey);
+          onCloseRef.current?.();
+        },
+      });
+
+      const currentState = window.history.state ?? {};
+      const currentStack = getModalHistoryStack(currentState);
+      window.history.pushState({
+        ...currentState,
+        [stateKey]: true,
+        __modalStack: [
+          ...currentStack.filter((token) => !modalTokenBelongsToKey(token, entryKey)),
+          entryToken,
+        ],
+      }, '');
       historyActiveRef.current = true;
       return;
     }
 
     if (!open && historyActiveRef.current) {
       historyActiveRef.current = false;
-      suppressNextPopRef.current = true;
-      window.history.back();
+      unregisterModalHistoryEntry(entryKey);
+      if (closedByBackRef.current) {
+        closedByBackRef.current = false;
+        historyTokenRef.current = null;
+        return;
+      }
+
+      const entryToken = historyTokenRef.current;
+      historyTokenRef.current = null;
+      if (entryToken && getModalHistoryStack().includes(entryToken)) {
+        window.history.back();
+      }
     }
   }, [backDismiss, historyKey, open]);
+
+  useEffect(() => () => {
+    if (!backDismiss) return;
+    unregisterModalHistoryEntry(historyKey);
+  }, [backDismiss, historyKey]);
 
   const maxWidth = {
     sm: 'max-w-sm',

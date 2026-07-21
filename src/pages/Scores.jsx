@@ -775,6 +775,24 @@ export default function Scores() {
             ? `${game.linescore.balls ?? 0}-${game.linescore.strikes ?? 0}`
             : null;
           const liveOuts = Number(game.linescore?.outs ?? 0);
+          const statusBadge = isPostponed ? (
+            <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-400 rounded-lg font-bold">PPD</span>
+          ) : isDelayed && !isLive ? (
+            <div className="flex flex-col items-start">
+              <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
+              {game.gameDate && <span className="text-[9px] text-slate-600 font-mono mt-0.5">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+            </div>
+          ) : isDelayed ? (
+            <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
+          ) : isFinal ? (
+            <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">{formatFinalStatus(game.linescore)}</span>
+          ) : !isLive ? (
+            <span className="text-xs text-slate-500">
+              {game.gameDate
+                ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                : '—'}
+            </span>
+          ) : null;
           return (
             <div
               key={game.gamePk}
@@ -802,7 +820,7 @@ export default function Scores() {
                       <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
                     </span>
                   ) : (
-                    <span className="text-[10px] text-slate-700">&nbsp;</span>
+                    statusBadge
                   )}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -811,16 +829,7 @@ export default function Scores() {
                       {a.label}
                     </span>
                   ))}
-                  {isPostponed ? (
-                    <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-400 rounded-lg font-bold">PPD</span>
-                  ) : isDelayed && !isLive ? (
-                    <div className="flex flex-col items-end">
-                      <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
-                      {game.gameDate && <span className="text-[9px] text-slate-600 font-mono mt-0.5">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
-                    </div>
-                  ) : isDelayed ? (
-                    <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
-                  ) : isLive ? (
+                  {isLive ? (
                     game.linescore ? (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-slate-300">
                         <span className="text-red-300">{formatLiveInningLabel(game.linescore)}</span>
@@ -837,15 +846,7 @@ export default function Scores() {
                     ) : (
                       <span className="text-xs text-red-400 font-bold">LIVE</span>
                     )
-                  ) : isFinal ? (
-                    <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">{formatFinalStatus(game.linescore)}</span>
-                  ) : (
-                    <span className="text-xs text-slate-500">
-                      {game.gameDate
-                        ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                        : '—'}
-                    </span>
-                  )}
+                  ) : null}
                   <i
                     className={`fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     aria-hidden

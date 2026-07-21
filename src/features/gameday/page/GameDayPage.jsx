@@ -1913,6 +1913,7 @@ function FinalGameHeader({
   onTeamSelect,
   onPlayerSelect,
   onOpenPitchBreakdown,
+  onOpenSituationBreakdown,
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 bg-[#121827]">
@@ -1966,6 +1967,16 @@ function FinalGameHeader({
             >
               <i className="fa-solid fa-chart-simple text-[10px]" aria-hidden />
               Pitch breakdown
+            </button>
+          )}
+          {onOpenSituationBreakdown && (
+            <button
+              type="button"
+              onClick={onOpenSituationBreakdown}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200`}
+            >
+              <i className="fa-solid fa-diamond text-[10px]" aria-hidden />
+              Situation breakdown
             </button>
           )}
         </div>
@@ -2476,6 +2487,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [situationBreakdownOpen, setSituationBreakdownOpen] = useState(false);
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
+  const suppressNextSheetPopRef = useRef(false);
   const summaryScrollYRef = useRef(0);
   const feedTimecodeRef = useRef(null);
   const [expandedVideoKey, setExpandedVideoKey] = useState(null);
@@ -2826,13 +2838,19 @@ function GamePageContent({ gamePk, navigate, location }) {
     restoreSituationBreakdownView(situationReturnState);
     if (sheetHistoryRef.current) {
       sheetHistoryRef.current = false;
+      suppressNextSheetPopRef.current = true;
       window.history.back();
     }
   }, [pitchCountReturn, situationReturn, restorePitchCountView, restoreSituationBreakdownView]);
 
   useEffect(() => {
-    const onPopState = () => {
+    const onPopState = (event) => {
+      if (suppressNextSheetPopRef.current) {
+        suppressNextSheetPopRef.current = false;
+        return;
+      }
       if (selectedPlay) {
+        if (event.state?.mlbSheet) return;
         sheetHistoryRef.current = false;
         setSelectedPlay(null);
         setSelectedPlayTargetPitchKey(null);
@@ -3237,6 +3255,27 @@ function GamePageContent({ gamePk, navigate, location }) {
   const recentPlaysPanel = (
     <div className="relative z-0 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-visible">
       <div className="pointer-events-none absolute -top-4 left-0 right-0 z-30 h-5 bg-slate-900 sm:rounded-t-2xl" aria-hidden />
+      <div className="relative z-20 hidden items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-3 py-2 xl:flex sm:rounded-t-2xl">
+        <div className="min-w-0">
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+            Recent Plays
+          </div>
+          <div className="text-[10px] font-semibold text-slate-600">
+            {leftRailView === 'summary' ? `${summaryItems.length} plays` : `${liveRecentRows.length} events`}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSituationReturn(null);
+            setSituationBreakdownOpen(true);
+          }}
+          className={`inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-950/45 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200`}
+        >
+          <i className="fa-solid fa-diamond text-[9px]" aria-hidden />
+          Situation
+        </button>
+      </div>
       {/* <div className="relative z-20 bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between sm:rounded-t-2xl">
         <span className="xl:hidden text-[10px] text-slate-500 uppercase tracking-widest">
           Recent Plays
@@ -3437,6 +3476,10 @@ function GamePageContent({ gamePk, navigate, location }) {
           onTeamSelect={(teamId) => navigate(`/team/${teamId}`)}
           onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
           onOpenPitchBreakdown={() => setPitchCountSheetOpen(true)}
+          onOpenSituationBreakdown={() => {
+            setSituationReturn(null);
+            setSituationBreakdownOpen(true);
+          }}
         />
         <div className="min-h-0 flex-1 overflow-hidden">
           {desktopLiveBoxScorePanel}

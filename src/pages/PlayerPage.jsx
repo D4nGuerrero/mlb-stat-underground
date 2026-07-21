@@ -17,6 +17,7 @@ import {
   Select,
   TabBar,
   Modal,
+  BottomSheetModal,
   scrollStickyYearHead,
   scrollStickyYearCell,
   scrollStickyTeamAbbrHead,
@@ -1639,129 +1640,129 @@ function TransactionPlayerLink({ person, onNavigate }) {
 }
 
 function TransactionDetailModal({ txn, tradeBundle, tradeLoading, onClose, onPlayerClick }) {
-  if (!txn) return null;
-
-  const isTrade = isTradeTransaction(txn);
+  const isTrade = txn ? isTradeTransaction(txn) : false;
   const tradeGroups = isTrade ? groupTradePlayers(tradeBundle) : [];
 
   return (
-    <Modal
+    <BottomSheetModal
       open={Boolean(txn)}
       onClose={onClose}
-      size="lg"
-      panelClassName="max-h-[90vh] sm:max-h-[85vh] overflow-y-auto bg-[#0d1520] border-slate-700/70"
+      historyKey="playerTransactionDetail"
     >
-      <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
-        <div className="w-10 h-1 rounded-full bg-slate-600" />
-      </div>
-
-      <div className="p-5 sm:p-6 space-y-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <TransactionTypeLabel typeDesc={txn.typeDesc ?? txn.description} className="text-lg sm:text-xl" />
-            <p className="text-sm text-slate-500 mt-1">{fmtDate(txn.date)}</p>
+      {txn && (
+        <>
+          <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
+            <div className="w-10 h-1 rounded-full bg-slate-600" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-lg flex-shrink-0"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
 
-        {!isTrade && txn.fromTeam?.id && txn.toTeam?.id && (
-          <div className="flex items-center justify-center gap-4 sm:gap-6 py-1">
-            <div className="flex flex-col items-center gap-1">
-              <img src={teamLogoUrl(txn.fromTeam.id)} alt="" className="w-12 h-12 object-contain" />
-              <span className="text-[10px] text-slate-500">{getTeamAbbr(txn.fromTeam) ?? txn.fromTeam.name}</span>
-            </div>
-            <i className="fa-solid fa-arrow-right-long text-slate-500" aria-hidden />
-            <div className="flex flex-col items-center gap-1">
-              <img src={teamLogoUrl(txn.toTeam.id)} alt="" className="w-12 h-12 object-contain" />
-              <span className="text-[10px] text-slate-500">{getTeamAbbr(txn.toTeam) ?? txn.toTeam.name}</span>
-            </div>
-          </div>
-        )}
-
-        {isTrade && (
-          <div className="space-y-3">
-            {tradeLoading ? (
-              <LoadingSpinner size="md" py="py-6" />
-            ) : tradeGroups.length > 0 ? (
-              <>
-                <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                  {tradeGroups.map(({ team }) => (
-                    <div key={`trade-logo-${team.id}`} className="flex flex-col items-center gap-1.5 min-w-0 px-1">
-                      <img
-                        src={teamLogoUrl(team.id)}
-                        alt=""
-                        className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
-                      />
-                      <span className="text-xs sm:text-sm text-slate-400 text-center leading-tight">
-                        {getTeamAbbr(team) ?? team.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  {tradeGroups.map(({ team, players }) => (
-                    <div
-                      key={team.id}
-                      className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-3 sm:p-4"
-                    >
-                      <ReceivesLabel />
-                      <ul className="space-y-2">
-                        {players.map((person) => (
-                          <li key={person.id} className="flex items-center gap-2">
-                            {person.cash ? (
-                              <span className="flex w-8 h-8 items-center justify-center rounded-full bg-emerald-500/10 text-base flex-shrink-0" aria-hidden>
-                                💵
-                              </span>
-                            ) : (
-                              <img
-                                src={playerHeadshotUrl(person.id)}
-                                alt=""
-                                className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
-                              />
-                            )}
-                            <TransactionPlayerLink person={person} onNavigate={onPlayerClick} />
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : txn.person?.id ? (
-              <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex items-center gap-3">
-                <img
-                  src={playerHeadshotUrl(txn.person.id)}
-                  alt=""
-                  className="w-10 h-10 rounded-full object-cover bg-slate-700"
-                />
-                <TransactionPlayerLink person={txn.person} onNavigate={onPlayerClick} />
+          <div className="p-5 sm:p-6 space-y-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <TransactionTypeLabel typeDesc={txn.typeDesc ?? txn.description} className="text-lg sm:text-xl" />
+                <p className="text-sm text-slate-500 mt-1">{fmtDate(txn.date)}</p>
               </div>
-            ) : null}
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-lg flex-shrink-0"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
 
-        {txn.description && (
-          <p className="text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
-            {formatCashTransactionText(txn.description)}
-          </p>
-        )}
-      </div>
-    </Modal>
+            {!isTrade && txn.fromTeam?.id && txn.toTeam?.id && (
+              <div className="flex items-center justify-center gap-4 sm:gap-6 py-1">
+                <div className="flex flex-col items-center gap-1">
+                  <img src={teamLogoUrl(txn.fromTeam.id)} alt="" className="w-12 h-12 object-contain" />
+                  <span className="text-[10px] text-slate-500">{getTeamAbbr(txn.fromTeam) ?? txn.fromTeam.name}</span>
+                </div>
+                <i className="fa-solid fa-arrow-right-long text-slate-500" aria-hidden />
+                <div className="flex flex-col items-center gap-1">
+                  <img src={teamLogoUrl(txn.toTeam.id)} alt="" className="w-12 h-12 object-contain" />
+                  <span className="text-[10px] text-slate-500">{getTeamAbbr(txn.toTeam) ?? txn.toTeam.name}</span>
+                </div>
+              </div>
+            )}
+
+            {isTrade && (
+              <div className="space-y-3">
+                {tradeLoading ? (
+                  <LoadingSpinner size="md" py="py-6" />
+                ) : tradeGroups.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                      {tradeGroups.map(({ team }) => (
+                        <div key={`trade-logo-${team.id}`} className="flex flex-col items-center gap-1.5 min-w-0 px-1">
+                          <img
+                            src={teamLogoUrl(team.id)}
+                            alt=""
+                            className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                          />
+                          <span className="text-xs sm:text-sm text-slate-400 text-center leading-tight">
+                            {getTeamAbbr(team) ?? team.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                      {tradeGroups.map(({ team, players }) => (
+                        <div
+                          key={team.id}
+                          className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-3 sm:p-4"
+                        >
+                          <ReceivesLabel />
+                          <ul className="space-y-2">
+                            {players.map((person) => (
+                              <li key={person.id} className="flex items-center gap-2">
+                                {person.cash ? (
+                                  <span className="flex w-8 h-8 items-center justify-center rounded-full bg-emerald-500/10 text-base flex-shrink-0" aria-hidden>
+                                    💵
+                                  </span>
+                                ) : (
+                                  <img
+                                    src={playerHeadshotUrl(person.id)}
+                                    alt=""
+                                    className="w-8 h-8 rounded-full object-cover bg-slate-700 flex-shrink-0"
+                                  />
+                                )}
+                                <TransactionPlayerLink person={person} onNavigate={onPlayerClick} />
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : txn.person?.id ? (
+                  <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex items-center gap-3">
+                    <img
+                      src={playerHeadshotUrl(txn.person.id)}
+                      alt=""
+                      className="w-10 h-10 rounded-full object-cover bg-slate-700"
+                    />
+                    <TransactionPlayerLink person={txn.person} onNavigate={onPlayerClick} />
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {txn.description && (
+              <p className="text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
+                {formatCashTransactionText(txn.description)}
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </BottomSheetModal>
   );
 }
 
 function PlayerTransactionsTab({ playerId, playerInfo }) {
   const navigate = useNavigate();
   const restoredTxnRef = useRef(null);
-  const txnSheetHistoryRef = useRef(false);
   const savedTxnReturn = useMemo(() => readTxnSheetReturn(playerId), [playerId]);
   const [txns, setTxns] = useState([]);
   const [txnFilter, setTxnFilter] = useState('all');
@@ -1779,20 +1780,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const [historicalTradeTxns, setHistoricalTradeTxns] = useState([]);
   const [tradeLookupLoading, setTradeLookupLoading] = useState(false);
 
-  const pushTransactionSheetHistory = useCallback(() => {
-    if (txnSheetHistoryRef.current) return;
-
-    if (window.history.state?.transactionSheet) {
-      txnSheetHistoryRef.current = true;
-      return;
-    }
-
-    window.history.pushState({ ...(window.history.state ?? {}), transactionSheet: true }, '');
-    txnSheetHistoryRef.current = true;
-  }, []);
-
   const openTransaction = useCallback(async (txn) => {
-    pushTransactionSheetHistory();
     setSelectedTxn(txn);
     if (!isTradeTransaction(txn)) {
       setTradeBundle([txn]);
@@ -1804,7 +1792,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
     const bundle = await fetchTradeBundle(txn);
     setTradeBundle(bundle);
     setTradeLoading(false);
-  }, [pushTransactionSheetHistory]);
+  }, []);
 
   useEffect(() => {
     if (!playerId) return undefined;
@@ -1902,24 +1890,7 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
   const closeTransaction = () => {
     clearTxnSheetReturn(playerId);
     setSelectedTxn(null);
-
-    if (txnSheetHistoryRef.current) {
-      txnSheetHistoryRef.current = false;
-      window.history.back();
-    }
   };
-
-  useEffect(() => {
-    const onPopState = () => {
-      if (!selectedTxn) return;
-      txnSheetHistoryRef.current = false;
-      clearTxnSheetReturn(playerId);
-      setSelectedTxn(null);
-    };
-
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [playerId, selectedTxn]);
 
   const handlePlayerClick = (id) => {
     writeTxnSheetReturn(playerId, selectedTxn, yearsBack);
