@@ -624,8 +624,8 @@ export default function Scores() {
         if (isLive) {
           if (game.linescore) {
             return (
-              <div className="flex items-start gap-1.5">
-                <span className="text-[11px] font-bold text-red-400 font-mono tracking-wide leading-none pt-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[14px] font-bold text-white font-mono tracking-wide leading-none pt-0.5">
                   {formatLiveInningLabel(game.linescore)}
                 </span>
                 <div className="flex flex-col items-center gap-0.5">

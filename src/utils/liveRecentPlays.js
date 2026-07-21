@@ -56,20 +56,59 @@ function inningMeta(about, ordinals) {
 function playMovedRunners(play) {
   return (play.runners ?? []).some((r) => {
     const m = r.movement;
-    if (!m || m.isOut) return false;
-    return m.end === '1B' || m.end === '2B' || m.end === '3B' || m.end === 'score';
+    if (!m) return false;
+    if (m.isOut) return true;
+    if (m.end === 'score' || m.end === '4B') return true;
+    if (m.end === '1B' || m.end === '2B' || m.end === '3B') {
+      return m.start !== m.end;
+    }
+    return false;
   });
 }
 
-function pushRunnersRow(rows, play, keySuffix, meta, sortTime, allPlays, maxPlayIndex = null) {
+function baseRunnerId(runner) {
+  return runner?.id ? String(runner.id) : '';
+}
+
+function basesSignature(bases) {
+  return [
+    baseRunnerId(bases.first),
+    baseRunnerId(bases.second),
+    baseRunnerId(bases.third),
+  ].join('|');
+}
+
+function basesChanged(before, after) {
+  return basesSignature(before) !== basesSignature(after);
+}
+
+function pushRunnersRow(
+  rows,
+  play,
+  keySuffix,
+  meta,
+  sortTime,
+  allPlays,
+  maxPlayIndex = null,
+  { outsAfter = null } = {},
+) {
   if (maxPlayIndex == null && !playMovedRunners(play)) return;
-  if (play.count?.outs === 3) return;
+
+  // MLB At Bat does not show a follow-up base-state row for the inning-ending
+  // PA. Keep mid-PA runner updates, but suppress states once the inning is over.
+  const resolvedOutsAfter = Number(outsAfter ?? (maxPlayIndex == null ? play.count?.outs : null));
+  if (Number.isFinite(resolvedOutsAfter) && resolvedOutsAfter >= 3) return;
 
   const bases = maxPlayIndex != null
     ? getBasesAtPlayIndex(play, allPlays, maxPlayIndex)
     : getBasesAfterPlay(play, allPlays);
-  const label = formatRunnersSituationLabel(bases);
-  if (!label) return;
+  const beforeBases = maxPlayIndex != null
+    ? getBasesAtPlayIndex(play, allPlays, maxPlayIndex - 1)
+    : getBasesAtPlayIndex(play, allPlays, -1);
+
+  if (!basesChanged(beforeBases, bases)) return;
+
+  const label = formatRunnersSituationLabel(bases) || 'Bases Empty';
   rows.push({
     kind: 'runners',
     key: `runners-${keySuffix}`,
@@ -136,6 +175,7 @@ function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { inc
     sortTime,
     allPlays,
     ev.index ?? eventIdx,
+    { outsAfter: ev.count?.outs },
   );
   return true;
 }
@@ -250,6 +290,7 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
     sortTime,
     allPlays,
     ev.index ?? eventIdx,
+    { outsAfter: ev.count?.outs },
   );
 }
 
