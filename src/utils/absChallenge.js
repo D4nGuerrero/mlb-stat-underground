@@ -11,6 +11,7 @@ function collectChallengeText(value, depth = 0, out = []) {
   if (typeof value !== 'object') return out;
 
   for (const [key, child] of Object.entries(value)) {
+    if (key.startsWith('__')) continue;
     out.push(key);
     collectChallengeText(child, depth + 1, out);
   }
@@ -29,18 +30,20 @@ function collectChallengeValues(value, depth = 0, out = []) {
   }
   if (typeof value !== 'object') return out;
 
-  for (const child of Object.values(value)) {
+  for (const [key, child] of Object.entries(value)) {
+    if (key.startsWith('__')) continue;
     collectChallengeValues(child, depth + 1, out);
   }
   return out;
 }
 
 export function getAbsChallengeOutcome(event) {
-  const haystack = collectChallengeText(event).join(' ').toLowerCase();
-  if (/\b(upheld|confirmed|stands|unsuccessful)\b/.test(haystack)) return 'Upheld';
-  if (/\b(overturn|overturned|reversed|changed|successful)\b/.test(haystack)) return 'Overturned';
   if (event?.reviewDetails?.isOverturned === true) return 'Overturned';
   if (event?.reviewDetails?.isOverturned === false && isAbsChallengeSignal(event)) return 'Upheld';
+
+  const haystack = collectChallengeText(event).join(' ').toLowerCase();
+  if (/\b(overturn(?:ed)?|reversed|changed|successful)\b/.test(haystack)) return 'Overturned';
+  if (/\b(upheld|confirmed|stands|unsuccessful)\b/.test(haystack)) return 'Upheld';
   return null;
 }
 
@@ -129,7 +132,35 @@ export function getAbsChallengeOutcomeForPitch(playEvents = [], pitchEventIndex 
     const outcome = getAbsChallengeOutcome(playEvents[idx]);
     if (outcome) return outcome;
   }
+  return getPlayLevelAbsChallengeLabelForPitch(playEvents, pitchEventIndex);
+}
+
+function getPlayContext(playEvents = [], pitchEventIndex = -1) {
+  if (pitchEventIndex < 0) return null;
+  return playEvents[pitchEventIndex]?.__playContext ?? null;
+}
+
+function getTerminalPitchEventIndex(playEvents = []) {
+  for (let idx = playEvents.length - 1; idx >= 0; idx -= 1) {
+    if (playEvents[idx]?.isPitch) return idx;
+  }
+  return -1;
+}
+
+export function getAbsChallengeOutcomeFromPlayResult(play) {
+  const text = String(play?.result?.description || play?.result?.event || '').toLowerCase();
+  if (!/(challenged|challenge|pitch result|call on the field)/.test(text)) return null;
+  if (/\b(overturn(?:ed)?|reversed|changed|successful)\b/.test(text)) return 'Overturned';
+  if (/\b(upheld|confirmed|stands|unsuccessful)\b/.test(text)) return 'Upheld';
   return null;
+}
+
+export function getPlayLevelAbsChallengeLabelForPitch(playEvents = [], pitchEventIndex = -1) {
+  const play = getPlayContext(playEvents, pitchEventIndex);
+  if (!play) return null;
+  const terminalPitchIdx = getTerminalPitchEventIndex(playEvents);
+  if (pitchEventIndex !== terminalPitchIdx) return null;
+  return getAbsChallengeOutcomeFromPlayResult(play);
 }
 
 export function getAbsChallengePitchLabelForPitch(playEvents = [], pitchEventIndex = -1) {
@@ -139,7 +170,7 @@ export function getAbsChallengePitchLabelForPitch(playEvents = [], pitchEventInd
     const label = getAbsChallengePitchLabel(playEvents[idx]);
     if (label) return label;
   }
-  return null;
+  return getPlayLevelAbsChallengeLabelForPitch(playEvents, pitchEventIndex);
 }
 
 export function formatPitchDescriptionWithAbsContext(description, event, playEvents, pitchEventIndex) {
@@ -160,7 +191,7 @@ export function getAbsChallengeOutcomeFromPlay(play) {
     const outcome = getAbsChallengeOutcome(events[idx]);
     if (outcome) return outcome;
   }
-  return getAbsChallengeOutcome(play);
+  return getAbsChallengeOutcomeFromPlayResult(play) || getAbsChallengeOutcome(play);
 }
 
 export function formatPlayDescriptionWithAbs(description, playOrEvent) {

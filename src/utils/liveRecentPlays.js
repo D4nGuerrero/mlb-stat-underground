@@ -297,8 +297,12 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
 function pushActiveAtBatEventRows(rows, play, ordinals, allPlays, { includePickoffAttempts = true } = {}) {
   const meta = inningMeta(play.about, ordinals);
   let pitchNumber = 0;
+  const playEventsWithContext = (play.playEvents ?? []).map((event) => ({
+    ...event,
+    __playContext: play,
+  }));
 
-  (play.playEvents ?? []).forEach((ev, eventIdx) => {
+  playEventsWithContext.forEach((ev, eventIdx) => {
     pushPlayEventRows(rows, play, ev, eventIdx, ordinals);
 
     if (pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { includeAttempts: includePickoffAttempts })) {
@@ -338,7 +342,7 @@ function pushActiveAtBatEventRows(rows, play, ordinals, allPlays, { includePicko
     const description = formatPitchDescriptionWithAbsContext(
       ev.details?.description || ev.details?.call?.description || 'Pitch',
       ev,
-      play.playEvents ?? [],
+      playEventsWithContext,
       eventIdx,
     );
     rows.push({

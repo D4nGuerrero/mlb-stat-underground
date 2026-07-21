@@ -111,7 +111,7 @@ export default function PlayDetailSheet({
       open
       onClose={closeSheet}
       size="lg"
-      className="px-2 py-2 sm:px-4 sm:py-4"
+      className="px-0 py-0 sm:px-4 sm:py-4"
       panelClassName="max-h-[88vh] overflow-hidden bg-[#101827] border-slate-700/10 p-0 flex flex-col"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#101827] z-10">
@@ -245,7 +245,7 @@ export default function PlayDetailSheet({
                 const desc = formatPitchDescriptionWithAbsContext(
                   pitch.details?.description || '',
                   pitch,
-                  play.playEvents || [],
+                  playEventsWithContext,
                   eventIdx,
                 );
                 const type = pitch.details?.type?.description || '';

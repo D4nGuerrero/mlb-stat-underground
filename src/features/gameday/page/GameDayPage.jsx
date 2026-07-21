@@ -1413,8 +1413,8 @@ function SituationBreakdownSheet({
       historyKey="situationBreakdown"
       align="bottom"
       size="xl"
-      className="px-2 py-2 sm:px-4 sm:py-4"
-      panelClassName="max-h-[90vh] md:h-[88vh] md:max-h-[88vh] bg-[#101827] border-slate-700/70 p-0 flex flex-col"
+      className="px-0 py-0 sm:px-4 sm:py-4"
+      panelClassName="max-h-[90vh] md:h-[88vh] md:max-h-[88vh] bg-[#101827] border-slate-700/70 p-0 flex flex-col overflow-hidden"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 z-20 bg-[#101827]">
         <div className="h-1 w-10 rounded-full bg-slate-600" />
@@ -1437,8 +1437,8 @@ function SituationBreakdownSheet({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 p-4 sm:p-5">
-        <div className="grid h-full min-h-0 gap-4 md:grid-cols-[19rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]">
+      <div className="gameday-scroll-rail min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 md:overflow-hidden">
+        <div className="grid gap-4 md:h-full md:min-h-0 md:grid-cols-[19rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]">
           <div className="space-y-3">
             <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
               <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Batting Team</div>
@@ -1515,7 +1515,7 @@ function SituationBreakdownSheet({
               </div>
 
               {filteredRows.length ? (
-                <div ref={scrollRef} className="gameday-scroll-rail min-h-[18rem] flex-1 divide-y divide-slate-800/80 overflow-y-auto md:min-h-0">
+                <div ref={scrollRef} className="gameday-scroll-rail min-h-0 flex-1 divide-y divide-slate-800/80 md:overflow-y-auto">
                   {filteredRows.map((row) => {
                     const play = row.play;
                     const badge = getPlayBadge?.(play.result?.eventType, play);
@@ -2932,12 +2932,15 @@ function GamePageContent({ gamePk, navigate, location }) {
   const previewSeason = gd.datetime?.officialDate?.slice(0, 4) || String(new Date().getFullYear());
   const decisions = ld.decisions;
 
-  const allPitchEvents = ld.plays?.currentPlay?.playEvents || [];
+  const currentPlay = ld.plays?.currentPlay;
+  const allPitchEvents = (currentPlay?.playEvents || []).map((event) => ({
+    ...event,
+    __playContext: currentPlay,
+  }));
   const pitchesSoFar = allPitchEvents.filter((e) => e.isPitch);
   const latestPitch = pitchesSoFar[pitchesSoFar.length - 1];
   const szTop = latestPitch?.pitchData?.strikeZoneTop || 3.55;
   const szBot = latestPitch?.pitchData?.strikeZoneBottom || 1.47;
-  const currentPlay = ld.plays?.currentPlay;
   const batSide = currentPlay?.matchup?.batSide?.code || 'R';
   const batterIsAway = ls?.inningHalf === 'Top'; // top inning → away team bats
 
