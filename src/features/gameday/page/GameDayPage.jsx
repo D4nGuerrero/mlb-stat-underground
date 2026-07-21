@@ -1181,7 +1181,7 @@ function SituationBaseSelector({ value, mode, matchMode, onChange, onModeChange,
   };
 
   return (
-    <div className="rounded-3xl border border-slate-700/70 bg-slate-950/55 p-4">
+    <div className="rounded-3xl border border-slate-700/70 bg-slate-950/55 p-4 md:p-3 xl:p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Base State</div>
@@ -1194,7 +1194,7 @@ function SituationBaseSelector({ value, mode, matchMode, onChange, onModeChange,
           <BaseModeButton value="risp" active={isRispPreset} onClick={chooseMode}>RISP</BaseModeButton>
       </div>
 
-      <div className="relative mx-auto h-44 w-full max-w-[18rem]">
+      <div className="relative mx-auto h-44 w-full max-w-[18rem] md:h-48 xl:h-52 xl:max-w-[20rem]">
         <div className="absolute left-1/2 top-[22%] h-24 w-24 -translate-x-1/2 rotate-45 rounded-[1.75rem] border border-slate-800 bg-slate-900/45" />
         {BASE_FILTERS.map((base) => {
           const active = value[base.key];
@@ -1204,7 +1204,7 @@ function SituationBaseSelector({ value, mode, matchMode, onChange, onModeChange,
               type="button"
               onClick={() => toggleBase(base.key)}
               className={[
-                'absolute grid h-20 w-20 place-items-center rounded-2xl border rotate-45 transition-all focus:outline-none focus:ring-2 focus:ring-white/25',
+                'absolute grid h-20 w-20 place-items-center rounded-2xl border rotate-45 transition-all focus:outline-none focus:ring-2 focus:ring-white/25 xl:h-24 xl:w-24 xl:rounded-[1.7rem]',
                 base.position,
                 active
                   ? `border-${THEME_COLOR}-300 bg-${THEME_COLOR}-400 text-slate-950 shadow-lg shadow-${THEME_COLOR}-950/30`
@@ -1213,7 +1213,7 @@ function SituationBaseSelector({ value, mode, matchMode, onChange, onModeChange,
               aria-pressed={active}
               aria-label={`Toggle runner on ${base.shortLabel}`}
             >
-              <span className="-rotate-45 text-lg font-black">{base.label}</span>
+              <span className="-rotate-45 text-lg font-black xl:text-xl">{base.label}</span>
             </button>
           );
         })}
@@ -1413,7 +1413,8 @@ function SituationBreakdownSheet({
       historyKey="situationBreakdown"
       align="bottom"
       size="xl"
-      panelClassName="max-h-[90vh] bg-[#101827] border-slate-700/70 p-0"
+      className="px-2 py-2 sm:px-4 sm:py-4"
+      panelClassName="max-h-[90vh] md:h-[88vh] md:max-h-[88vh] bg-[#101827] border-slate-700/70 p-0 flex flex-col"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 z-20 bg-[#101827]">
         <div className="h-1 w-10 rounded-full bg-slate-600" />
@@ -1436,8 +1437,8 @@ function SituationBreakdownSheet({
         </button>
       </div>
 
-      <div ref={scrollRef} className="gameday-scroll-rail max-h-[calc(90vh-4.75rem)] overflow-y-auto p-4 sm:p-5">
-        <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+      <div className="min-h-0 flex-1 p-4 sm:p-5">
+        <div className="grid h-full min-h-0 gap-4 md:grid-cols-[19rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]">
           <div className="space-y-3">
             <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
               <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Batting Team</div>
@@ -1465,7 +1466,7 @@ function SituationBreakdownSheet({
                 onMatchModeChange={setMatchMode}
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
               <div className="rounded-2xl border border-slate-700/70 bg-slate-950/45 p-4">
                 <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Match</div>
                 <SituationMatchModeControl value={matchMode} onChange={setMatchMode} />
@@ -1479,7 +1480,7 @@ function SituationBreakdownSheet({
             </div>
           </div>
 
-          <div className="min-w-0 space-y-4">
+          <div className="flex min-h-0 min-w-0 flex-col gap-4">
             <div className="flex items-center gap-3 rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
               {selectedTeam ? (
                 <img src={teamLogoUrl(selectedTeam.id)} alt="" className="h-12 w-12 object-contain" />
@@ -1498,7 +1499,7 @@ function SituationBreakdownSheet({
               </div>
               <BaseDiamondIndicator {...baseFilter} size="lg" className="ml-auto text-white" />
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 xl:grid-cols-6">
               <SituationStatCard label="PA" value={totals.pa} />
               <SituationStatCard label="Runs" value={totals.runs} />
               <SituationStatCard label="Hits" value={totals.hits} />
@@ -1507,14 +1508,14 @@ function SituationBreakdownSheet({
               <SituationStatCard label="AVG" value={totals.avg} subLabel={`${totals.atBats} AB`} />
             </div>
 
-            <div className="overflow-hidden rounded-3xl border border-slate-700/70 bg-slate-950/45">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-slate-700/70 bg-slate-950/45">
               <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Results</div>
                 <div className="text-xs font-semibold text-slate-500">{filteredRows.length} PA</div>
               </div>
 
               {filteredRows.length ? (
-                <div className="divide-y divide-slate-800/80">
+                <div ref={scrollRef} className="gameday-scroll-rail min-h-[18rem] flex-1 divide-y divide-slate-800/80 overflow-y-auto md:min-h-0">
                   {filteredRows.map((row) => {
                     const play = row.play;
                     const badge = getPlayBadge?.(play.result?.eventType, play);
