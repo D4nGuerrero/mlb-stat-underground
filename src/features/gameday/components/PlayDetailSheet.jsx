@@ -150,7 +150,7 @@ export default function PlayDetailSheet({
 
           <PlayDetailStatcastStrip hitData={hitData} />
 
-          <div className="border-y border-slate-700/50 py-4">
+          <div className="border- border-slate-700/50 py-4">
             <div className="flex items-center justify-between gap-3">
                 <button
                   className="group flex min-w-0 flex-1 items-center gap-3 text-left transition-opacity hover:opacity-85"
@@ -314,14 +314,14 @@ export default function PlayDetailSheet({
                               rpm
                             </span>
                           )} */}
-                          {breakIn && (
+                          {/* {breakIn && (
                             <span className="text-slate-500">
                               <span className="text-slate-400">
                                 {parseFloat(breakIn).toFixed(1)}
                               </span>
                               " brk
                             </span>
-                          )}
+                          )} */}
                         </div>
                       )}
                     </div>

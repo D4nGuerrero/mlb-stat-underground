@@ -660,24 +660,67 @@ function buildPitchCountByInning(allPlays = [], away, home) {
   };
 }
 
+function buildAllPitchersMapRow(data) {
+  if (!data?.pitchers?.length) return null;
+  let pitchNumber = 0;
+  const byInning = {};
+  const pitchEvents = [];
+  data.pitchers.forEach((pitcher) => {
+    Object.entries(pitcher.byInning ?? {}).forEach(([inning, count]) => {
+      byInning[inning] = (byInning[inning] ?? 0) + Number(count || 0);
+    });
+    (pitcher.pitchEvents ?? []).forEach((event) => {
+      pitchNumber += 1;
+      pitchEvents.push({
+        ...event,
+        __pitchNumberOverride: pitchNumber,
+        __pitcherName: pitcher.name,
+        __pitcherId: pitcher.id,
+      });
+    });
+  });
+  return {
+    id: `all-${data.team?.id ?? 'team'}`,
+    name: `${data.team?.abbreviation || data.team?.name || 'Team'} Pitchers`,
+    byInning,
+    pitchEvents,
+    total: pitchEvents.length,
+    isAllPitchers: true,
+    pitcherCount: `${data.pitchers.length} pitcher${data.pitchers.length === 1 ? '' : 's'}`,
+  };
+}
+
 function PitchCountTeamTable({ data, onPitcherSelect }) {
   const accentClass = data.team?.abbreviation === 'SEA'
     ? 'bg-teal-400'
     : data.team?.abbreviation === 'SF'
       ? 'bg-orange-500'
       : `bg-${THEME_COLOR}-400`;
+  const allPitchersRow = buildAllPitchersMapRow(data);
 
   return (
     <section className="min-w-0">
-      <div className="mb-3 flex items-center gap-3 sm:mb-6 sm:gap-4">
-        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-1.5 sm:w-16 sm:gap-2">
-          <img src={teamLogoUrl(data.team?.id)} alt="" className="h-9 w-9 object-contain sm:h-14 sm:w-14" />
-          <div className={`h-0.5 w-8 rounded-full sm:h-1 sm:w-12 ${accentClass}`} />
+      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-6 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <div className="flex w-12 flex-shrink-0 flex-col items-center gap-1.5 sm:w-16 sm:gap-2">
+            <img src={teamLogoUrl(data.team?.id)} alt="" className="h-9 w-9 object-contain sm:h-14 sm:w-14" />
+            <div className={`h-0.5 w-8 rounded-full sm:h-1 sm:w-12 ${accentClass}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-xl font-black text-white sm:text-2xl">{data.team?.abbreviation || data.team?.name}</div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-slate-400 sm:text-sm sm:tracking-[0.32em]">Pitchers</div>
+          </div>
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-xl font-black text-white sm:text-2xl">{data.team?.abbreviation || data.team?.name}</div>
-          <div className="text-[10px] uppercase tracking-[0.24em] text-slate-400 sm:text-sm sm:tracking-[0.32em]">Pitchers</div>
-        </div>
+        {allPitchersRow && (
+          <button
+            type="button"
+            onClick={() => onPitcherSelect?.(allPitchersRow, data.team)}
+            className={`inline-flex flex-shrink-0 items-center gap-2 rounded-full border border-slate-700/70 bg-slate-950/45 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200 sm:text-xs`}
+          >
+            <i className="fa-solid fa-location-crosshairs" aria-hidden />
+            All pitchers
+          </button>
+        )}
       </div>
 
       <div className="space-y-0">
@@ -771,9 +814,29 @@ function strikeSubtype(event) {
   const code = details.code;
   const text = String(details.description || details.call?.description || '').toLowerCase();
   if (code === 'C' || text.includes('called strike')) return 'called';
+  if (code === 'T' || text.includes('foul tip')) return 'swinging';
   if (code === 'F' || code === 'T' || code === 'L' || text.includes('foul')) return 'foul';
   if (code === 'S' || code === 'W' || code === 'M' || text.includes('swinging')) return 'swinging';
   return 'other';
+}
+
+function countFilterMatches(event, countFilter) {
+  const balls = countFilter?.balls;
+  const strikes = countFilter?.strikes;
+  if (balls == null && strikes == null) return true;
+  const prePitch = event?.__prePitchCount ?? {};
+  if (balls != null && Number(prePitch.balls ?? -1) !== Number(balls)) return false;
+  if (strikes != null && Number(prePitch.strikes ?? -1) !== Number(strikes)) return false;
+  return true;
+}
+
+function countFilterLabel(countFilter) {
+  const balls = countFilter?.balls;
+  const strikes = countFilter?.strikes;
+  if (balls == null && strikes == null) return 'Any Count';
+  if (balls != null && strikes != null) return `${balls}-${strikes}`;
+  if (balls != null) return `${balls} Balls`;
+  return `${strikes} Strikes`;
 }
 
 function pitchKindCounts(playEvents = []) {
@@ -802,16 +865,18 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
     foul: true,
     other: true,
   });
-  const [twoStrikeOnly, setTwoStrikeOnly] = useState(false);
+  const [countFilter, setCountFilter] = useState({ balls: null, strikes: null });
+  const [countPickerOpen, setCountPickerOpen] = useState(false);
   const [previewPitchNumber, setPreviewPitchNumber] = useState(null);
   const open = Boolean(pitcher);
   const pitchEvents = pitcher?.pitchEvents ?? [];
-  const counts = pitchKindCounts(pitchEvents);
+  const countFilteredPitchEvents = pitchEvents.filter((event) => countFilterMatches(event, countFilter));
+  const counts = pitchKindCounts(countFilteredPitchEvents);
   const visiblePitchEvents = pitchEvents.filter((event) => {
     const kind = pitchMapKind(event);
     if (!visiblePitchKinds[kind]) return false;
     if (kind === 'strikes' && !visibleStrikeSubtypes[strikeSubtype(event)]) return false;
-    if (twoStrikeOnly && Number(event.__prePitchCount?.strikes ?? -1) !== 2) return false;
+    if (!countFilterMatches(event, countFilter)) return false;
     return true;
   });
   const previewPitchEvent = previewPitchNumber == null
@@ -820,7 +885,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
   const canvasPitchEvents = previewPitchEvent && !visiblePitchEvents.includes(previewPitchEvent)
     ? [...visiblePitchEvents, previewPitchEvent]
     : visiblePitchEvents;
-  const twoStrikeCount = pitchEvents.filter((event) => Number(event.__prePitchCount?.strikes ?? -1) === 2).length;
+  const selectedCountPitchCount = countFilteredPitchEvents.length;
   const latestPitchData = [...pitchEvents].reverse().find((event) => event?.pitchData)?.pitchData;
   const szTop = latestPitchData?.strikeZoneTop ?? 3.55;
   const szBot = latestPitchData?.strikeZoneBottom ?? 1.47;
@@ -847,6 +912,8 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
   };
   useEffect(() => {
     setPreviewPitchNumber(null);
+    setCountFilter({ balls: null, strikes: null });
+    setCountPickerOpen(false);
   }, [pitcher?.id]);
   const filterCards = [
     {
@@ -897,6 +964,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
       icon: 'fa-arrows-turn-to-dots',
     },
   ];
+  const strikeoutLikeCount = counts.strikeSubtypes.called + counts.strikeSubtypes.swinging;
 
   return (
     <Modal
@@ -919,6 +987,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
             <div className="truncate text-sm font-bold text-white">{pitcher?.name}</div>
             <div className="text-xs text-slate-500">
               {team?.abbreviation || team?.name} · {pitchEvents.length} pitches
+              {pitcher?.isAllPitchers ? ` · ${pitcher.pitcherCount ?? ''}` : ''}
             </div>
           </div>
         </div>
@@ -933,7 +1002,10 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-3 py-3 sm:px-5">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-slate-800/70 pb-2">
+          <span className="mr-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-600">
+            Show
+          </span>
           {filterCards.map((card) => {
             const active = visiblePitchKinds[card.key];
             return (
@@ -955,27 +1027,33 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
           })}
         </div>
 
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-[10px] text-slate-400">
-          <button
-            type="button"
-            onClick={() => setTwoStrikeOnly((value) => !value)}
-            className={[
-              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
-              twoStrikeOnly
-                ? `border-${THEME_COLOR}-400/50 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`
-                : 'border-slate-700 bg-slate-900 text-slate-500 hover:text-slate-200',
-            ].join(' ')}
-            aria-pressed={twoStrikeOnly}
-          >
-            <span className="font-mono text-xs">{twoStrikeCount}</span>
-            2 Strikes
-          </button>
+        <div className="mb-2 text-[10px] text-slate-400">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCountPickerOpen((value) => !value)}
+              className={[
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
+                countFilter.balls != null || countFilter.strikes != null
+                  ? `border-${THEME_COLOR}-400/50 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`
+                  : 'border-slate-700 bg-slate-900 text-slate-500 hover:text-slate-200',
+              ].join(' ')}
+              aria-expanded={countPickerOpen}
+            >
+              <i className="fa-solid fa-table-cells-small" aria-hidden />
+              <span className="font-mono text-xs">{selectedCountPitchCount}</span>
+              {countFilterLabel(countFilter)}
+            </button>
           {visiblePitchKinds.strikes && (
             <>
               <span className="hidden h-4 w-px bg-slate-700 sm:inline-block" aria-hidden />
+              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.12em] text-red-200">
+                <span className="font-mono text-xs">{strikeoutLikeCount}</span>
+                K
+              </span>
               {strikeSubtypeFilters.map((filter) => {
                 const active = visibleStrikeSubtypes[filter.key];
-                return (
+                const button = (
                   <button
                     key={filter.key}
                     type="button"
@@ -993,6 +1071,11 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                     {filter.label}
                   </button>
                 );
+                if (filter.key !== 'swinging') return button;
+                return [
+                  button,
+                  <span key="miss-separator" className="hidden h-4 w-px bg-slate-700 sm:inline-block" aria-hidden />,
+                ];
               })}
             </>
           )}
@@ -1001,15 +1084,83 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
             onClick={() => {
               setVisiblePitchKinds({ balls: true, strikes: true, inPlay: true });
               setVisibleStrikeSubtypes({ called: true, swinging: true, foul: true, other: true });
-              setTwoStrikeOnly(false);
+              setCountFilter({ balls: null, strikes: null });
+              setCountPickerOpen(false);
             }}
             className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 transition-colors hover:text-slate-200"
           >
             Reset
           </button>
+          </div>
+          {countPickerOpen && (
+            <div className="mt-2 grid gap-3 border-t border-slate-800/70 pt-2 sm:grid-cols-2 sm:items-start">
+              <div className="min-w-0">
+                <div className="mb-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300/70">
+                  Balls
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[null, 0, 1, 2, 3].map((balls) => {
+                    const active = balls == null
+                      ? countFilter.balls == null
+                      : countFilter.balls != null && Number(countFilter.balls) === balls;
+                    return (
+                      <button
+                        key={balls ?? 'any-balls'}
+                        type="button"
+                        onClick={() => setCountFilter((current) => ({
+                          ...current,
+                          balls,
+                        }))}
+                        className={[
+                          'grid h-9 place-items-center rounded-xl border font-mono text-sm font-black transition-colors',
+                          active
+                            ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-100'
+                            : 'border-slate-700 bg-slate-950/70 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-200',
+                        ].join(' ')}
+                        aria-pressed={active}
+                      >
+                        {balls ?? 'Any'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="mb-1 text-[9px] font-black uppercase tracking-[0.18em] text-red-300/70">
+                  Strikes
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[null, 0, 1, 2].map((strikes) => {
+                    const active = strikes == null
+                      ? countFilter.strikes == null
+                      : countFilter.strikes != null && Number(countFilter.strikes) === strikes;
+                    return (
+                      <button
+                        key={strikes ?? 'any-strikes'}
+                        type="button"
+                        onClick={() => setCountFilter((current) => ({
+                          ...current,
+                          strikes,
+                        }))}
+                        className={[
+                          'grid h-9 place-items-center rounded-xl border font-mono text-sm font-black transition-colors',
+                          active
+                            ? 'border-red-400/70 bg-red-500/20 text-red-100'
+                            : 'border-slate-700 bg-slate-950/70 text-slate-400 hover:border-red-500/40 hover:text-red-200',
+                        ].join(' ')}
+                        aria-pressed={active}
+                      >
+                        {strikes ?? 'Any'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70 p-2 sm:p-3">
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/45 p-1.5 sm:p-2">
           <div className="relative max-h-full w-full max-w-[min(100%,calc((94vh-12rem)*1.633))]">
             <PitchCanvas
               playEvents={canvasPitchEvents}
@@ -1024,6 +1175,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
               showPitchTrails={false}
               usePurpleInPlayOuts
               preserveCropAspect
+              disablePitchAnimation
               showCalledStrikeMarker={canvasPitchEvents.length > 0 && visiblePitchKinds.strikes && visibleStrikeSubtypes.called}
               focusPitchNumber={previewPitchNumber}
               className="mx-auto w-full"
@@ -1075,6 +1227,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                   const play = event.__playContext;
                   const batterName = play?.matchup?.batter?.fullName || 'At bat';
                   const result = play?.result?.event || event.details?.description || 'Pitch';
+                  const pitcherLabel = pitcher?.isAllPitchers && event.__pitcherName ? `${event.__pitcherName} · ` : '';
                   const kind = pitchMapKind(event);
                   const tone =
                     kind === 'balls'
@@ -1104,7 +1257,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-bold">{batterName}</span>
-                            <span className="block truncate text-[10px] text-slate-500">{result}</span>
+                            <span className="block truncate text-[10px] text-slate-500">{pitcherLabel}{result}</span>
                           </span>
                         </button>
                       )}
@@ -3881,11 +4034,7 @@ function GamePageContent({ gamePk, navigate, location }) {
             </div>
           </div>
 
-          {redditGameChatLinks.length > 0 && (
-            <div className="hidden border-t border-slate-700/50 px-4 py-2 sm:flex sm:justify-center sm:px-6">
-              <GameChatInlineLinks links={redditGameChatLinks} />
-            </div>
-          )}
+        
 
           {isPreview && venueLine && (
             <div className="px-4 sm:px-6 py-2 border-t border-slate-700/50 text-center text-xs text-slate-400">

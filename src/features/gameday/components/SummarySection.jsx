@@ -912,11 +912,11 @@ export function ScoringPlayVideo({ video, isExpanded, onToggle }) {
               playerShell
             )}
           </div>
-          {video.headline && !showOverlayFs && (
+          {/* {video.headline && !showOverlayFs && (
             <div className="px-3 py-2 text-xs text-slate-400 border-t border-slate-800 rounded-b-xl">
               {video.headline}
             </div>
-          )}
+          )} */}
         </div>
       ) : (
         <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-700/60">

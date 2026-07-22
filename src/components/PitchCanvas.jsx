@@ -155,6 +155,7 @@ export default function PitchCanvas({
   focusPitchNumber = null,
   pitchIdentityScope = null,
   animateLatestOnHydrate = false,
+  disablePitchAnimation = false,
   onPitchLanded,
   baseballModelUrl = null,
 }) {
@@ -608,6 +609,15 @@ export default function PitchCanvas({
     const shouldAnimateHydratedLatest = s.prevPitchId == null && animateLatestOnHydrate;
     const hydrateSettled = pitches.length > 1 || (storedLast != null && storedLast === pitchIdStr);
 
+    if (disablePitchAnimation) {
+      s.prevPitchId = pitchId;
+      s.phase = 'settled';
+      s.animProgress = 1;
+      renderBg(pitches, trajectories, pitches.length - 1, 1);
+      renderFg(pitches, trajectories, pitches.length - 1, 1, 'settled');
+      return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+    }
+
     if (samePitch && s.phase === 'flying') {
       if (animRef.current) cancelAnimationFrame(animRef.current);
       animRef.current = requestAnimationFrame(animateRef.current);
@@ -643,7 +653,7 @@ export default function PitchCanvas({
     animRef.current = requestAnimationFrame(animateRef.current);
 
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [pitches, trajectories, scaler, animate, renderBg, renderFg, gamePk, pitchIdentityScope, animateLatestOnHydrate]);
+  }, [pitches, trajectories, scaler, animate, renderBg, renderFg, gamePk, pitchIdentityScope, animateLatestOnHydrate, disablePitchAnimation]);
 
   const ready = strikeZoneView || !responsive || measuredWidth != null;
 
