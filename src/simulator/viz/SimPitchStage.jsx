@@ -183,6 +183,7 @@ export default function SimPitchStage({
             baseballModelUrl={assetUrl('baseball-centered.glb')}
             showPitchToast
             showPitchTrails
+            animateLatestPitchOnHydrate
             onPitchLanded={handleLanded}
             className="w-full border-0 rounded-none"
           />

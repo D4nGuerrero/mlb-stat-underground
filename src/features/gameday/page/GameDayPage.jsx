@@ -3190,6 +3190,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           showHotZones
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           immersiveField
+          animateLatestPitchOnHydrate
           className="xl:h-full xl:min-h-0 xl:w-[calc(100%+10rem)] xl:max-w-none 2xl:w-[calc(100%+14rem)]"
         />
       </div>

@@ -16,6 +16,15 @@ function pitchEventIndexFromKey(rowKey) {
   return match ? Number(match[2]) : null;
 }
 
+function rowAtBatIndexFromKey(rowKey) {
+  const match = String(rowKey || '').match(
+    /^(?:live-pitch|pickoff-attempt|pickoff|mound|offensive-sub|defensive-sub|pitching|status|action|automatic-pitch|batter-timeout)-(\d+)-/,
+  );
+  if (match) return Number(match[1]);
+  const compactMatch = String(rowKey || '').match(/^(?:atbat|score|runners)-(\d+)$/);
+  return compactMatch ? Number(compactMatch[1]) : null;
+}
+
 export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   const liveRecentFeed = useMemo(() => {
     if (!feed || !isValidLiveFeed(feed)) {
@@ -41,6 +50,8 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   const knownPitchRowKeysRef = useRef(null);
   const retainedAtBatPitchRowsRef = useRef({ atBatIndex: null, rows: new Map() });
   const resumeRevealUntilRef = useRef(0);
+  const pitchRevealFallbackTimerRef = useRef(null);
+  const hiddenPitchFirstSeenRef = useRef(new Map());
   const [revealedPitchRowKeys, setRevealedPitchRowKeys] = useState(() => new Set());
 
   const revealPitchRows = useCallback((rowKeys) => {
@@ -67,6 +78,15 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
         atBatIndex: currentPitchAtBatIndex,
         rows: new Map(currentPitchRows.map((row) => [row.key, row])),
       };
+    } else {
+      const retained = retainedAtBatPitchRowsRef.current;
+      if (
+        retained.atBatIndex != null &&
+        retained.rows.size &&
+        liveRecentRows.some((row) => row.key === `atbat-${retained.atBatIndex}`)
+      ) {
+        revealPitchRows([...retained.rows.keys()]);
+      }
     }
 
     if (knownPitchRowKeysRef.current == null) {
@@ -96,7 +116,95 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
       });
       return next;
     });
-  }, [liveRecentRows]);
+  }, [liveRecentRows, revealPitchRows]);
+
+  useEffect(() => {
+    if (!isLive) {
+      hiddenPitchFirstSeenRef.current.clear();
+      return undefined;
+    }
+
+    const hiddenPitchRows = liveRecentRows
+      .filter((row) => row.kind === 'live_pitch' && !revealedPitchRowKeys.has(row.key));
+    const hiddenPitchRowKeys = hiddenPitchRows.map((row) => row.key);
+
+    const now = Date.now();
+    const visiblePitchKeys = new Set(
+      liveRecentRows
+        .filter((row) => row.kind === 'live_pitch')
+        .map((row) => row.key),
+    );
+    hiddenPitchFirstSeenRef.current.forEach((_, key) => {
+      if (!visiblePitchKeys.has(key) || revealedPitchRowKeys.has(key)) {
+        hiddenPitchFirstSeenRef.current.delete(key);
+      }
+    });
+    hiddenPitchRowKeys.forEach((key) => {
+      if (!hiddenPitchFirstSeenRef.current.has(key)) {
+        hiddenPitchFirstSeenRef.current.set(key, now);
+      }
+    });
+
+    if (!hiddenPitchRowKeys.length) return undefined;
+
+    const forcedRevealKeys = hiddenPitchRows
+      .filter((row) => {
+        const atBatIndex = rowAtBatIndexFromKey(row.key);
+        if (atBatIndex == null) return false;
+        const rowTime = row.sortTime ? new Date(row.sortTime).getTime() : 0;
+        return liveRecentRows.some((other) => {
+          if (other.kind === 'live_pitch') return false;
+          if (rowAtBatIndexFromKey(other.key) !== atBatIndex) return false;
+          const otherTime = other.sortTime ? new Date(other.sortTime).getTime() : 0;
+          return otherTime >= rowTime;
+        });
+      })
+      .map((row) => row.key);
+    if (forcedRevealKeys.length) {
+      revealPitchRows(forcedRevealKeys);
+      forcedRevealKeys.forEach((key) => hiddenPitchFirstSeenRef.current.delete(key));
+      return undefined;
+    }
+
+    // The preferred path is canvas landing -> toast exit -> reveal row. MLB
+    // sometimes hydrates/batches pitch events though, so the canvas can render
+    // a settled pitch without firing a fresh landing callback. This fallback
+    // keeps the pitch sequence from getting permanently stuck hidden.
+    const fallbackMs = 3200;
+    const readyKeys = hiddenPitchRowKeys.filter((key) => (
+      now - (hiddenPitchFirstSeenRef.current.get(key) ?? now) >= fallbackMs
+    ));
+    if (readyKeys.length) {
+      revealPitchRows(readyKeys);
+      readyKeys.forEach((key) => hiddenPitchFirstSeenRef.current.delete(key));
+      return undefined;
+    }
+
+    const nextDelay = Math.max(
+      0,
+      Math.min(
+        ...hiddenPitchRowKeys.map((key) => (
+          fallbackMs - (now - (hiddenPitchFirstSeenRef.current.get(key) ?? now))
+        )),
+      ),
+    );
+    pitchRevealFallbackTimerRef.current = window.setTimeout(() => {
+      const fireNow = Date.now();
+      const keysToReveal = hiddenPitchRowKeys.filter((key) => (
+        fireNow - (hiddenPitchFirstSeenRef.current.get(key) ?? fireNow) >= fallbackMs
+      ));
+      revealPitchRows(keysToReveal);
+      keysToReveal.forEach((key) => hiddenPitchFirstSeenRef.current.delete(key));
+      pitchRevealFallbackTimerRef.current = null;
+    }, nextDelay);
+
+    return () => {
+      if (pitchRevealFallbackTimerRef.current) {
+        window.clearTimeout(pitchRevealFallbackTimerRef.current);
+        pitchRevealFallbackTimerRef.current = null;
+      }
+    };
+  }, [isLive, liveRecentRows, revealedPitchRowKeys, revealPitchRows]);
 
   useEffect(() => {
     if (!isLive) return undefined;

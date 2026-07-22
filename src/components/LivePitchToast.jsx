@@ -13,7 +13,7 @@ const RESULT_STYLES = {
 };
 
 const TOAST_DURATION_MS = 2400;
-const TOAST_EXIT_START_MS = Math.round(TOAST_DURATION_MS * 0.72);
+const TOAST_EXIT_START_MS = Math.round(TOAST_DURATION_MS * 0.58);
 
 function toastFromPitch(pitch) {
   if (!pitch) return null;
@@ -46,19 +46,36 @@ export default function LivePitchToast({ item, pitch, onComplete, onExitStart })
   if (!toast) return null;
 
   const style = RESULT_STYLES[toast.resultKind] ?? RESULT_STYLES.misc;
+  const ballColor =
+    toast.resultKind === 'ball'
+      ? 'bg-green-500'
+      : toast.resultKind === 'in_play'
+        ? 'bg-blue-500'
+        : toast.resultKind === 'out'
+          ? 'bg-slate-500'
+          : 'bg-red-500';
 
   return (
     <div
-      className={`absolute left-1/2 bottom-6 z-10 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border bg-slate-900/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur-md xl:w-[260px] xl:px-3 xl:py-2 ${style}`}
+      className={`absolute left-1/2 bottom-6 z-10 pointer-events-none pitch-toast-float w-[min(100vw,360px)] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border bg-slate-950/95 px-3 py-2 shadow-2xl shadow-black/30 backdrop-blur-md xl:w-[260px] ${style}`}
       role="status"
       aria-live="polite"
     >
-      <p className="text-base font-extrabold leading-tight text-center xl:text-sm">{toast.title}</p>
-      {toast.subtitle && (
-        <p className="text-xs text-center text-slate-300 mt-1 font-mono xl:text-[10px]">
-          {toast.subtitle}
-        </p>
-      )}
+      <div className="flex items-center gap-2.5">
+        {toast.pitchNumber != null && (
+          <span className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-full border border-white/80 text-sm font-black text-white shadow-sm ${ballColor}`}>
+            {toast.pitchNumber}
+          </span>
+        )}
+        <div className="min-w-0 text-left">
+          <p className="truncate text-sm font-extrabold leading-tight text-white">{toast.title}</p>
+          {toast.subtitle && (
+            <p className="mt-0.5 truncate text-xs font-bold leading-tight text-slate-200">
+              {toast.subtitle}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

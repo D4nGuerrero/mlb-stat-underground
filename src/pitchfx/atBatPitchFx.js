@@ -412,6 +412,7 @@ export function buildPitchFromEvent(event, pitchNumber, batter = null, playEvent
     szWidth: sz.szWidth,
     szDepth: sz.szDepth,
     num: pitchNumber,
+    eventIndex: pitchEventIndex,
     is3DPitch: has3d,
     type: details.type?.code || '',
     trailColor: details.trailColor || null,

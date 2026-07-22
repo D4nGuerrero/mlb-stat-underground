@@ -67,7 +67,7 @@ function buildLiveToastItem(playEvents, currentPlay) {
     return {
       id: `pitch-${last.playId ?? ''}-${last.pitchNumber ?? ''}-${last.endTime ?? last.startTime ?? events.length}`,
       title: description,
-      subtitle: [pitchType, mph != null ? `${mph} mph` : null].filter(Boolean).join(' · '),
+      subtitle: [mph != null ? `${mph} mph` : null, pitchType].filter(Boolean).join(' '),
       resultKind: getPitchResultKind(description, last.details?.isInPlay),
     };
   }
@@ -80,6 +80,34 @@ function buildLiveToastItem(playEvents, currentPlay) {
     title: automaticPitchCall || last.details?.event || eventType.replace(/_/g, ' ') || 'Game Event',
     subtitle: automaticPitchCall ? null : description,
     resultKind: automaticPitchCall ? getPitchResultKind(automaticPitchCall, false) : classifyPlayToast(eventType),
+  };
+}
+
+function buildLandedPitchToastItem(pitch, playEvents, currentPlay) {
+  if (!pitch) return null;
+  const event = pitch.event;
+  const eventIdx = (playEvents ?? []).findIndex((ev) => ev === event);
+  const description = pitch.result || formatPitchDescriptionWithAbsContext(
+    event?.details?.description || event?.details?.call?.description || 'Pitch',
+    event,
+    playEvents,
+    eventIdx,
+  );
+  const pitchType = event?.details?.type?.description || pitch.details?.type?.description || null;
+  const mph = pitch.startSpeed != null
+    ? Math.round(pitch.startSpeed)
+    : event?.pitchData?.startSpeed != null
+      ? Math.round(event.pitchData.startSpeed)
+      : null;
+  const atBatIndex = currentPlay?.about?.atBatIndex;
+  const pitchId = event?.playId ?? pitch.num ?? eventIdx;
+  return {
+    id: `pitch-${atBatIndex ?? ''}-${pitchId}-${event?.endTime ?? event?.startTime ?? eventIdx}`,
+    rowKey: atBatIndex != null && eventIdx >= 0 ? `live-pitch-${atBatIndex}-${eventIdx}` : null,
+    pitchNumber: pitch.num,
+    title: description,
+    subtitle: [mph != null ? `${mph} mph` : null, pitchType].filter(Boolean).join(' '),
+    resultKind: getPitchResultKind(description, event?.details?.isInPlay || pitch.isInPlay),
   };
 }
 
@@ -130,6 +158,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   fieldZoom = null,
   fieldZoomFocusX = STRIKE_ZONE_FIELD_LEFT_PCT,
   onPitchLanded: onPitchLandedProp = null,
+  animateLatestPitchOnHydrate = false,
   className = '',
 }) {
   const incomingAtBatIndex = currentPlay?.about?.atBatIndex ?? null;
@@ -190,7 +219,7 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
     if (!item || !item.id?.startsWith('play-') || lastToastIdRef.current === item.id) return;
 
     const lastPitch = [...(stablePlayEvents ?? [])].reverse().find((event) => event?.isPitch);
-    const lastPitchId = lastPitch?.playId ?? lastPitch?.pitchNumber;
+    const lastPitchId = `${visualCurrentPlay?.about?.atBatIndex ?? ''}:${lastPitch?.playId ?? lastPitch?.pitchNumber ?? ''}`;
     if (
       lastPitchId != null &&
       String(lastLandedPitchIdRef.current) !== String(lastPitchId)
@@ -215,17 +244,18 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
   const showLandedPitchToast = useCallback((pitch) => {
     onPitchLandedProp?.(pitch);
     if (!showPitchToast) return;
-    const pitchId = pitch?.event?.playId ?? pitch?.num;
+    const pitchId = `${visualCurrentPlay?.about?.atBatIndex ?? ''}:${pitch?.event?.playId ?? pitch?.num ?? ''}`;
     if (pitchId != null && String(lastLandedPitchIdRef.current) === String(pitchId)) return;
 
-    const item = buildLiveToastItem(stablePlayEvents, visualCurrentPlay);
+    const item = buildLandedPitchToastItem(pitch, stablePlayEvents, visualCurrentPlay)
+      || buildLiveToastItem(stablePlayEvents, visualCurrentPlay);
     if (!item || lastToastIdRef.current === item.id) return;
 
     lastLandedPitchIdRef.current = pitchId;
     lastToastIdRef.current = item.id;
     setToastItem({
       ...item,
-      rowKey: latestPitchRowKey(stablePlayEvents, visualCurrentPlay),
+      rowKey: item.rowKey || latestPitchRowKey(stablePlayEvents, visualCurrentPlay),
     });
   }, [stablePlayEvents, visualCurrentPlay, showPitchToast, onPitchLandedProp]);
 
@@ -443,6 +473,8 @@ const LiveAtBatVisual = memo(function LiveAtBatVisual({
               showPitchTrails={showPitchTrails}
               showHotZones={showHotZones}
               usePurpleInPlayOuts={usePurpleInPlayOuts}
+              pitchIdentityScope={visualCurrentPlay?.about?.atBatIndex ?? null}
+              animateLatestOnHydrate={animateLatestPitchOnHydrate}
               onPitchLanded={(showPitchToast || onPitchLandedProp) ? showLandedPitchToast : undefined}
               baseballModelUrl={baseballModelUrl}
               className="mx-auto shrink-0"

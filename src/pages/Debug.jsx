@@ -623,6 +623,7 @@ export default function Debug() {
         strikes={count.strikes}
         outs={0}
         baseballModelUrl={modelUrl}
+        animateLatestPitchOnHydrate
       />
 
       <section className="rounded-2xl border border-slate-700/60 bg-slate-900 p-4 sm:p-5">

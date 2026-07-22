@@ -122,6 +122,20 @@ function storageKey(gamePk) {
   return gamePk != null ? `mlbPc:lastPitch:${gamePk}` : null;
 }
 
+function pitchIdentity(pitch, fallbackIndex = 0, identityScope = null) {
+  const ev = pitch?.event;
+  const atBatIndex = identityScope ?? ev?.__playContext?.about?.atBatIndex ?? '';
+  const eventIndex = pitch?.eventIndex;
+  if (atBatIndex !== '' && eventIndex != null && eventIndex >= 0) {
+    return `${atBatIndex}:${eventIndex}`;
+  }
+  const eventTime = ev?.endTime ?? ev?.startTime ?? '';
+  const playId = ev?.playId ?? '';
+  // Some live feed pitch events briefly omit playId. Include at-bat/time so
+  // pitch 1 in a new AB does not dedupe against pitch 1 from an older AB.
+  return `${atBatIndex}:${playId || pitch?.num || fallbackIndex}:${eventTime}`;
+}
+
 export default function PitchCanvas({
   playEvents = [],
   szTop = 3.55,
@@ -139,6 +153,8 @@ export default function PitchCanvas({
   cropPlayEvents = null,
   showCalledStrikeMarker = false,
   focusPitchNumber = null,
+  pitchIdentityScope = null,
+  animateLatestOnHydrate = false,
   onPitchLanded,
   baseballModelUrl = null,
 }) {
@@ -535,7 +551,7 @@ export default function PitchCanvas({
           s.phase = 'settled';
           s.animProgress = 1;
           const last = s.pitches[s.pitches.length - 1];
-          const lid = last?.event?.playId ?? last?.num ?? s.pitches.length;
+          const lid = pitchIdentity(last, s.pitches.length, pitchIdentityScope);
           const sk = storageKey(gamePk);
           if (sk) {
             try { sessionStorage.setItem(sk, String(lid)); } catch { /* ignore */ }
@@ -554,7 +570,7 @@ export default function PitchCanvas({
         animRef.current = requestAnimationFrame(animateRef.current);
       }
     },
-    [renderBg, renderFg, gamePk],
+    [renderBg, renderFg, gamePk, pitchIdentityScope],
   );
 
   useEffect(() => {
@@ -580,7 +596,7 @@ export default function PitchCanvas({
     }
 
     const last = pitches[pitches.length - 1];
-    const pitchId = last.event?.playId ?? last.num ?? pitches.length;
+    const pitchId = pitchIdentity(last, pitches.length, pitchIdentityScope);
     const pitchIdStr = String(pitchId);
 
     const sk = storageKey(gamePk);
@@ -589,9 +605,16 @@ export default function PitchCanvas({
 
     const samePitch = s.prevPitchId != null && String(s.prevPitchId) === pitchIdStr;
     const isNewPitch = s.prevPitchId != null && String(s.prevPitchId) !== pitchIdStr;
+    const shouldAnimateHydratedLatest = s.prevPitchId == null && animateLatestOnHydrate;
     const hydrateSettled = pitches.length > 1 || (storedLast != null && storedLast === pitchIdStr);
 
-    if (isNewPitch) {
+    if (samePitch && s.phase === 'flying') {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      animRef.current = requestAnimationFrame(animateRef.current);
+      return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+    }
+
+    if (isNewPitch || shouldAnimateHydratedLatest) {
       s.prevPitchId = pitchId;
       s.landedPitchId = null;
       s.phase = 'flying';
@@ -620,7 +643,7 @@ export default function PitchCanvas({
     animRef.current = requestAnimationFrame(animateRef.current);
 
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [pitches, trajectories, scaler, animate, renderBg, renderFg, gamePk]);
+  }, [pitches, trajectories, scaler, animate, renderBg, renderFg, gamePk, pitchIdentityScope, animateLatestOnHydrate]);
 
   const ready = strikeZoneView || !responsive || measuredWidth != null;
 
