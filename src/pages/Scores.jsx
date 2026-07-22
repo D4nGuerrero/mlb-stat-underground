@@ -11,6 +11,7 @@ import {
   OutsIndicator,
 } from '../components/LiveGameIndicators';
 import ScoresListGameRow from '../components/ScoresListGameRow';
+import ScoreboardFireworks from '../components/ScoreboardFireworks';
 import { SegmentedControl, SwipeableCarousel, LoadingSpinner } from '../components/ui';
 import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
@@ -20,6 +21,18 @@ const WINDOW_PAST = 60;
 const FUTURE_DAYS = 180;
 const LIVE_SCORES_POLL_MS = 10_000;
 const TODAY_SCORES_POLL_MS = 30_000;
+// Dev note: this is intentionally split between a code flag and a user toggle.
+// Keep the code flag as a quick kill-switch while the baseball easter egg controls the UX.
+const ENABLE_SCOREBOARD_ROOTING_INTERESTS = true;
+const ROOTING_DIVISION_GAMES_BACK_WINDOW = 6;
+const ROOTING_WILD_CARD_GAMES_BACK_WINDOW = 6;
+const SCOREBOARD_ROOTING_INTERESTS_KEY = 'mlbScoreboardRootingInterestsEnabled';
+const ROOTING_DIVISION_HURT_FACE_URL = `${import.meta.env.BASE_URL}icons/rooting-division-hurt.png`;
+const ROOTING_BOO_URL = `${import.meta.env.BASE_URL}icons/rooting-boo.png`;
+const MLB_LEAGUE_ID_BY_TEAM_ID = {
+  108: 103, 110: 103, 111: 103, 114: 103, 116: 103, 117: 103, 118: 103, 133: 103, 136: 103, 139: 103, 140: 103, 141: 103, 142: 103, 145: 103, 147: 103,
+  109: 104, 112: 104, 113: 104, 115: 104, 119: 104, 120: 104, 121: 104, 134: 104, 135: 104, 137: 104, 138: 104, 143: 104, 144: 104, 146: 104, 158: 104,
+};
 
 const startOfDay = (date) => {
   const d = new Date(date);
@@ -81,6 +94,14 @@ const loadScoreboardLeague = () => {
   }
 };
 
+const loadRootingInterestsEnabled = () => {
+  try {
+    return localStorage.getItem(SCOREBOARD_ROOTING_INTERESTS_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
 const computeDateWindow = (center, maxDate) => {
   const start = addDays(center, -WINDOW_PAST);
   const clampedStart = start < MIN_DATE ? MIN_DATE : start;
@@ -88,6 +109,325 @@ const computeDateWindow = (center, maxDate) => {
   const clampedEnd = end > maxDate ? maxDate : end;
   return buildDateRange(clampedStart, clampedEnd);
 };
+
+const parseGamesBack = (value) => {
+  if (value == null || value === '-' || value === 'E') return 0;
+  const parsed = Number(String(value).replace('+', ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseStandingRank = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 99;
+};
+
+const isRootingDecisionFinal = (game) => {
+  const status = game?.status ?? {};
+  const detailed = String(status.detailedState ?? '').toLowerCase();
+  const coded = String(status.codedGameState ?? '').toUpperCase();
+  if (status.abstractGameState !== 'Final') return false;
+  if (coded === 'PO' || detailed.includes('postponed') || detailed.includes('suspended') || detailed.includes('cancel')) {
+    return false;
+  }
+  const awayScore = Number(game?.teams?.away?.score);
+  const homeScore = Number(game?.teams?.home?.score);
+  return Number.isFinite(awayScore) && Number.isFinite(homeScore) && awayScore !== homeScore;
+};
+
+const isRootingVisualPending = (game) => {
+  const status = game?.status ?? {};
+  const detailed = String(status.detailedState ?? '').toLowerCase();
+  const coded = String(status.codedGameState ?? '').toUpperCase();
+  return status.abstractGameState !== 'Final' &&
+    coded !== 'PO' &&
+    !detailed.includes('postponed') &&
+    !detailed.includes('suspended') &&
+    !detailed.includes('cancel');
+};
+
+const winPct = (record) => {
+  const wins = Number(record?.wins ?? record?.leagueRecord?.wins ?? 0);
+  const losses = Number(record?.losses ?? record?.leagueRecord?.losses ?? 0);
+  const total = wins + losses;
+  return total > 0 ? wins / total : 0;
+};
+
+function flattenStandingsRecords(data) {
+  return (data?.records ?? []).flatMap((group) => (
+    (group.teamRecords ?? []).map((record) => ({
+      teamId: Number(record.team?.id),
+      team: record.team,
+      leagueId: Number(group.league?.id ?? record.league?.id ?? MLB_LEAGUE_ID_BY_TEAM_ID[Number(record.team?.id)]),
+      divisionId: Number(group.division?.id ?? record.division?.id),
+      divisionGamesBack: parseGamesBack(record.gamesBack),
+      wildCardGamesBack: parseGamesBack(record.wildCardGamesBack),
+      divisionRank: parseStandingRank(record.divisionRank),
+      wildCardRank: parseStandingRank(record.wildCardRank),
+      leagueRank: parseStandingRank(record.leagueRank),
+      isDivisionLeader: parseStandingRank(record.divisionRank) === 1,
+      leagueRecord: record.leagueRecord,
+      pct: winPct(record),
+    }))
+  ));
+}
+
+function buildRootingInterestMap(standingsRecords, favoriteTeamId) {
+  if (!favoriteTeamId) return {};
+  const favorite = standingsRecords.find((record) => record.teamId === Number(favoriteTeamId));
+  if (!favorite?.leagueId) return {};
+
+  const sameLeague = standingsRecords.filter((record) => (
+    record.teamId &&
+    record.teamId !== favorite.teamId &&
+    record.leagueId === favorite.leagueId
+  ));
+  const favoriteDivisionGb = favorite.divisionGamesBack;
+  const favoritePct = favorite.pct;
+  const watchMap = {};
+
+  sameLeague.forEach((record) => {
+    const reasons = [];
+    let raceType = null;
+    let raceGap = null;
+    if (record.divisionId && record.divisionId === favorite.divisionId) {
+      const diffFromFavorite = record.divisionGamesBack - favoriteDivisionGb;
+      if (Math.abs(diffFromFavorite) <= ROOTING_DIVISION_GAMES_BACK_WINDOW) {
+        reasons.push(diffFromFavorite <= 0
+          ? 'Division race'
+          : `Division +${diffFromFavorite.toFixed(diffFromFavorite % 1 ? 1 : 0)} GB`);
+        raceType = 'division';
+        raceGap = diffFromFavorite;
+      }
+    }
+
+    // Wild Card pressure should not include unrelated division leaders. They can
+    // matter for seeding, but this watch mode is about teams blocking your path.
+    const pctGapGames = Math.abs(record.pct - favoritePct) * 162;
+    const standingsGap = record.wildCardRank <= favorite.wildCardRank
+      ? record.wildCardGamesBack
+      : Math.abs(record.wildCardGamesBack - favorite.wildCardGamesBack);
+    const nearFavorite = Math.min(pctGapGames, standingsGap) <= ROOTING_WILD_CARD_GAMES_BACK_WINDOW;
+    const isWildCardCandidate = !record.isDivisionLeader && nearFavorite;
+    if (isWildCardCandidate) {
+      reasons.push('Wild Card picture');
+      if (!raceType) {
+        raceType = 'wildcard';
+        raceGap = record.wildCardGamesBack;
+      }
+    }
+
+    if (reasons.length) {
+      // Priority combines race relevance with record strength. Division rivals
+      // receive a head start, but a much stronger Wild Card blocker can still be
+      // the preferred team to lose when two watched clubs play one another.
+      const proximity = Math.max(0, 8 - Math.abs(Number(raceGap) || 0));
+      const recordStrength = record.pct * 100;
+      const aheadBonus = Number(raceGap) <= 0 ? 18 : 0;
+      const playoffPositionBonus = raceType === 'wildcard' && record.wildCardRank <= 3 ? 18 : 0;
+      const priorityScore = Math.round(
+        (raceType === 'division' ? 105 : 70) +
+        (proximity * 7) +
+        recordStrength +
+        aheadBonus +
+        playoffPositionBonus
+      );
+      watchMap[record.teamId] = {
+        teamId: record.teamId,
+        label: raceType === 'division' ? 'Division threat' : 'Wild Card threat',
+        raceType,
+        priorityScore,
+        recordPct: record.pct,
+        reason: [...new Set(reasons)].join(' · '),
+      };
+    }
+  });
+
+  return watchMap;
+}
+
+function gameRootingInterest(game, rootingInterestByTeamId) {
+  const awayId = Number(game?.teams?.away?.team?.id);
+  const homeId = Number(game?.teams?.home?.team?.id);
+  const awayInterest = rootingInterestByTeamId?.[awayId] ?? null;
+  const homeInterest = rootingInterestByTeamId?.[homeId] ?? null;
+  const hasAny = Boolean(awayInterest || homeInterest);
+  const isDual = Boolean(awayInterest && homeInterest);
+  let prioritySide = awayInterest ? 'away' : homeInterest ? 'home' : null;
+  if (awayInterest && homeInterest) {
+    prioritySide = homeInterest.priorityScore > awayInterest.priorityScore ? 'home' : 'away';
+  }
+  const cheerSide = hasAny && !isDual
+    ? prioritySide === 'away' ? 'home' : 'away'
+    : null;
+
+  return {
+    away: awayInterest ? { ...awayInterest, isPrimary: prioritySide === 'away' } : null,
+    home: homeInterest ? { ...homeInterest, isPrimary: prioritySide === 'home' } : null,
+    hasAny,
+    isDual,
+    prioritySide,
+    cheerSide,
+  };
+}
+
+function rootingInterestOutcome(game, side) {
+  if (!isRootingDecisionFinal(game)) return null;
+  const awayScore = Number(game?.teams?.away?.score ?? 0);
+  const homeScore = Number(game?.teams?.home?.score ?? 0);
+  const watchedTeamWon = side === 'away'
+    ? awayScore > homeScore
+    : homeScore > awayScore;
+  return watchedTeamWon ? 'bad' : 'good';
+}
+
+function RootingInterestBadge({ interest, outcome = null, compact = false }) {
+  if (!interest) return null;
+  const toneClass = outcome === 'good'
+    ? 'bg-emerald-400/20 text-emerald-200 ring-1 ring-emerald-300/50 shadow-[0_0_12px_rgba(52,211,153,0.22)]'
+    : outcome === 'bad'
+      ? 'bg-red-500/20 text-red-200 ring-1 ring-red-400/50 shadow-[0_0_12px_rgba(248,113,113,0.24)]'
+      : interest.raceType === 'division'
+        ? 'bg-orange-500/20 text-orange-200 ring-1 ring-orange-400/50'
+        : 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/45';
+  const iconClass = outcome === 'good'
+    ? 'fa-circle-check'
+    : outcome === 'bad'
+      ? 'fa-circle-xmark'
+      : interest.raceType === 'division' ? 'fa-burst' : 'fa-crosshairs';
+  const label = outcome === 'good'
+    ? `${interest.raceType === 'division' ? 'DIV' : 'WC'} loss · helped`
+    : outcome === 'bad'
+      ? `${interest.raceType === 'division' ? 'DIV' : 'WC'} win · hurt`
+      : interest.isPrimary
+        ? `Top target · ${interest.raceType === 'division' ? 'DIV' : 'WC'}`
+        : interest.label;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.12em] ${toneClass} ${interest.isPrimary && !outcome ? 'scoreboard-watch-priority-chip' : ''} ${compact ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9px]'}`}
+      title={interest.reason}
+    >
+      <i className={`fa-solid ${iconClass}`} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+function rootingGameOutcome(game, rootingInterest) {
+  if (!rootingInterest?.prioritySide) return null;
+  return rootingInterestOutcome(game, rootingInterest.prioritySide);
+}
+
+function isRootingDivisionHurt(game, rootingInterest) {
+  const outcome = rootingGameOutcome(game, rootingInterest);
+  const priority = rootingInterest?.[rootingInterest?.prioritySide];
+  return outcome === 'bad' && priority?.raceType === 'division';
+}
+
+function RootingGameCallout({ game, rootingInterest, compact = false }) {
+  if (!rootingInterest?.hasAny) return null;
+  const prioritySide = rootingInterest.prioritySide;
+  const priorityInterest = rootingInterest[prioritySide];
+  const team = game?.teams?.[prioritySide]?.team;
+  if (!priorityInterest || !team) return null;
+
+  const outcome = rootingGameOutcome(game, rootingInterest);
+  const tone = outcome === 'good'
+    ? 'border-emerald-300/50 bg-emerald-400/15 text-emerald-100'
+    : outcome === 'bad'
+      ? 'border-red-400/50 bg-red-500/15 text-red-100'
+      : priorityInterest.raceType === 'division'
+        ? 'border-orange-400/50 bg-orange-500/15 text-orange-100'
+        : 'border-cyan-400/50 bg-cyan-500/15 text-cyan-100';
+  const icon = outcome === 'good'
+    ? 'fa-thumbs-up'
+    : outcome === 'bad'
+      ? 'fa-thumbs-down'
+      : 'fa-crosshairs';
+  const title = outcome === 'good'
+    ? `${team.abbreviation} LOST · ${priorityInterest.raceType === 'division' ? 'DIV' : 'WC'} HELP`
+    : outcome === 'bad'
+      ? `${team.abbreviation} WON · ${priorityInterest.raceType === 'division' ? 'DIV' : 'WC'} HURT`
+      : `BEST RESULT: ${team.abbreviation} LOSS`;
+  const showDivisionHurtFace = outcome === 'bad' && priorityInterest.raceType === 'division';
+
+  return (
+    <div
+      className={`scoreboard-watch-callout inline-flex max-w-full items-center gap-1.5 rounded-lg border font-black uppercase tracking-[0.1em] ${tone} ${compact ? 'px-2 py-1 text-[8px]' : 'px-2.5 py-1.5 text-[9px]'}`}
+      title={`${priorityInterest.reason}. Priority is based on standings position and record strength.`}
+    >
+      {showDivisionHurtFace && (
+        <img
+          src={ROOTING_DIVISION_HURT_FACE_URL}
+          className={compact ? 'h-5 w-5 rounded-full object-cover' : 'h-6 w-6 rounded-full object-cover'}
+          alt=""
+          aria-hidden
+        />
+      )}
+      <i className={`fa-solid ${icon}`} aria-hidden />
+      <span className="truncate">{title}</span>
+      {rootingInterest.isDual && outcome == null && (
+        <span className="rounded bg-black/20 px-1 py-0.5 text-[7px] text-white/65">Both matter</span>
+      )}
+    </div>
+  );
+}
+
+function RootingBooMarker({ interest, show = false, flip = false, className = '' }) {
+  if (!show || !interest?.isPrimary) return null;
+  return (
+    <img
+      src={ROOTING_BOO_URL}
+      className={`scoreboard-watch-boo ${flip ? 'is-flipped' : ''} ${className}`}
+      alt=""
+      aria-hidden
+    />
+  );
+}
+
+function RootingTeamLogo({
+  team,
+  interest,
+  outcome,
+  cheer = false,
+  fireworks = false,
+  cheerRace = null,
+  showBoo = false,
+  className,
+  alt,
+  booFlip = false,
+}) {
+  if (!interest && !cheer && !fireworks) {
+    return (
+      <img
+        src={teamLogoUrl(team.id)}
+        className={`object-contain ${className}`}
+        alt={alt ?? team.name ?? ''}
+        onError={(event) => { event.currentTarget.style.display = 'none'; }}
+      />
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {booFlip && <RootingBooMarker interest={interest} show={showBoo} flip className="h-8 w-8" />}
+      <span
+        className={`scoreboard-watch-logo-wrap ${interest ? 'is-watched' : ''} ${cheer ? 'is-cheer-target' : ''} ${fireworks ? 'is-fireworks-target' : ''}`}
+        data-race={cheer ? cheerRace || undefined : interest?.raceType || undefined}
+        data-outcome={outcome || undefined}
+      >
+        {fireworks && <ScoreboardFireworks teamId={team.id} />}
+        <span className="scoreboard-watch-logo-aura" aria-hidden />
+        <img
+          src={teamLogoUrl(team.id)}
+          className={`relative z-[1] object-contain ${className}`}
+          alt={alt ?? team.name ?? ''}
+          onError={(event) => { event.currentTarget.style.display = 'none'; }}
+        />
+      </span>
+      {!booFlip && <RootingBooMarker interest={interest} show={showBoo} className="h-8 w-8" />}
+    </span>
+  );
+}
 
 export default function Scores() {
   const navigate = useNavigate();
@@ -125,12 +465,22 @@ export default function Scores() {
   const [viewMode, setViewMode] = useState(loadViewMode);
   const [scoreboardLeague, setScoreboardLeague] = useState(loadScoreboardLeague);
   const [expandedCardGamePk, setExpandedCardGamePk] = useState(null);
+  const [standingsRecords, setStandingsRecords] = useState([]);
+  const [showRootingInterests, setShowRootingInterests] = useState(loadRootingInterestsEnabled);
   const carouselRef = useRef(null);
   const [carouselStartIndex, setCarouselStartIndex] = useState(selectedIndex);
   const returnDateAppliedRef = useRef(false);
 
   const selectedDate = dates[selectedIndex] ?? startOfDay(new Date());
   const selectedLeague = LEAGUE_LEVEL_BY_VALUE[scoreboardLeague] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
+  const favoriteMlbTeamId = useMemo(() => (
+    favoriteTeams.map(Number).find((id) => MLB_LEAGUE_ID_BY_TEAM_ID[id])
+  ), [favoriteTeams]);
+  const rootingInterestByTeamId = useMemo(() => (
+    showRootingInterests && scoreboardLeague === 'mlb'
+      ? buildRootingInterestMap(standingsRecords, favoriteMlbTeamId)
+      : {}
+  ), [showRootingInterests, scoreboardLeague, standingsRecords, favoriteMlbTeamId]);
 
   useEffect(() => {
     selectedIndexRef.current = selectedIndex;
@@ -351,12 +701,43 @@ export default function Scores() {
   }, [selectedDate, fetchGamesForDate, liveCount]);
 
   useEffect(() => {
+    if (!ENABLE_SCOREBOARD_ROOTING_INTERESTS || !showRootingInterests || scoreboardLeague !== 'mlb' || !favoriteMlbTeamId) {
+      setStandingsRecords([]);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const season = selectedDate.getFullYear();
+    const dateStr = getDateStr(selectedDate);
+    fetch(
+      `https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&date=${dateStr}&standingsTypes=regularSeason`,
+      { signal: controller.signal },
+    )
+      .then((res) => {
+        if (!res.ok) throw new Error(`Standings ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setStandingsRecords(flattenStandingsRecords(data)))
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        console.warn('Rooting interest standings failed', err);
+        setStandingsRecords([]);
+      });
+
+    return () => controller.abort();
+  }, [showRootingInterests, scoreboardLeague, favoriteMlbTeamId, selectedDate]);
+
+  useEffect(() => {
     localStorage.setItem(VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
 
   useEffect(() => {
     localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, scoreboardLeague);
   }, [scoreboardLeague]);
+
+  useEffect(() => {
+    localStorage.setItem(SCOREBOARD_ROOTING_INTERESTS_KEY, String(showRootingInterests));
+  }, [showRootingInterests]);
 
   useEffect(() => {
     const onStorage = (event) => {
@@ -460,6 +841,17 @@ export default function Scores() {
     const fa = isFav(a);
     const fb = isFav(b);
     if (fa !== fb) return fa ? -1 : 1;
+
+    const rootingA = gameRootingInterest(a, rootingInterestByTeamId);
+    const rootingB = gameRootingInterest(b, rootingInterestByTeamId);
+    const ra = rootingA.hasAny;
+    const rb = rootingB.hasAny;
+    if (ra !== rb) return ra ? -1 : 1;
+    if (ra && rb) {
+      const threatA = rootingA[rootingA.prioritySide]?.priorityScore ?? 0;
+      const threatB = rootingB[rootingB.prioritySide]?.priorityScore ?? 0;
+      if (threatA !== threatB) return threatB - threatA;
+    }
 
     const priority = (g) => {
       const state = g.status.abstractGameState;
@@ -599,16 +991,20 @@ export default function Scores() {
     if (viewMode === 'list') {
       return (
         <div className="divide-y divide-slate-800/60">
-          {sortedGames.map((game) => (
-            <ScoresListGameRow
-              key={game.gamePk}
-              game={game}
-              noHitAlerts={getNoHitAlert(game)}
-              onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
-              onAwayTeamClick={() => navigate(`/team/${game.teams.away.team.id}`)}
-              onHomeTeamClick={() => navigate(`/team/${game.teams.home.team.id}`)}
-            />
-          ))}
+          {sortedGames.map((game) => {
+            const rootingInterest = gameRootingInterest(game, rootingInterestByTeamId);
+            return (
+              <ScoresListGameRow
+                key={game.gamePk}
+                game={game}
+                noHitAlerts={getNoHitAlert(game)}
+                rootingInterest={rootingInterest}
+                onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
+                onAwayTeamClick={() => navigate(`/team/${game.teams.away.team.id}`)}
+                onHomeTeamClick={() => navigate(`/team/${game.teams.home.team.id}`)}
+              />
+            );
+          })}
         </div>
       );
     }
@@ -684,16 +1080,42 @@ export default function Scores() {
             const awayRec = game.teams.away.leagueRecord;
             const homeRec = game.teams.home.leagueRecord;
             const noHitAlerts = getNoHitAlert(game);
+            const rootingInterest = gameRootingInterest(game, rootingInterestByTeamId);
+            const priorityInterest = rootingInterest[rootingInterest.prioritySide];
+            const watchOutcome = rootingGameOutcome(game, rootingInterest);
+            const divisionHurt = isRootingDivisionHurt(game, rootingInterest);
+            const finalWildcardHurt = watchOutcome === 'bad' && priorityInterest?.raceType !== 'division';
+            const rootingVisualPending = isRootingVisualPending(game);
+            const divisionHurtStyle = divisionHurt
+              ? { '--rooting-division-hurt-face': `url(${ROOTING_DIVISION_HURT_FACE_URL})` }
+              : undefined;
 
             return (
               <div
                 key={game.gamePk}
                 onClick={() => navigate(`/game/${game.gamePk}`, { state: { returnDate: date.toISOString() } })}
-                className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-3.5 cursor-pointer transition-all active:scale-[0.97]"
+                data-watch-race={priorityInterest?.raceType || undefined}
+                data-watch-outcome={watchOutcome || undefined}
+                data-watch-dual={rootingInterest.isDual || undefined}
+                data-watch-division-hurt={divisionHurt || undefined}
+                style={divisionHurtStyle}
+                className={[
+                  'relative overflow-hidden bg-slate-900 border rounded-2xl p-3.5 cursor-pointer transition-all active:scale-[0.97]',
+                  rootingInterest.hasAny ? 'scoreboard-watch-game' : '',
+                  rootingInterest.hasAny
+                    ? 'border-transparent hover:-translate-y-0.5'
+                    : 'border-slate-800 hover:border-slate-600',
+                ].join(' ')}
               >
-                <div className="flex justify-between items-start gap-2 mb-3 min-h-[2rem] j">
+                {rootingInterest.hasAny && <span className="scoreboard-watch-atmosphere" aria-hidden />}
+                <div className="relative z-[1] flex justify-between items-start gap-2 mb-3 min-h-[2rem]">
                   <div className="min-w-0">
                     {renderGridStatusCorner(game, { isLive, isFinal, isDelayed, isPostponed })}
+                    {rootingInterest.hasAny && (
+                      <div className="mt-1.5">
+                        <RootingGameCallout game={game} rootingInterest={rootingInterest} compact />
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-row items-end gap-1 flex-shrink-0">
                     {noHitAlerts?.map((a) => (
@@ -710,13 +1132,18 @@ export default function Scores() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between mb-2.5">
+                <div className="relative z-[1] flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <img
-                      src={teamLogoUrl(game.teams.away.team.id)}
-                      className="w-9 h-9 object-contain flex-shrink-0"
+                    <RootingTeamLogo
+                      team={game.teams.away.team}
+                      interest={rootingInterest.away}
+                      outcome={rootingInterest.away ? rootingInterestOutcome(game, 'away') : null}
+                      cheer={rootingVisualPending && rootingInterest.cheerSide === 'away'}
+                      fireworks={watchOutcome === 'good' && rootingInterest.cheerSide === 'away'}
+                      cheerRace={priorityInterest?.raceType}
+                      showBoo={(rootingVisualPending || finalWildcardHurt) && rootingInterest.away?.isPrimary}
+                      className="w-9 h-9 flex-shrink-0"
                       alt=""
-                      onError={(e) => { e.target.style.display = 'none'; }}
                     />
                     <div className="min-w-0">
                       <div className={`text-sm font-bold truncate ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>
@@ -725,6 +1152,11 @@ export default function Scores() {
                       <div className="text-[10px] text-slate-500 font-mono tabular-nums">
                         {awayRec ? `${awayRec.wins}-${awayRec.losses}` : '\u00A0'}
                       </div>
+                      <RootingInterestBadge
+                        interest={rootingInterest.away}
+                        outcome={rootingInterestOutcome(game, 'away')}
+                        compact
+                      />
                     </div>
                   </div>
                   <span className={`font-display text-3xl leading-none tabular-nums flex-shrink-0 ${awayWin ? 'text-white' : 'text-slate-400'}`}>
@@ -732,13 +1164,18 @@ export default function Scores() {
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="relative z-[1] flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <img
-                      src={teamLogoUrl(game.teams.home.team.id)}
-                      className="w-9 h-9 object-contain flex-shrink-0"
+                    <RootingTeamLogo
+                      team={game.teams.home.team}
+                      interest={rootingInterest.home}
+                      outcome={rootingInterest.home ? rootingInterestOutcome(game, 'home') : null}
+                      cheer={rootingVisualPending && rootingInterest.cheerSide === 'home'}
+                      fireworks={watchOutcome === 'good' && rootingInterest.cheerSide === 'home'}
+                      cheerRace={priorityInterest?.raceType}
+                      showBoo={(rootingVisualPending || finalWildcardHurt) && rootingInterest.home?.isPrimary}
+                      className="w-9 h-9 flex-shrink-0"
                       alt=""
-                      onError={(e) => { e.target.style.display = 'none'; }}
                     />
                     <div className="min-w-0">
                       <div className={`text-sm font-bold truncate ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>
@@ -747,6 +1184,11 @@ export default function Scores() {
                       <div className="text-[10px] text-slate-500 font-mono tabular-nums">
                         {homeRec ? `${homeRec.wins}-${homeRec.losses}` : '\u00A0'}
                       </div>
+                      <RootingInterestBadge
+                        interest={rootingInterest.home}
+                        outcome={rootingInterestOutcome(game, 'home')}
+                        compact
+                      />
                     </div>
                   </div>
                   <span className={`font-display text-3xl leading-none tabular-nums flex-shrink-0 ${homeWin ? 'text-white' : 'text-slate-400'}`}>
@@ -769,6 +1211,15 @@ export default function Scores() {
           const awayWin = isFinal && parseInt(awayScore) > parseInt(homeScore);
           const homeWin = isFinal && parseInt(homeScore) > parseInt(awayScore);
           const noHitAlerts = getNoHitAlert(game);
+          const rootingInterest = gameRootingInterest(game, rootingInterestByTeamId);
+          const priorityInterest = rootingInterest[rootingInterest.prioritySide];
+          const watchOutcome = rootingGameOutcome(game, rootingInterest);
+          const divisionHurt = isRootingDivisionHurt(game, rootingInterest);
+          const finalWildcardHurt = watchOutcome === 'bad' && priorityInterest?.raceType !== 'division';
+          const rootingVisualPending = isRootingVisualPending(game);
+          const divisionHurtStyle = divisionHurt
+            ? { '--rooting-division-hurt-face': `url(${ROOTING_DIVISION_HURT_FACE_URL})` }
+            : undefined;
           const expandedKey = `${dateKey}:${game.gamePk}`;
           const isExpanded = expandedCardGamePk === expandedKey;
           const liveCountLabel = game.linescore
@@ -806,14 +1257,23 @@ export default function Scores() {
               role="button"
               tabIndex={0}
               aria-expanded={isExpanded}
+              data-watch-race={priorityInterest?.raceType || undefined}
+              data-watch-outcome={watchOutcome || undefined}
+              data-watch-dual={rootingInterest.isDual || undefined}
+              data-watch-division-hurt={divisionHurt || undefined}
+              style={divisionHurtStyle}
               className={[
-                'bg-slate-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.985]',
+                'relative overflow-hidden bg-slate-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.985]',
+                rootingInterest.hasAny ? 'scoreboard-watch-game' : '',
                 isExpanded
                   ? `border-${THEME_COLOR}-500/50 shadow-lg shadow-black/20`
-                  : 'border-slate-800 hover:border-slate-600 hover:-translate-y-0.5',
+                  : rootingInterest.hasAny
+                    ? 'border-transparent hover:-translate-y-0.5'
+                    : 'border-slate-800 hover:border-slate-600 hover:-translate-y-0.5',
               ].join(' ')}
             >
-              <div className="flex items-center justify-between mb-3">
+              {rootingInterest.hasAny && <span className="scoreboard-watch-atmosphere" aria-hidden />}
+              <div className="relative z-[1] flex items-center justify-between mb-2">
                 <div className="min-w-0">
                   {isLive ? (
                     <span className="inline-flex items-center gap-x-1 text-xs px-2 py-0.5 bg-red-500/10 text-red-400 rounded-lg font-bold">
@@ -853,39 +1313,70 @@ export default function Scores() {
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between mb-2">
+              {rootingInterest.hasAny && (
+                <div className="relative z-[1] mb-3">
+                  <RootingGameCallout game={game} rootingInterest={rootingInterest} />
+                </div>
+              )}
+              <div className="relative z-[1] flex items-center justify-between mb-2">
                 <div className="flex items-center gap-x-2.5">
-                  <img src={teamLogoUrl(game.teams.away.team.id)} className="w-8 h-8 object-contain" alt={game.teams.away.team.name} onError={(e) => (e.target.style.display = 'none')} />
+                  <RootingTeamLogo
+                    team={game.teams.away.team}
+                    interest={rootingInterest.away}
+                    outcome={rootingInterest.away ? rootingInterestOutcome(game, 'away') : null}
+                    cheer={rootingVisualPending && rootingInterest.cheerSide === 'away'}
+                    fireworks={watchOutcome === 'good' && rootingInterest.cheerSide === 'away'}
+                    cheerRace={priorityInterest?.raceType}
+                    showBoo={(rootingVisualPending || finalWildcardHurt) && rootingInterest.away?.isPrimary}
+                    className="w-8 h-8"
+                  />
                   <div>
                     <div className={`font-semibold text-sm ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>{game.teams.away.team.name}</div>
                     <div className="text-[10px] text-slate-600 font-mono">
                       {game.teams.away.team.record ? `${game.teams.away.team.record.wins}-${game.teams.away.team.record.losses}` : ''}
                     </div>
+                    <RootingInterestBadge
+                      interest={rootingInterest.away}
+                      outcome={rootingInterestOutcome(game, 'away')}
+                    />
                   </div>
                 </div>
                 <div className={`font-display text-2xl tabular-nums ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.away.score ?? ''}</div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="relative z-[1] flex items-center justify-between">
                 <div className="flex items-center gap-x-2.5">
-                  <img src={teamLogoUrl(game.teams.home.team.id)} className="w-8 h-8 object-contain" alt={game.teams.home.team.name} onError={(e) => (e.target.style.display = 'none')} />
+                  <RootingTeamLogo
+                    team={game.teams.home.team}
+                    interest={rootingInterest.home}
+                    outcome={rootingInterest.home ? rootingInterestOutcome(game, 'home') : null}
+                    cheer={rootingVisualPending && rootingInterest.cheerSide === 'home'}
+                    fireworks={watchOutcome === 'good' && rootingInterest.cheerSide === 'home'}
+                    cheerRace={priorityInterest?.raceType}
+                    showBoo={(rootingVisualPending || finalWildcardHurt) && rootingInterest.home?.isPrimary}
+                    className="w-8 h-8"
+                  />
                   <div>
                     <div className={`font-semibold text-sm ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>{game.teams.home.team.name}</div>
                     <div className="text-[10px] text-slate-600 font-mono">
                       {game.teams.home.team.record ? `${game.teams.home.team.record.wins}-${game.teams.home.team.record.losses}` : ''}
                     </div>
+                    <RootingInterestBadge
+                      interest={rootingInterest.home}
+                      outcome={rootingInterestOutcome(game, 'home')}
+                    />
                   </div>
                 </div>
                 <div className={`font-display text-2xl tabular-nums ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.home.score ?? ''}</div>
               </div>
               {!isLive && !isFinal && (
-                <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
+                <div className="relative z-[1] mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
                   <span>{compactPlayerName(game.teams.away.probablePitcher)}</span>
                   <span className="text-slate-700">vs</span>
                   <span>{compactPlayerName(game.teams.home.probablePitcher)}</span>
                 </div>
               )}
               {isExpanded && (
-                <div className="mt-4 space-y-3" onClick={(event) => event.stopPropagation()}>
+                <div className="relative z-[1] mt-4 space-y-3" onClick={(event) => event.stopPropagation()}>
                   {renderExpandedLinescore(game, { isFinal })}
                   {renderExpandedCardActions(game, date)}
                 </div>
@@ -1045,7 +1536,23 @@ export default function Scores() {
         {/* Row: label + view mode toggle */}
         <div className="flex items-center justify-between mb-4 px-1  px-4 sm:px-0">
           <div className="font-semibold flex items-center gap-x-2">
-            <i className={`fa-solid fa-baseball-ball text-${THEME_COLOR}-400`} />
+            <button
+              type="button"
+              onClick={() => setShowRootingInterests((enabled) => !enabled)}
+              disabled={!ENABLE_SCOREBOARD_ROOTING_INTERESTS || scoreboardLeague !== 'mlb'}
+              aria-pressed={showRootingInterests}
+              title={showRootingInterests ? 'Hide scoreboard watch hints' : 'Show scoreboard watch hints'}
+              className={[
+                'inline-flex h-7 w-7 items-center justify-center rounded-full transition-all active:scale-90',
+                showRootingInterests
+                  ? 'bg-amber-400/12 text-amber-300 ring-1 ring-amber-400/35 shadow-lg shadow-amber-950/20'
+                  : `text-${THEME_COLOR}-400 hover:bg-slate-800/70 hover:text-${THEME_COLOR}-300`,
+                scoreboardLeague !== 'mlb' ? 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-500' : '',
+              ].join(' ')}
+            >
+              <i className="fa-solid fa-baseball-ball" aria-hidden />
+              <span className="sr-only">Toggle scoreboard watch hints</span>
+            </button>
             {isToday(selectedDate)
               ? `Today's ${selectedLeague.label} Games`
               : `${selectedLeague.label} games on ${formatDisplayDate(selectedDate)}`}
