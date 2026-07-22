@@ -467,7 +467,7 @@ function PlayerChip({
     <button
       type="button"
       onClick={() => onSelect?.(player)}
-      className="group relative w-full text-left flex items-center gap-2 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-2 pr-9 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-colors"
+      className="group relative w-full text-left flex items-center gap-2 rounded-xl bg-slate-950/45 p-2 pr-9 hover:bg-emerald-500/5 transition-colors"
     >
       <img
         src={prospectHeadshotUrl(player.id)}
@@ -520,7 +520,7 @@ function PlayerChip({
 function PerformerCard({ title, player, tone = 'emerald', onSelectPlayer, isWatched, onToggleWatch }) {
   if (!player) {
     return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+      <div className="p-1">
         <div className="text-[10px] uppercase tracking-widest text-slate-500">{title}</div>
         <div className="mt-2 text-sm text-slate-500">No box score yet</div>
       </div>
@@ -532,7 +532,7 @@ function PerformerCard({ title, player, tone = 'emerald', onSelectPlayer, isWatc
     : 'text-emerald-300 border-emerald-500/25';
 
   return (
-    <div className={`rounded-2xl border bg-slate-950/45 p-3 ${accent}`}>
+    <div className={`min-w-0 border-t border-slate-800/70 pt-3 ${accent}`}>
       <div className="text-[10px] uppercase tracking-widest text-slate-500">{title}</div>
       <PlayerChip
         player={player}
@@ -559,7 +559,7 @@ function BoxScoreTable({ rows, kind, onSelectPlayer, isWatched, onToggleWatch })
     : ['IP', 'H', 'ER', 'BB', 'K', 'ERA', 'WHIP'];
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/45">
+    <div className="overflow-x-auto border-t border-slate-800/80 pt-2">
       <table className="w-full text-[11px]">
         <thead>
           <tr className="text-slate-500 border-b border-slate-800">
@@ -977,8 +977,8 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
   const topPitcher = [...affiliate.pitchers].sort((a, b) => b.score - a.score)[0];
 
   return (
-    <div className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/80 shadow-2xl shadow-black/25">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(251,146,60,0.10),transparent_35%)] pointer-events-none" />
+    <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/35 to-transparent pointer-events-none" />
       {!game && (
         <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5  px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
           <span className="relative inline-flex">
@@ -987,21 +987,21 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
           </span>
         </div>
       )}
-      <div className="relative p-4 sm:p-5">
-        <div className="flex items-start gap-4">
+      <div className="relative p-3 sm:p-4">
+        <div className="flex items-center gap-3">
           <Link
             to={`/team/${affiliate.id}`}
-            className="group flex-shrink-0 rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            className="group flex-shrink-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             aria-label={`Open ${affiliate.name} team page`}
           >
             <AffiliateLogo
               team={affiliate}
-              className="w-16 h-16 sm:w-20 sm:h-20 transition-transform duration-200 group-hover:scale-105"
+              className="w-12 h-12 sm:w-14 sm:h-14 transition-transform duration-200 group-hover:scale-105"
             />
           </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-300">
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-300">
                 {LEVEL_SHORT[affiliate.sport?.id] ?? affiliate.sport?.name}
               </span>
               <span className="text-[11px] text-slate-500">{affiliate.league?.name}</span>
@@ -1010,7 +1010,7 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
               to={`/team/${affiliate.id}`}
               className="mt-1 inline-block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
-              <h2 className="text-xl sm:text-2xl font-display tracking-tight text-white transition-colors hover:text-emerald-200">
+              <h2 className="text-lg sm:text-xl font-display tracking-tight text-white transition-colors hover:text-emerald-200">
               {affiliate.name}
               </h2>
             </Link>
@@ -1020,7 +1020,7 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
 
         {game ? (
           <>
-            <div className="mt-5 rounded-3xl border border-slate-800 bg-black/25 p-4">
+            <div className="mt-4 border-t border-slate-800/80 pt-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-[10px] uppercase tracking-widest text-slate-500">{gameStatusLabel(game)}</div>
@@ -1034,14 +1034,14 @@ function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) 
                 </div>
                 <Link
                   to={`/game/${game.gamePk}`}
-                  className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors"
+                  className="rounded-xl border border-slate-700 bg-slate-950/45 px-3 py-1.5 text-xs font-bold text-slate-200 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors"
                 >
                   Gameday
                 </Link>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <PerformerCard
                 title="Top Hitter"
                 player={topHitter}
@@ -1506,33 +1506,30 @@ export default function ProspectWatch() {
   return (
     <div className="min-h-screen bg-slate-950">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-        <section className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900 p-5 sm:p-8 shadow-2xl shadow-black/30">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(16,185,129,0.18),transparent_32%),radial-gradient(circle_at_90%_20%,rgba(59,130,246,0.12),transparent_30%)] pointer-events-none" />
-          <img
-            src={teamLogoUrl(selectedOrg?.id)}
-            alt=""
-            className="absolute -right-8 -top-12 w-56 h-56 sm:w-72 sm:h-72 object-contain opacity-10 pointer-events-none"
-          />
-
-          <div className="relative flex flex-col lg:flex-row lg:items-end gap-6 justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-emerald-300 text-xs font-black uppercase tracking-[0.28em]">
-                <Search size={14} />
-                Prospect Watch
+        <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/75 px-3 py-3 sm:px-4">
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <img
+                src={teamLogoUrl(selectedOrg?.id)}
+                alt=""
+                className="h-11 w-11 flex-shrink-0 object-contain"
+              />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+                  <Search size={12} />
+                  Prospect Watch
+                </div>
+                <h1 className="truncate font-display text-xl tracking-tight text-white sm:text-2xl">
+                  {selectedOrg?.name} Pipeline
+                </h1>
               </div>
-              <h1 className="mt-2 font-display text-4xl sm:text-6xl tracking-tighter text-white">
-                {selectedOrg?.name} Pipeline
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm sm:text-base text-slate-400">
-                Affiliate games, discovery tags, recent-form standouts, leaderboards, and your own prospect notes in one place.
-              </p>
             </div>
-            <div className="lg:w-[360px]">
+            <div className="sm:w-64">
               <Select
                 value={orgId}
                 onChange={setOrgId}
                 options={TEAM_OPTIONS}
-                buttonClassName="border-slate-700 bg-slate-950/70 py-3"
+                buttonClassName="border-slate-700 bg-slate-950/70 py-2 text-sm"
               />
             </div>
           </div>
@@ -1626,20 +1623,7 @@ export default function ProspectWatch() {
         </div>
 
         <section className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr_1fr]">
-          <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
-            <div className="flex items-center gap-3">
-              <img src={teamLogoUrl(selectedOrg?.id)} alt="" className="w-12 h-12 object-contain" />
-              <div>
-                <div className="text-[10px] uppercase tracking-widest text-slate-500">Org Snapshot</div>
-                <div className="text-lg font-display text-white">
-                  {gamesCount}/{visibleCards.length || 0} affiliates with games
-                </div>
-                <div className="text-sm text-slate-500">
-                  {FORM_MODES.find((mode) => mode.value === formMode)?.label} lens active
-                </div>
-              </div>
-            </div>
-          </div>
+       
 
           <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
             <div className="flex items-center gap-2 text-orange-300 font-black uppercase tracking-widest text-[10px]">
