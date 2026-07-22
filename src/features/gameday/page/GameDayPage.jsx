@@ -69,6 +69,126 @@ const LMB_FIELD_BACKGROUND_URL = 'https://lmb.com.mx/_next/image?url=%2Fimages%2
 const milbStadiumTopUrl = (timeOfDay = 'day') =>
   `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/default-milb@2x.jpg`;
 
+const MLB_TEAM_SUBREDDITS = {
+  108: 'angelsbaseball',
+  109: 'azdiamondbacks',
+  110: 'orioles',
+  111: 'redsox',
+  112: 'CHICubs',
+  113: 'Reds',
+  114: 'ClevelandGuardians',
+  115: 'Rockies',
+  116: 'motorcitykitties',
+  117: 'Astros',
+  118: 'KCRoyals',
+  119: 'Dodgers',
+  120: 'Nationals',
+  121: 'NewYorkMets',
+  133: 'OaklandAthletics',
+  134: 'Pirates',
+  135: 'Padres',
+  136: 'Mariners',
+  137: 'SFGiants',
+  138: 'Cardinals',
+  139: 'tampabayrays',
+  140: 'TexasRangers',
+  141: 'Torontobluejays',
+  142: 'minnesotatwins',
+  143: 'phillies',
+  144: 'Braves',
+  145: 'whitesox',
+  146: 'Marlins',
+  147: 'NYYankees',
+  158: 'Brewers',
+};
+
+function gameChatDateLabel(officialDate) {
+  if (!officialDate) return '';
+  const [year, month, day] = String(officialDate).split('-').map(Number);
+  if (!year || !month || !day) return '';
+  return `${month}/${day}`;
+}
+
+function teamSearchName(team) {
+  return team?.teamName || team?.clubName || team?.name || team?.abbreviation || '';
+}
+
+function buildRedditGameChatLinks({ away, home, officialDate }) {
+  const dateLabel = gameChatDateLabel(officialDate);
+  const awayName = teamSearchName(away);
+  const homeName = teamSearchName(home);
+  const query = ['Game Chat', dateLabel, awayName, homeName].filter(Boolean).join(' ');
+  return [away, home]
+    .map((team) => {
+      const subreddit = MLB_TEAM_SUBREDDITS[team?.id];
+      if (!subreddit) return null;
+      return {
+        key: team.id,
+        team,
+        subreddit,
+        label: team.abbreviation || team.teamName || team.name,
+        url: `https://www.reddit.com/r/${subreddit}/search/?q=${encodeURIComponent(query)}&restrict_sr=1&sort=new`,
+      };
+    })
+    .filter(Boolean);
+}
+
+function RedditMark({ className = 'text-base' }) {
+  return <i className={`fa-brands fa-reddit-alien ${className}`} aria-hidden />;
+}
+
+function GameChatInlineLinks({ links = [], className = '' }) {
+  if (!links.length) return null;
+  return (
+    <div className={`flex flex-wrap items-center justify-center gap-2 ${className}`}>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+        <RedditMark className="text-sm text-orange-400" />
+        Game Chat
+      </span>
+      {links.map((link) => (
+        <a
+          key={link.key}
+          href={link.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-950/45 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-orange-400/60 hover:bg-orange-500/10 hover:text-orange-200"
+          title={`Open ${link.label} Game Chat search on r/${link.subreddit}`}
+        >
+          <img src={teamLogoUrl(link.team.id)} alt="" className="h-4 w-4 object-contain" />
+          {link.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function GameChatStackedLinks({ links = [], className = '' }) {
+  if (!links.length) return null;
+  return (
+    <div className={`flex min-w-0 flex-col items-center justify-center gap-2 ${className}`}>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+        <RedditMark className="text-sm text-orange-400" />
+        Game Chat
+      </span>
+      <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
+        {links.map((link) => (
+          <a
+            key={link.key}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-950/35 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-orange-400/60 hover:bg-orange-500/10 hover:text-orange-200"
+            title={`Open ${link.label} Game Chat search on r/${link.subreddit}`}
+          >
+            <img src={teamLogoUrl(link.team.id)} alt="" className="h-4 w-4 object-contain" />
+            {link.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 async function fetchLiveGameFeed(gamePk, { retries = 2 } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -335,6 +455,8 @@ function GamedayOptionsMenu({
   onUsePurpleInPlayOutsChange,
   onOpenPitchCounts,
   onOpenSituationBreakdown,
+  gameChatLinks = [],
+  showPitchTools = true,
   showLiveOptions = true,
 }) {
   const buttonRef = useRef(null);
@@ -417,28 +539,56 @@ function GamedayOptionsMenu({
                 Game Tools
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                onOpenPitchCounts?.();
-                setOpen(false);
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
-            >
-              <span>Pitch breakdown</span>
-              <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onOpenSituationBreakdown?.();
-                setOpen(false);
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
-            >
-              <span>Situation breakdown</span>
-              <i className={`fa-solid fa-diamond text-${THEME_COLOR}-300`} aria-hidden />
-            </button>
+            {showPitchTools && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenPitchCounts?.();
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
+                >
+                  <span>Pitch breakdown</span>
+                  <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenSituationBreakdown?.();
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
+                >
+                  <span>Situation breakdown</span>
+                  <i className={`fa-solid fa-diamond text-${THEME_COLOR}-300`} aria-hidden />
+                </button>
+              </>
+            )}
+            {gameChatLinks.length > 0 && (
+              <>
+                <div className="my-1 border-t border-slate-800" />
+                <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                  Game Chat
+                </div>
+                {gameChatLinks.map((link) => (
+                  <a
+                    key={link.key}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setOpen(false)}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-orange-500/10 hover:text-orange-200"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <img src={teamLogoUrl(link.team.id)} alt="" className="h-5 w-5 flex-shrink-0 object-contain" />
+                      <span className="truncate">{link.label} Reddit</span>
+                    </span>
+                    <RedditMark className="text-base text-orange-400" />
+                  </a>
+                ))}
+              </>
+            )}
           </div>
         </>
       )}
@@ -1911,6 +2061,7 @@ function FinalGameHeader({
   getPitcherStats,
   leagueLabel,
   logoSrc,
+  gameChatLinks = [],
   onTeamSelect,
   onPlayerSelect,
   onOpenPitchBreakdown,
@@ -1924,7 +2075,7 @@ function FinalGameHeader({
         - linescore + W/L/S the same height
         - score/linescore only as wide as the left column
       */}
-      <div className="grid grid-cols-[minmax(0,1fr)_18rem] 2xl:grid-cols-[minmax(0,1fr)_22rem] grid-rows-[auto_auto]">
+      <div className="grid grid-cols-[minmax(0,1fr)_28rem] 2xl:grid-cols-[minmax(0,1fr)_32rem] grid-rows-[auto_auto]">
         <div className="min-w-0 grid grid-cols-[minmax(0,1fr)_4rem_5rem_4rem_minmax(0,1fr)] items-center gap-4 px-5 py-4">
           <FinalHeaderTeamBlock team={away} onTeamSelect={onTeamSelect} />
           <div className={`justify-self-center font-display text-5xl leading-none tabular-nums ${awayRuns > homeRuns ? 'text-white' : 'text-slate-300'}`}>
@@ -1940,7 +2091,16 @@ function FinalGameHeader({
         </div>
 
         <div className="min-h-0 border-l border-slate-700/60">
-          <WatchInlineLink gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
+          <div className={`grid h-full ${gameChatLinks.length ? 'grid-cols-2 divide-x divide-slate-700/60' : 'grid-cols-1'}`}>
+            <div className="flex min-h-0 items-center justify-center">
+              <WatchInlineLink gamePk={gamePk} logoSrc={logoSrc} leagueLabel={leagueLabel} />
+            </div>
+            {gameChatLinks.length > 0 && (
+              <div className="flex min-h-0 items-center justify-center px-3 py-2">
+                <GameChatStackedLinks links={gameChatLinks} />
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="min-w-0">
@@ -2135,7 +2295,7 @@ function WatchInlineLink({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
       href={buildMlbTvUrl(gamePk)}
       target="_blank"
       rel="noreferrer"
-      className={`flex h-full min-h-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-${THEME_COLOR}-500/10`}
+      className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-${THEME_COLOR}-500/10`}
       aria-label={`Watch this ${leagueLabel} game`}
     >
       <img src={logoSrc} alt="" className="h-8 w-8 object-contain" draggable={false} />
@@ -2931,6 +3091,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const venueLine = formatVenueLine(gd.venue);
   const previewSeason = gd.datetime?.officialDate?.slice(0, 4) || String(new Date().getFullYear());
   const decisions = ld.decisions;
+  const redditGameChatLinks = buildRedditGameChatLinks({ away, home, officialDate });
 
   const currentPlay = ld.plays?.currentPlay;
   const allPitchEvents = (currentPlay?.playEvents || []).map((event) => ({
@@ -3060,7 +3221,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         className="min-w-0 flex-1"
         listClassName="border-b-0"
       />
-      {hasPitchBreakdownData && (
+      {(hasPitchBreakdownData || redditGameChatLinks.length > 0) && (
         <GamedayOptionsMenu
           usePurpleInPlayOuts={usePurpleInPlayOuts}
           onUsePurpleInPlayOutsChange={setUsePurpleInPlayOuts}
@@ -3069,6 +3230,8 @@ function GamePageContent({ gamePk, navigate, location }) {
             setSituationReturn(null);
             setSituationBreakdownOpen(true);
           }}
+          gameChatLinks={redditGameChatLinks}
+          showPitchTools={hasPitchBreakdownData}
           showLiveOptions={isLive}
         />
       )}
@@ -3136,6 +3299,7 @@ function GamePageContent({ gamePk, navigate, location }) {
                   {ls?.inningHalf === 'Top' ? '▲' : '▼'}{' '}
                   {ls?.currentInningOrdinal}
                 </span>
+                <GameChatInlineLinks links={redditGameChatLinks} className="mt-2" />
               </div>
             </div>
             <span
@@ -3478,6 +3642,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           getPitcherStats={getPitcherStats}
           leagueLabel={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
           logoSrc={leagueLogoSrc}
+          gameChatLinks={redditGameChatLinks}
           onTeamSelect={(teamId) => navigate(`/team/${teamId}`)}
           onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
           onOpenPitchBreakdown={() => setPitchCountSheetOpen(true)}
@@ -3715,6 +3880,12 @@ function GamePageContent({ gamePk, navigate, location }) {
              
             </div>
           </div>
+
+          {redditGameChatLinks.length > 0 && (
+            <div className="hidden border-t border-slate-700/50 px-4 py-2 sm:flex sm:justify-center sm:px-6">
+              <GameChatInlineLinks links={redditGameChatLinks} />
+            </div>
+          )}
 
           {isPreview && venueLine && (
             <div className="px-4 sm:px-6 py-2 border-t border-slate-700/50 text-center text-xs text-slate-400">
