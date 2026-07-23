@@ -13,7 +13,10 @@ const RESULT_STYLES = {
 };
 
 const TOAST_DURATION_MS = 2400;
-const TOAST_EXIT_START_MS = Math.round(TOAST_DURATION_MS * 0.58);
+// CSS holds the toast until 58%, then slides it down through 100%.
+// Start the row handoff right as the toast begins exiting so the bottom insert
+// overlaps the full slide-down motion.
+const TOAST_RECENT_INSERT_MS = Math.round(TOAST_DURATION_MS * 0.58);
 
 function toastFromPitch(pitch) {
   if (!pitch) return null;
@@ -34,7 +37,7 @@ function toastFromPitch(pitch) {
 
 export default function LivePitchToast({ item, pitch, onComplete, onExitStart }) {
   useEffect(() => {
-    const exitTimer = setTimeout(() => onExitStart?.(), TOAST_EXIT_START_MS);
+    const exitTimer = setTimeout(() => onExitStart?.(), TOAST_RECENT_INSERT_MS);
     const completeTimer = setTimeout(() => onComplete?.(), TOAST_DURATION_MS);
     return () => {
       clearTimeout(exitTimer);
