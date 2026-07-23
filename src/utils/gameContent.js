@@ -292,7 +292,7 @@ function playSlugCandidates(item) {
   const description = item?.description ?? play?.result?.description ?? '';
   const pitcher = play?.matchup?.pitcher?.fullName;
   const batter = play?.matchup?.batter?.fullName ?? item?.batterName;
-  const pitcherBatterCandidates = pitcher && batter
+  const pitcherBatterCandidates = item?.kind !== 'action' && pitcher && batter
     ? [
         `${pitcher} In play, run(s) to ${batter}`,
         `${pitcher} In play, out(s) to ${batter}`,
@@ -430,6 +430,9 @@ function eventTypeMatchesHighlight(item, highlight) {
   if (eventType === 'single') return /\bsingle|singles\b/.test(text);
   if (eventType === 'sac_fly') return /sacrifice|sac fly/.test(text);
   if (eventType === 'hit_by_pitch') return /hit by (a )?pitch|hit-by-pitch|plunk|cartwheel/.test(text);
+  if (eventType === 'wild_pitch') return /wild pitch/.test(text);
+  if (eventType === 'passed_ball') return /passed ball/.test(text);
+  if (eventType === 'balk') return /\bbalk\b/.test(text);
   if (eventType.includes('stolen')) return /steal|stolen/.test(text);
 
   return true;
@@ -483,7 +486,7 @@ function isReliableHighlightMatch(item, highlight, { priorBatterScoringCount = 0
   // the scoring runner instead of the batter, so participantIds includes both.
   const strongSlugMatch = slugHighlightScore(item, highlight) >= 45;
   if (!playerIdentityMatches(item, highlight) && !strongSlugMatch) return false;
-  if (!eventTypeMatchesHighlight(item, highlight)) return false;
+  if (!strongSlugMatch && !eventTypeMatchesHighlight(item, highlight)) return false;
   if (highlightInningMismatch(item, highlight)) return false;
   if (item.isScoring && headlineOrdinalMismatch(item, highlight, priorBatterScoringCount)) return false;
 
