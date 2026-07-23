@@ -258,12 +258,18 @@ export default function PlayDetailSheet({
                 const spinRate = pitch.pitchData?.breaks?.spinRate;
                 const breakIn = pitch.pitchData?.breaks?.breakLength;
                 const countAfter = pitch.count;
+                const normalizedDesc = desc.toLowerCase();
+                const isHitByPitch =
+                  normalizedDesc.includes('hit by pitch') ||
+                  normalizedDesc.includes('hit-by-pitch') ||
+                  normalizedDesc.includes('hbp') ||
+                  normalizedDesc.includes('plunk');
                 const isBall =
-                  desc.toLowerCase().includes('ball') &&
-                  !desc.toLowerCase().includes('in play');
-                const isInPlay = desc.toLowerCase().includes('in play');
-                const isFoul = desc.toLowerCase().includes('foul');
-                const isSwingK = desc.toLowerCase().includes('swinging');
+                  (normalizedDesc.includes('ball') || isHitByPitch) &&
+                  !normalizedDesc.includes('in play');
+                const isInPlay = normalizedDesc.includes('in play');
+                const isFoul = normalizedDesc.includes('foul');
+                const isSwingK = normalizedDesc.includes('swinging');
                 const isInPlayOut = isInPlay && (pitch.details?.code === 'X' || pitch.details?.code === 'Y') && !playScored;
                 const dotColor = isInPlay
                   ? isInPlayOut

@@ -52,7 +52,10 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   const resumeRevealUntilRef = useRef(0);
   const pitchRevealFallbackTimerRef = useRef(null);
   const hiddenPitchFirstSeenRef = useRef(new Map());
+  const knownResultRowKeysRef = useRef(null);
+  const hiddenResultFirstSeenRef = useRef(new Map());
   const [revealedPitchRowKeys, setRevealedPitchRowKeys] = useState(() => new Set());
+  const [revealedResultRowKeys, setRevealedResultRowKeys] = useState(() => new Set());
 
   const revealPitchRows = useCallback((rowKeys) => {
     if (!rowKeys?.length) return;
@@ -119,8 +122,32 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   }, [liveRecentRows, revealPitchRows]);
 
   useEffect(() => {
+    const resultRows = liveRecentRows.filter((row) => (
+      row.kind === 'play' || row.kind === 'scoring_update' || row.kind === 'runners'
+    ));
+    const resultRowKeys = resultRows.map((row) => row.key);
+
+    if (knownResultRowKeysRef.current == null) {
+      knownResultRowKeysRef.current = new Set(resultRowKeys);
+      setRevealedResultRowKeys(new Set(resultRowKeys));
+      return;
+    }
+
+    knownResultRowKeysRef.current = new Set(resultRowKeys);
+    setRevealedResultRowKeys((prev) => {
+      const activeKeys = new Set(resultRowKeys);
+      const next = new Set();
+      prev.forEach((key) => {
+        if (activeKeys.has(key)) next.add(key);
+      });
+      return next;
+    });
+  }, [liveRecentRows]);
+
+  useEffect(() => {
     if (!isLive) {
       hiddenPitchFirstSeenRef.current.clear();
+      hiddenResultFirstSeenRef.current.clear();
       return undefined;
     }
 
@@ -207,6 +234,82 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
   }, [isLive, liveRecentRows, revealedPitchRowKeys, revealPitchRows]);
 
   useEffect(() => {
+    if (!isLive) {
+      hiddenResultFirstSeenRef.current.clear();
+      return undefined;
+    }
+
+    const pitchRowsByAtBat = new Map();
+    liveRecentRows.forEach((row) => {
+      if (row.kind !== 'live_pitch') return;
+      const atBatIndex = pitchAtBatIndexFromKey(row.key);
+      if (atBatIndex == null) return;
+      const rows = pitchRowsByAtBat.get(atBatIndex) ?? [];
+      rows.push(row);
+      pitchRowsByAtBat.set(atBatIndex, rows);
+    });
+
+    const hiddenResultRows = liveRecentRows.filter((row) => {
+      if (row.kind !== 'play' && row.kind !== 'scoring_update' && row.kind !== 'runners') return false;
+      if (revealedResultRowKeys.has(row.key)) return false;
+      const atBatIndex = rowAtBatIndexFromKey(row.key);
+      return atBatIndex != null && pitchRowsByAtBat.has(atBatIndex);
+    });
+    const hiddenResultRowKeys = hiddenResultRows.map((row) => row.key);
+    const visibleResultKeys = new Set(
+      liveRecentRows
+        .filter((row) => row.kind === 'play' || row.kind === 'scoring_update' || row.kind === 'runners')
+        .map((row) => row.key),
+    );
+
+    hiddenResultFirstSeenRef.current.forEach((_, key) => {
+      if (!visibleResultKeys.has(key) || revealedResultRowKeys.has(key)) {
+        hiddenResultFirstSeenRef.current.delete(key);
+      }
+    });
+
+    const now = Date.now();
+    hiddenResultRowKeys.forEach((key) => {
+      if (!hiddenResultFirstSeenRef.current.has(key)) {
+        hiddenResultFirstSeenRef.current.set(key, now);
+      }
+    });
+
+    if (!hiddenResultRowKeys.length) return undefined;
+
+    const fallbackMs = 4300;
+    const readyKeys = hiddenResultRowKeys.filter((key) => (
+      now - (hiddenResultFirstSeenRef.current.get(key) ?? now) >= fallbackMs
+    ));
+    if (readyKeys.length) {
+      setRevealedResultRowKeys((prev) => new Set([...prev, ...readyKeys]));
+      readyKeys.forEach((key) => hiddenResultFirstSeenRef.current.delete(key));
+      return undefined;
+    }
+
+    const nextDelay = Math.max(
+      0,
+      Math.min(
+        ...hiddenResultRowKeys.map((key) => (
+          fallbackMs - (now - (hiddenResultFirstSeenRef.current.get(key) ?? now))
+        )),
+      ),
+    );
+    const timer = window.setTimeout(() => {
+      const fireNow = Date.now();
+      const keysToReveal = hiddenResultRowKeys.filter((key) => (
+        fireNow - (hiddenResultFirstSeenRef.current.get(key) ?? fireNow) >= fallbackMs
+      ));
+      if (keysToReveal.length) {
+        setRevealedResultRowKeys((prev) => new Set([...prev, ...keysToReveal]));
+        keysToReveal.forEach((key) => hiddenResultFirstSeenRef.current.delete(key));
+      }
+    }, nextDelay);
+
+    return () => window.clearTimeout(timer);
+  }, [isLive, liveRecentRows, revealedResultRowKeys]);
+
+  useEffect(() => {
     if (!isLive) return undefined;
 
     const revealCurrentPitchRowsAfterResume = () => {
@@ -237,6 +340,7 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
     if (!rowKey) return;
     const atBatIndex = pitchAtBatIndexFromKey(rowKey);
     const eventIndex = pitchEventIndexFromKey(rowKey);
+    const resultAtBatIndex = rowAtBatIndexFromKey(rowKey);
     const rowKeysToReveal =
       atBatIndex != null && eventIndex != null
         ? liveRecentRows
@@ -255,17 +359,44 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
       rowKeysToReveal.forEach((key) => next.add(key));
       return next;
     });
+
+    if (resultAtBatIndex != null && atBatIndex == null) {
+      const resultKeysToReveal = liveRecentRows
+        .filter((row) => {
+          if (row.kind !== 'play' && row.kind !== 'scoring_update' && row.kind !== 'runners') return false;
+          return rowAtBatIndexFromKey(row.key) === resultAtBatIndex;
+        })
+        .map((row) => row.key);
+
+      setRevealedResultRowKeys((prev) => {
+        if (resultKeysToReveal.every((key) => prev.has(key))) return prev;
+        const next = new Set(prev);
+        resultKeysToReveal.forEach((key) => next.add(key));
+        return next;
+      });
+      resultKeysToReveal.forEach((key) => hiddenResultFirstSeenRef.current.delete(key));
+    }
   }, [liveRecentRows]);
 
   const visibleLiveRecentRows = useMemo(
     () => {
       const currentPitchRows = liveRecentRows.filter((row) => row.kind === 'live_pitch');
       const currentPitchAtBatIndex = pitchAtBatIndexFromKey(currentPitchRows[0]?.key);
+      const pitchAtBatIndexes = new Set(
+        currentPitchRows
+          .map((row) => pitchAtBatIndexFromKey(row.key))
+          .filter((atBatIndex) => atBatIndex != null),
+      );
       const currentRowKeySet = new Set(liveRecentRows.map((row) => row.key));
       const retained = retainedAtBatPitchRowsRef.current;
 
       const rows = liveRecentRows.filter((row) => (
-        row.kind !== 'live_pitch' || revealedPitchRowKeys.has(row.key)
+        (row.kind !== 'live_pitch' || revealedPitchRowKeys.has(row.key)) &&
+        (
+          (row.kind !== 'play' && row.kind !== 'scoring_update' && row.kind !== 'runners') ||
+          !pitchAtBatIndexes.has(rowAtBatIndexFromKey(row.key)) ||
+          revealedResultRowKeys.has(row.key)
+        )
       ));
 
       // If MLB advances currentPlay before the final toast finishes, keep the
@@ -290,7 +421,7 @@ export function useLiveRecentPlays({ feed, ordinals, isLive, linescore }) {
       });
       return rows;
     },
-    [liveRecentRows, revealedPitchRowKeys],
+    [liveRecentRows, revealedPitchRowKeys, revealedResultRowKeys],
   );
 
   const liveRecentGroups = useMemo(

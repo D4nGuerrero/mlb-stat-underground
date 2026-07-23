@@ -37,6 +37,7 @@ function isPickoffEventType(eventType) {
 export function getPitchResultKind(description, isInPlay = false) {
   const d = (description || '').toLowerCase();
   if (isInPlay || d.includes('in play')) return 'in_play';
+  if (d.includes('hit by pitch') || d.includes('hit-by-pitch') || d.includes('hbp') || d.includes('plunk')) return 'ball';
   if (d.includes('ball') && !d.includes('in play')) return 'ball';
   return 'strike';
 }

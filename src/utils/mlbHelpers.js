@@ -415,8 +415,9 @@ export const renderStrikeZone = (playEvents = [], szTop = 3.5, szBot = 1.5, opts
     if (d.includes('swinging strike')) return { f: '#FF9500', s: '#FFB84D', g: 'rgba(255,149,0,0.35)' };
     if (d.includes('in play')) return { f: '#FFD60A', s: '#FFE566', g: 'rgba(255,214,10,0.35)' };
     if (d.includes('foul')) return { f: '#636366', s: '#8E8E93', g: 'rgba(99,99,102,0.25)' };
-    if (d.includes('ball')) return { f: '#30D158', s: '#6DDC87', g: 'rgba(48,209,88,0.3)' };
-    if (d.includes('hit by')) return { f: '#BF5AF2', s: '#D28CF7', g: 'rgba(191,90,242,0.35)' };
+    if (d.includes('ball') || d.includes('hit by') || d.includes('hit-by-pitch') || d.includes('hbp') || d.includes('plunk')) {
+      return { f: '#30D158', s: '#6DDC87', g: 'rgba(48,209,88,0.3)' };
+    }
     if (base) return { f: base, s: base, g: `${base}55` };
     return { f: '#636366', s: '#8E8E93', g: 'rgba(99,99,102,0.25)' };
   };
