@@ -115,6 +115,17 @@ function ProbablePitcherCard({ pitcher, align = 'left', onPlayerClick }) {
 }
 
 function MatchupTable({ rows, onPlayerClick }) {
+  const renderName = (row) => (
+    <span className="flex min-w-0 items-baseline gap-1">
+      <span className="truncate">{row.label}</span>
+      {row.position ? (
+        <span className="flex-shrink-0 text-[10px] font-semibold text-slate-600">
+          {row.position}
+        </span>
+      ) : null}
+    </span>
+  );
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
@@ -140,21 +151,20 @@ function MatchupTable({ rows, onPlayerClick }) {
                     <button
                       type="button"
                       onClick={() => onPlayerClick(row.batterId)}
-                      className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors truncate block max-w-full text-left`}
+                      className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors block max-w-full text-left`}
                     >
-                      {row.label}
+                      {renderName(row)}
                     </button>
                   )}
                 </td>
-                {stats ? (
-                  MATCHUP_COLS.map(([label, key]) => (
-                    <td key={label} className="text-center py-1.5 px-1 font-mono tabular-nums text-slate-100">
-                      {stats[key]}
-                    </td>
-                  ))
-                ) : (
-                  <td colSpan={5} className="text-center py-1.5 text-slate-500">—</td>
-                )}
+                {MATCHUP_COLS.map(([label, key]) => (
+                  <td
+                    key={label}
+                    className={`text-center py-1.5 px-1 font-mono tabular-nums ${stats ? 'text-slate-100' : 'text-slate-600'}`}
+                  >
+                    {stats ? stats[key] : '-'}
+                  </td>
+                ))}
               </tr>
             );
           })}
@@ -185,6 +195,7 @@ function PitcherMatchupSection({ teamAbbr, pitcher, onPlayerClick }) {
       key: batter.batterId,
       batterId: batter.batterId,
       label: batter.fullName ?? batter.lastName,
+      position: batter.position,
       stat: batter.stat,
     });
   }

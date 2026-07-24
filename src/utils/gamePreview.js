@@ -95,13 +95,32 @@ function mapBatterMatchupSplits(splits) {
     .sort((a, b) => b.stat.atBats - a.stat.atBats);
 }
 
-async function fetchOpposingBatterMatchups(pitcherId, opposingTeamId, season) {
+async function fetchActiveOpposingHitters(opposingTeamId, season) {
   const res = await fetch(
-    `https://statsapi.mlb.com/api/v1/teams/${opposingTeamId}/roster?rosterType=active&season=${season}`,
+    `https://statsapi.mlb.com/api/v1/teams/${opposingTeamId}/roster?rosterType=active&season=${season}&hydrate=person(currentTeam,position)`,
   );
   if (!res.ok) return [];
   const roster = (await res.json()).roster ?? [];
-  const hitters = roster.filter((entry) => entry.position?.type !== 'Pitcher');
+  return roster.filter((entry) => entry.position?.type !== 'Pitcher');
+}
+
+function buildActiveHitterMatchupRow(entry, matchup = null) {
+  const person = entry?.person ?? {};
+  const position = entry?.position?.abbreviation
+    ?? person?.primaryPosition?.abbreviation
+    ?? null;
+
+  return {
+    batterId: person.id,
+    lastName: compactPlayerName(person),
+    fullName: person.fullName,
+    position,
+    stat: matchup?.stat ?? null,
+  };
+}
+
+async function fetchOpposingBatterMatchups(pitcherId, opposingTeamId, season, activeHitters = null) {
+  const hitters = activeHitters ?? await fetchActiveOpposingHitters(opposingTeamId, season);
 
   const rows = await Promise.all(
     hitters.map(async (entry) => {
@@ -111,19 +130,41 @@ async function fetchOpposingBatterMatchups(pitcherId, opposingTeamId, season) {
         opposingPlayerId: String(pitcherId),
       });
       const stat = splits?.[0]?.stat;
-      if (!stat?.atBats) return null;
-      return {
-        batterId: entry.person.id,
-        lastName: compactPlayerName(entry.person),
-        fullName: entry.person.fullName,
-        stat,
-      };
+      return buildActiveHitterMatchupRow(entry, stat?.atBats ? { stat } : null);
     }),
   );
 
   return rows
-    .filter(Boolean)
-    .sort((a, b) => (b.stat?.atBats ?? 0) - (a.stat?.atBats ?? 0));
+    .filter((row) => row.batterId)
+    .sort((a, b) => (
+      (b.stat?.atBats ?? 0) - (a.stat?.atBats ?? 0)
+      || String(a.fullName ?? '').localeCompare(String(b.fullName ?? ''))
+    ));
+}
+
+function mergeMatchupsWithActiveRoster(matchups, activeHitters) {
+  if (!Array.isArray(activeHitters)) return matchups ?? [];
+  if (!activeHitters.length) return [];
+
+  const matchupById = new Map(
+    (matchups ?? [])
+      .filter((row) => row.batterId)
+      .map((row) => [Number(row.batterId), row]),
+  );
+
+  // Pitcher-vs-team splits are historical for the franchise, so they can include
+  // former players. The preview card should list the current active hitters, with
+  // blank matchup cells when a hitter has not faced this pitcher.
+  return activeHitters
+    .map((entry) => buildActiveHitterMatchupRow(
+      entry,
+      matchupById.get(Number(entry.person?.id)),
+    ))
+    .filter((row) => row.batterId)
+    .sort((a, b) => (
+      (b.stat?.atBats ?? 0) - (a.stat?.atBats ?? 0)
+      || String(a.fullName ?? '').localeCompare(String(b.fullName ?? ''))
+    ));
 }
 
 export function formatGameStartDisplay(datetime, venue) {
@@ -187,7 +228,7 @@ export async function fetchProbablePitcherCard(pitcherRef, opposingTeamId, seaso
   const id = pitcherRef.id;
 
   try {
-    const [personRes, seasonSplits, vsTeamTotalSplits, vsTeamSplits] = await Promise.all([
+    const [personRes, seasonSplits, vsTeamTotalSplits, vsTeamSplits, activeHitters] = await Promise.all([
       fetch(`https://statsapi.mlb.com/api/v1/people/${id}`),
       fetchPersonStats(id, { stats: 'season', group: 'pitching', season: String(season) }),
       opposingTeamId
@@ -202,16 +243,22 @@ export async function fetchProbablePitcherCard(pitcherRef, opposingTeamId, seaso
             stats: 'vsTeam',
             group: 'pitching',
             opposingTeamId: String(opposingTeamId),
-          })
+        })
+        : Promise.resolve([]),
+      opposingTeamId
+        ? fetchActiveOpposingHitters(opposingTeamId, season)
         : Promise.resolve([]),
     ]);
 
     const person = personRes.ok ? (await personRes.json()).people?.[0] : null;
     const seasonStat = seasonSplits?.[0]?.stat ?? null;
     const vsTeamStat = vsTeamTotalSplits?.[0]?.stat ?? null;
-    let batterMatchups = mapBatterMatchupSplits(vsTeamSplits);
-    if (!batterMatchups.length && opposingTeamId) {
-      batterMatchups = await fetchOpposingBatterMatchups(id, opposingTeamId, season);
+    let batterMatchups = mergeMatchupsWithActiveRoster(
+      mapBatterMatchupSplits(vsTeamSplits),
+      activeHitters,
+    );
+    if (!batterMatchups.some((row) => row.stat) && opposingTeamId) {
+      batterMatchups = await fetchOpposingBatterMatchups(id, opposingTeamId, season, activeHitters);
     }
 
     return {
