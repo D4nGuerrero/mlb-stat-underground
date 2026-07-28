@@ -1031,20 +1031,23 @@ export default function SummarySection({
   summaryItemGroups,
   summaryLeadIn,
   onSummaryFilterChange,
+  showFilterControls = true,
 }) {
   return (
     <div className="bg-slate-900 border-slate-700/60 p-3 sm:p-5 lg:rounded-xl">
-      <SegmentedControl
-        value={summaryFilter}
-        onChange={onSummaryFilterChange}
-        variant="pill"
-        size="sm"
-        className="mb-4"
-        options={[
-          { value: 'all', label: 'All Plays' },
-          { value: 'scoring', label: 'Scoring Only' },
-        ]}
-      />
+      {showFilterControls && (
+        <SegmentedControl
+          value={summaryFilter}
+          onChange={onSummaryFilterChange}
+          variant="pill"
+          size="sm"
+          className="mb-4"
+          options={[
+            { value: 'all', label: 'All Plays' },
+            { value: 'scoring', label: 'Scoring Only' },
+          ]}
+        />
+      )}
 
       <div className="space-y-5">
         {summaryFilter === 'all' && (

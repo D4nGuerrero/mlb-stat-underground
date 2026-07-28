@@ -1715,17 +1715,17 @@ function SituationBreakdownSheet({
       backDismiss
       historyKey="situationBreakdown"
       align="bottom"
-      size="xl"
-      className="px-0 py-0 sm:px-4 sm:py-4"
-      panelClassName="max-h-[90vh] md:h-[88vh] md:max-h-[88vh] bg-[#101827] border-slate-700/70 p-0 flex flex-col overflow-hidden"
+      size="full"
+      className="px-0 py-0 sm:px-4 sm:py-4 xl:px-6 xl:py-6"
+      panelClassName="mx-auto max-h-[92vh] w-full bg-[#101827] border-slate-700/70 p-0 flex flex-col overflow-hidden sm:w-[min(96vw,72rem)] md:h-[88vh] md:max-h-[88vh] xl:h-[calc(100vh-7rem)] xl:max-h-[calc(100vh-7rem)] xl:w-[min(94vw,92rem)] 2xl:w-[min(92vw,104rem)]"
     >
       <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 z-20 bg-[#101827]">
         <div className="h-1 w-10 rounded-full bg-slate-600" />
       </div>
 
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-[#101827]/95 px-4 py-3 backdrop-blur sm:px-5">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-[#101827]/95 px-4 py-3 backdrop-blur sm:px-5 xl:px-6">
         <div className="min-w-0">
-          <div className="text-xl font-black text-white">Situation Breakdown</div>
+          <div className="text-xl font-black text-white xl:text-2xl">Situation Breakdown</div>
           <div className="mt-0.5 text-xs text-slate-500">
             Plate appearances by batting team and base state before the result.
           </div>
@@ -1740,9 +1740,9 @@ function SituationBreakdownSheet({
         </button>
       </div>
 
-      <div className="gameday-scroll-rail min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 md:overflow-hidden">
-        <div className="grid gap-4 md:h-full md:min-h-0 md:grid-cols-[19rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]">
-          <div className="space-y-3">
+      <div className="gameday-scroll-rail min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 md:overflow-hidden xl:p-6">
+        <div className="grid gap-4 md:h-full md:min-h-0 md:grid-cols-[19rem_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)] 2xl:grid-cols-[26rem_minmax(0,1fr)]">
+          <div className="space-y-3 md:min-h-0 md:overflow-y-auto md:pr-1">
             <div className="rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
               <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Batting Team</div>
               <SegmentedControl
@@ -1784,17 +1784,17 @@ function SituationBreakdownSheet({
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            <div className="flex items-center gap-3 rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3">
+            <div className="flex items-center gap-3 rounded-3xl border border-slate-700/70 bg-slate-950/45 p-3 xl:p-4">
               {selectedTeam ? (
-                <img src={teamLogoUrl(selectedTeam.id)} alt="" className="h-12 w-12 object-contain" />
+                <img src={teamLogoUrl(selectedTeam.id)} alt="" className="h-12 w-12 object-contain xl:h-14 xl:w-14" />
               ) : (
-                <div className="relative h-12 w-16 flex-shrink-0">
-                  <img src={teamLogoUrl(away?.id)} alt="" className="absolute left-0 top-1 h-10 w-10 object-contain" />
-                  <img src={teamLogoUrl(home?.id)} alt="" className="absolute right-0 top-1 h-10 w-10 object-contain" />
+                <div className="relative h-12 w-16 flex-shrink-0 xl:h-14 xl:w-20">
+                  <img src={teamLogoUrl(away?.id)} alt="" className="absolute left-0 top-1 h-10 w-10 object-contain xl:h-12 xl:w-12" />
+                  <img src={teamLogoUrl(home?.id)} alt="" className="absolute right-0 top-1 h-10 w-10 object-contain xl:h-12 xl:w-12" />
                 </div>
               )}
               <div className="min-w-0">
-                <div className="truncate text-lg font-black text-white">{selectedTeamLabel}</div>
+                <div className="truncate text-lg font-black text-white xl:text-xl">{selectedTeamLabel}</div>
                 <div className="text-xs font-semibold text-slate-500">
                   {baseFilterLabel}
                   {`, ${outsFilterLabel}`}
@@ -1802,7 +1802,7 @@ function SituationBreakdownSheet({
               </div>
               <BaseDiamondIndicator {...baseFilter} size="lg" className="ml-auto text-white" />
             </div>
-            <div className="grid grid-cols-3 gap-2 xl:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 xl:grid-cols-6 xl:gap-3">
               <SituationStatCard label="PA" value={totals.pa} />
               <SituationStatCard label="Runs" value={totals.runs} />
               <SituationStatCard label="Hits" value={totals.hits} />
@@ -1812,7 +1812,7 @@ function SituationBreakdownSheet({
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-slate-700/70 bg-slate-950/45">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2 xl:px-4 xl:py-3">
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Results</div>
                 <div className="text-xs font-semibold text-slate-500">{filteredRows.length} PA</div>
               </div>
@@ -1831,10 +1831,10 @@ function SituationBreakdownSheet({
                         onClick={() => {
                           onOpenPlay?.(play, { scrollTop: scrollRef.current?.scrollTop ?? 0 });
                         }}
-                        className="block w-full px-3 py-3 text-left transition-colors hover:bg-slate-900/70"
+                        className="block w-full px-3 py-3 text-left transition-colors hover:bg-slate-900/70 xl:px-4"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="flex w-16 flex-shrink-0 flex-col items-center gap-1">
+                          <div className="flex w-16 flex-shrink-0 flex-col items-center gap-1 xl:w-20">
                             <span className="font-mono text-xs font-black text-slate-300">{inning}</span>
                             <BaseDiamondIndicator {...row.situation.bases} size="sm" />
                             <OutsIndicator outs={row.situation.outs} size="sm" />
@@ -1849,10 +1849,10 @@ function SituationBreakdownSheet({
                               <span className="font-mono text-[11px] font-semibold text-slate-500">{score}</span>
                               <span className="font-mono text-[11px] font-semibold text-slate-500">{row.pitches} pitches</span>
                             </div>
-                            <div className="mt-1 truncate text-sm font-black text-white">
+                            <div className="mt-1 truncate text-sm font-black text-white xl:text-base">
                               {play.matchup?.batter?.fullName || 'Batter'} vs {play.matchup?.pitcher?.fullName || 'Pitcher'}
                             </div>
-                            <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-400">
+                            <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-400 xl:text-sm">
                               {play.result?.description || play.result?.event}
                             </div>
                           </div>
@@ -3391,23 +3391,11 @@ function GamePageContent({ gamePk, navigate, location }) {
     </div>
   );
 
-  const halfScreenPitchBreakdownButton = (
-    <button
-      type="button"
-      onClick={() => setPitchCountSheetOpen(true)}
-      className={`hidden sm:inline-flex xl:hidden items-center gap-2 border-l border-slate-800 px-4 text-xs font-black uppercase tracking-[0.12em] text-slate-400 transition-colors hover:bg-slate-800/45 hover:text-${THEME_COLOR}-300`}
-    >
-      <i className="fa-solid fa-location-dot" aria-hidden />
-      Pitch Breakdown
-    </button>
-  );
-
   const halfScreenGameTabBar = (
     <div className="flex items-stretch">
       <div className="min-w-0 flex-1">
         {gameTabBar}
       </div>
-      {halfScreenPitchBreakdownButton}
     </div>
   );
 
@@ -3452,7 +3440,6 @@ function GamePageContent({ gamePk, navigate, location }) {
                   {ls?.inningHalf === 'Top' ? '▲' : '▼'}{' '}
                   {ls?.currentInningOrdinal}
                 </span>
-                <GameChatInlineLinks links={redditGameChatLinks} className="mt-2" />
               </div>
             </div>
             <span
@@ -3547,7 +3534,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     </>
   ) : null;
 
-  const summaryPanel = (
+  const renderSummaryPanel = ({ showFilterControls = true } = {}) => (
     <SummarySection
       awayAbbr={away.abbreviation}
       expandedVideoKey={expandedVideoKey}
@@ -3563,8 +3550,11 @@ function GamePageContent({ gamePk, navigate, location }) {
       summaryItemGroups={summaryItemGroups}
       summaryLeadIn={summaryLeadIn}
       onSummaryFilterChange={setSummaryFilter}
+      showFilterControls={showFilterControls}
     />
   );
+  const summaryPanel = renderSummaryPanel();
+  const railSummaryPanel = renderSummaryPanel({ showFilterControls: false });
 
   const savantPanel = (
     <SavantStatcastSection
@@ -3577,55 +3567,91 @@ function GamePageContent({ gamePk, navigate, location }) {
   const recentPlaysPanel = (
     <div className="relative z-0 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-visible">
       <div className="pointer-events-none absolute -top-4 left-0 right-0 z-30 h-5 bg-slate-900 sm:rounded-t-2xl" aria-hidden />
-      <div className="relative z-20 hidden items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-3 py-2 xl:flex sm:rounded-t-2xl">
-        <div className="min-w-0">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-            Recent Plays
-          </div>
-          <div className="text-[10px] font-semibold text-slate-600">
-            {leftRailView === 'summary' ? `${summaryItems.length} plays` : `${liveRecentRows.length} events`}
-          </div>
+      <div className="relative z-20 hidden border-b border-slate-800 bg-slate-900 xl:block sm:rounded-t-2xl">
+        <div className="flex items-center gap-5 px-4 py-3">
+          {[
+            { key: 'live', label: 'Live' },
+            { key: 'summary', label: 'Summary' },
+            { key: 'tools', label: 'Game Tools' },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setLeftRailView(tab.key)}
+              className={`text-sm font-black transition-colors ${
+                leftRailView === tab.key
+                  ? 'text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSituationReturn(null);
-            setSituationBreakdownOpen(true);
-          }}
-          className={`inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-950/45 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200`}
-        >
-          <i className="fa-solid fa-diamond text-[9px]" aria-hidden />
-          Situation
-        </button>
+        {leftRailView === 'summary' && (
+          <div className="flex items-center gap-2 border-t border-slate-800 px-3 py-3">
+            {[
+              { key: 'all', label: 'All' },
+              { key: 'scoring', label: 'Scoring' },
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setSummaryFilter(filter.key)}
+                className={`rounded-full border px-3 py-1.5 text-[11px] font-black transition-colors ${
+                  summaryFilter === filter.key
+                    ? 'border-white bg-white text-slate-950'
+                    : 'border-slate-700 bg-slate-950/35 text-slate-200 hover:border-slate-500 hover:bg-slate-800'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      {/* <div className="relative z-20 bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between sm:rounded-t-2xl">
-        <span className="xl:hidden text-[10px] text-slate-500 uppercase tracking-widest">
-          Recent Plays
-        </span>
-        <div className="hidden xl:flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setLeftRailView('live')}
-            className={`text-sm font-black transition-colors ${leftRailView === 'live' ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
-          >
-            Live
-          </button>
-          <button
-            type="button"
-            onClick={() => setLeftRailView('summary')}
-            className={`text-sm font-black transition-colors ${leftRailView === 'summary' ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
-          >
-            Summary
-          </button>
-        </div>
-        <span className="text-[9px] text-slate-600">
-          {leftRailView === 'summary' ? `${summaryItems.length} plays` : `${liveRecentRows.length} events`}
-        </span>
-      </div> */}
       <div className="relative z-0 overflow-hidden p-2 sm:p-4 xl:p-3 2xl:p-4">
         {leftRailView === 'summary' ? (
           <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
-            {summaryPanel}
+            {railSummaryPanel}
+          </div>
+        ) : leftRailView === 'tools' ? (
+          <div className="space-y-3 p-1">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Game Tools
+              </div>
+              <div className="mt-1 text-xs text-slate-400">
+                Open pitch maps and situation splits for this game.
+              </div>
+            </div>
+            {hasPitchBreakdownData && (
+              <button
+                type="button"
+                onClick={() => setPitchCountSheetOpen(true)}
+                className={`flex w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-left transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10`}
+              >
+                <span>
+                  <span className="block text-sm font-black text-white">Pitch Breakdown</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">Pitch counts and location maps by pitcher.</span>
+                </span>
+                <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSituationReturn(null);
+                setSituationBreakdownOpen(true);
+              }}
+              className={`flex w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-left transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10`}
+            >
+              <span>
+                <span className="block text-sm font-black text-white">Situation Breakdown</span>
+                <span className="mt-0.5 block text-xs text-slate-500">Filter plate appearances by base state and outs.</span>
+              </span>
+              <i className={`fa-solid fa-diamond text-${THEME_COLOR}-300`} aria-hidden />
+            </button>
           </div>
         ) : (
           <LiveRecentPlaysTimeline
@@ -3764,15 +3790,22 @@ function GamePageContent({ gamePk, navigate, location }) {
     <div className="h-full min-h-0 flex flex-col gap-3 overflow-hidden">
       {!isPreview && (
         <div className="shrink-0 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900">
-          <LinescoreBoard
-            key={`desktop-linescore-${gamePk}`}
-            ls={ls}
-            away={away}
-            home={home}
-            awayRuns={awayRuns}
-            homeRuns={homeRuns}
-            compact
-          />
+          <div className={redditGameChatLinks.length ? 'grid grid-cols-[minmax(0,1fr)_13rem] divide-x divide-slate-700/60' : ''}>
+            <LinescoreBoard
+              key={`desktop-linescore-${gamePk}`}
+              ls={ls}
+              away={away}
+              home={home}
+              awayRuns={awayRuns}
+              homeRuns={homeRuns}
+              compact
+            />
+            {redditGameChatLinks.length > 0 && (
+              <div className="flex min-h-0 items-center justify-center px-3 py-2">
+                <GameChatStackedLinks links={redditGameChatLinks} />
+              </div>
+            )}
+          </div>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden">

@@ -1884,45 +1884,273 @@ function RosterTab({
 function DepthChartTab({ teamId, season, onNavigateAway }) {
   const [roster, setRoster] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=active&hydrate=person(currentTeam,position)&season=${season}`);
+        setLoading(true);
+        setError(null);
+        const hydrate = encodeURIComponent(
+          `person(currentTeam,position,stats(group=[hitting,pitching],type=[season],season=${season}))`
+        );
+        const res = await fetch(
+          `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=depthChart&hydrate=${hydrate}&season=${season}`
+        );
+        if (!res.ok) throw new Error(`Roster returned ${res.status}`);
         const json = await res.json();
-        setRoster(json.roster ?? []);
-      } catch { /* silent */ }
-      finally { setLoading(false); }
+        if (!cancelled) setRoster(json.roster ?? []);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [teamId, season]);
 
   if (loading) return <LoadingSpinner size="lg" py="py-16" />;
+  if (error) return <div className="py-8 text-center text-red-400 text-sm">{error}</div>;
 
-  const POS_ORDER = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'];
-  const grouped = {};
-  (roster ?? []).forEach((p) => {
-    const pos = p.person?.primaryPosition?.abbreviation ?? 'UTIL';
-    (grouped[pos] = grouped[pos] ?? []).push(p);
-  });
+  const players = roster ?? [];
+  const statusCode = (entry) => entry.status?.code ?? '';
+  const isActiveRosterPlayer = (entry) => statusCode(entry) === 'A';
+  const playerNumber = (entry) => entry.jerseyNumber ?? entry.person?.primaryNumber ?? null;
+  const statFor = (entry, group) =>
+    entry.person?.stats?.find((item) => item.group?.displayName === group)
+      ?.splits?.[0]?.stat ?? null;
+  const cleanRate = (value) => {
+    if (value == null || value === '') return '---';
+    const number = Number(value);
+    if (!Number.isFinite(number)) return String(value);
+    const fixed = number.toFixed(3);
+    return fixed.startsWith('0') ? fixed.slice(1) : fixed;
+  };
+  const cleanNumber = (value, fallback = '-') => {
+    if (value == null || value === '') return fallback;
+    return String(value);
+  };
+  const numericStat = (value, fallback = 0) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+  const inningsToNumber = (value) => {
+    if (value == null || value === '') return 0;
+    const [whole, partial = '0'] = String(value).split('.');
+    const outs = Number(whole || 0) * 3 + Number(partial || 0);
+    return outs / 3;
+  };
+  const isPitcherSection = (key) => key === 'SP' || key === 'P';
+  const seasonLineFor = (entry, sectionKey) => {
+    if (isPitcherSection(sectionKey)) {
+      const stat = statFor(entry, 'pitching');
+      if (!stat) return `${season} pitching: -`;
+      return `IP ${cleanNumber(stat.inningsPitched)} · ERA ${cleanNumber(stat.era)} · WHIP ${cleanNumber(stat.whip)} · K ${cleanNumber(stat.strikeOuts)}`;
+    }
+    const stat = statFor(entry, 'hitting');
+    if (!stat) return `${season} hitting: -`;
+    return `${cleanRate(stat.avg)} / ${cleanRate(stat.obp)} / ${cleanRate(stat.slg)} · OPS ${cleanRate(stat.ops)} · HR ${cleanNumber(stat.homeRuns)} · RBI ${cleanNumber(stat.rbi)}`;
+  };
+  const performanceScore = (entry, sectionKey) => {
+    if (isPitcherSection(sectionKey)) {
+      const stat = statFor(entry, 'pitching');
+      if (!stat) return -100000;
+      const innings = inningsToNumber(stat.inningsPitched);
+      const era = numericStat(stat.era, 7);
+      const whip = numericStat(stat.whip, 2.2);
+      const k9 = numericStat(stat.strikeoutsPer9Inn);
+      const gamesStarted = numericStat(stat.gamesStarted);
+      const gamesPitched = numericStat(stat.gamesPitched ?? stat.gamesPlayed);
+      const saves = numericStat(stat.saves);
+      const holds = numericStat(stat.holds);
+      const blownSaves = numericStat(stat.blownSaves);
+      const strikeouts = numericStat(stat.strikeOuts);
+      const walks = numericStat(stat.baseOnBalls);
+      const wins = numericStat(stat.wins);
+      const losses = numericStat(stat.losses);
+      const strikeoutWalkRatio = strikeouts / Math.max(walks, 1);
 
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-      {POS_ORDER.filter((pos) => grouped[pos]).map((pos) => (
-        <div key={pos} className="bg-slate-800/40 border border-slate-700/40 rounded-2xl p-3">
-          <div className={`text-xs font-bold text-${THEME_COLOR}-400 mb-2`}>{pos}</div>
-          {grouped[pos].map((p) => (
-            <Link
-              key={p.person.id}
-              to={`/player/${p.person.id}`}
-              onClick={onNavigateAway}
-              className="flex items-center gap-2 py-1 hover:opacity-80 transition-opacity"
+      if (sectionKey === 'SP') {
+        // Workload proves the sample, but quality drives the rank. This keeps a high-volume
+        // rough season from jumping cleaner starters just because the pitcher took every turn.
+        const reliability = clamp(((innings / 75) + (gamesStarted / 12)) / 2, 0.25, 1);
+        const quality =
+          (5.25 - clamp(era, 0, 5.25)) * 180 +
+          (1.55 - clamp(whip, 0, 1.55)) * 260 +
+          clamp(strikeoutWalkRatio, 0, 6) * 28 +
+          clamp(k9, 0, 14) * 5 +
+          (wins - losses) * 12;
+        const roleVolume = Math.min(gamesStarted, 18) * 7 + Math.min(innings, 110) * 0.55;
+        return quality * reliability + roleVolume;
+      }
+
+      const reliability = clamp(innings / 20, 0.08, 1);
+      const quality =
+        (7 - clamp(era, 0, 7)) * 120 +
+        (2.2 - clamp(whip, 0, 2.2)) * 130 +
+        clamp(k9, 0, 14) * 8 +
+        clamp(strikeoutWalkRatio, 0, 6) * 12;
+      const roleVolume = gamesPitched * 18 + innings * 4 + saves * 20 + holds * 10 - blownSaves * 10;
+      return roleVolume + quality * reliability;
+    }
+    const stat = statFor(entry, 'hitting');
+    if (!stat) return -100000;
+    const plateAppearances = numericStat(
+      stat.plateAppearances,
+      numericStat(stat.atBats) + numericStat(stat.baseOnBalls) + numericStat(stat.hitByPitch) + numericStat(stat.sacFlies)
+    );
+    const reliability = clamp(plateAppearances / 120, 0.12, 1);
+    const ops = numericStat(stat.ops);
+    const avg = numericStat(stat.avg);
+    const obp = numericStat(stat.obp);
+    const slg = numericStat(stat.slg);
+    const homeRuns = numericStat(stat.homeRuns);
+    const rbi = numericStat(stat.rbi);
+    const runs = numericStat(stat.runs);
+    const stolenBases = numericStat(stat.stolenBases);
+    const rateScore = ops * 700 + avg * 150 + obp * 150 + slg * 150;
+    return (
+      plateAppearances * 0.9 +
+      rateScore * reliability +
+      homeRuns * 18 +
+      rbi * 4 +
+      runs * 3 +
+      stolenBases * 4
+    );
+  };
+  const statusBadge = (entry) => {
+    if (isActiveRosterPlayer(entry)) return null;
+    const label = statusCode(entry).replace(/^D/, 'IL-');
+    return (
+      <span className="text-[11px] font-black uppercase text-red-400">
+        {label}
+      </span>
+    );
+  };
+  const DEPTH_SECTIONS = [
+    { key: 'SP', label: 'Rotation', accent: 'text-sky-300' },
+    { key: 'P', label: 'Bullpen', accent: 'text-emerald-300' },
+    { key: 'C', label: 'Catcher', accent: 'text-emerald-300' },
+    { key: '1B', label: 'First Base', accent: 'text-emerald-300' },
+    { key: '2B', label: 'Second Base', accent: 'text-emerald-300' },
+    { key: '3B', label: 'Third Base', accent: 'text-emerald-300' },
+    { key: 'SS', label: 'Shortstop', accent: 'text-emerald-300' },
+    { key: 'LF', label: 'Left Field', accent: 'text-emerald-300' },
+    { key: 'CF', label: 'Center Field', accent: 'text-emerald-300' },
+    { key: 'RF', label: 'Right Field', accent: 'text-emerald-300' },
+    { key: 'DH', label: 'Designated Hitter', accent: 'text-fuchsia-300' },
+  ];
+  const grouped = players.reduce((acc, entry) => {
+    const key = entry.position?.abbreviation ?? 'UTIL';
+    (acc[key] = acc[key] ?? []).push(entry);
+    return acc;
+  }, {});
+  const totalUnique = new Set(players.map((entry) => entry.person?.id).filter(Boolean)).size;
+  const inactiveRows = players.filter((entry) => !isActiveRosterPlayer(entry)).length;
+
+  const PlayerIdentity = ({ entry, sectionKey }) => (
+    <Link
+      to={`/player/${entry.person.id}`}
+      onClick={onNavigateAway}
+      className="group flex min-w-0 items-center gap-3"
+    >
+      <img
+        src={playerHeadshotUrl(entry.person.id)}
+        alt=""
+        className="h-11 w-11 flex-shrink-0 rounded-2xl border border-slate-700 bg-slate-800 object-cover sm:h-12 sm:w-12"
+        onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
+      />
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="truncate text-sm font-black text-slate-100 group-hover:text-white">
+            {entry.person?.fullName ?? 'Player'}
+          </span>
+          {playerNumber(entry) && (
+            <span className="text-[11px] font-black text-slate-500">#{playerNumber(entry)}</span>
+          )}
+          {statusBadge(entry)}
+        </div>
+        <div className="mt-0.5 text-[11px] font-semibold text-slate-500 sm:hidden">
+          {seasonLineFor(entry, sectionKey)}
+        </div>
+      </div>
+    </Link>
+  );
+
+  const DepthSection = ({ section }) => {
+    const entries = [...(grouped[section.key] ?? [])].sort((a, b) => {
+      const activeDelta = Number(!isActiveRosterPlayer(a)) - Number(!isActiveRosterPlayer(b));
+      if (activeDelta) return activeDelta;
+      return performanceScore(b, section.key) - performanceScore(a, section.key);
+    });
+    if (!entries.length) return null;
+
+    return (
+      <section className="overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/75">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/35 px-4 py-3">
+          <div>
+            <div className={`text-sm font-black ${section.accent}`}>{section.label}</div>
+            <div className="text-[11px] font-semibold text-slate-600">{entries.length} players listed</div>
+          </div>
+          <div className="hidden text-right text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 sm:block sm:w-[30rem]">
+            {season} season
+          </div>
+        </div>
+        <div className="divide-y divide-slate-800/70">
+          {entries.map((entry, idx) => (
+            <div
+              key={`${section.key}-${entry.person?.id}-${idx}`}
+              className="grid items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-800/25 sm:grid-cols-[minmax(0,1fr)_30rem]"
             >
-              <img src={playerHeadshotUrl(p.person.id)} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-700 flex-shrink-0" onError={(e) => (e.target.src = FALLBACK_HEADSHOT)} />
-              <span className="text-xs font-medium truncate">{compactPlayerName(p.person)}</span>
-            </Link>
+              <PlayerIdentity entry={entry} sectionKey={section.key} />
+              <div className="hidden text-right text-xs font-semibold text-slate-400 sm:block">
+                {seasonLineFor(entry, section.key)}
+              </div>
+            </div>
           ))}
         </div>
-      ))}
+      </section>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <section className="relative overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/75 p-4 sm:p-5">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+              MLB Depth Chart
+            </div>
+            <div className="mt-1 text-2xl font-black text-white">Official section order</div>
+            <div className="mt-1 max-w-2xl text-sm text-slate-400">
+              Mirrors MLB.com&apos;s depth chart: rotation, bullpen, position groups, repeated players, and IL labels.
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-2xl border border-slate-700/60 bg-slate-950/50 px-3 py-2">
+              <div className="text-xl font-black text-white tabular-nums">{players.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rows</div>
+            </div>
+            <div className="rounded-2xl border border-slate-700/60 bg-slate-950/50 px-3 py-2">
+              <div className="text-xl font-black text-white tabular-nums">{totalUnique}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Players</div>
+            </div>
+            <div className="rounded-2xl border border-slate-700/60 bg-slate-950/50 px-3 py-2">
+              <div className="text-xl font-black text-white tabular-nums">{inactiveRows}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">IL Rows</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="space-y-4">
+        {DEPTH_SECTIONS.map((section) => (
+          <DepthSection key={section.key} section={section} />
+        ))}
+      </div>
     </div>
   );
 }
