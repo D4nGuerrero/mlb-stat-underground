@@ -547,6 +547,19 @@ const rankRowsByStat = (rows, sortCol, sortDir, seasonParam = DEFAULT_SEASON) =>
   });
 };
 
+const rerankLeaderCards = (rows) => {
+  let rank = 0;
+  let prevVal = null;
+  return rows.map((row, i) => {
+    const val = row.value ?? '';
+    if (i === 0 || val !== prevVal) {
+      rank = i + 1;
+      prevVal = val;
+    }
+    return { ...row, rank };
+  });
+};
+
 const getPlayerPosition = (row) =>
   row.player?.primaryPosition?.abbreviation ??
   row.person?.primaryPosition?.abbreviation ??
@@ -1147,6 +1160,7 @@ export default function StatLeaders() {
     if (leagueFilter === 'NL') return leagueId === 104;
     return true;
   });
+  const rankedFilteredLeaders = rerankLeaderCards(filteredLeaders);
 
   const filteredTeamStats = teamStats.filter((row) => {
     if (!isMlbLevel || leagueFilter === 'all') return true;
@@ -1584,7 +1598,7 @@ const rankedCompletePlayers = useMemo(
           </div>
         )}
 
-        {!isTeam && playerMode !== 'complete' && filteredLeaders.map((leader, i) => {
+        {!isTeam && playerMode !== 'complete' && rankedFilteredLeaders.map((leader, i) => {
           const isTop3 = i < 3;
           return (
             <div

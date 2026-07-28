@@ -183,7 +183,6 @@ const CAREER_GAME_TYPE_OPTIONS = [
   { value: 'L', label: 'League Championship Series' },
   { value: 'W', label: 'World Series' },
   { value: 'S', label: 'Spring Training' },
-  { value: 'P', label: 'Postseason Cumulative' },
 ];
 
 const MINOR_SPORT_IDS = [
@@ -848,6 +847,48 @@ function getMostPlayedTeam(rows) {
       if (b.games !== a.games) return b.games - a.games;
       return b.seasons.size - a.seasons.size;
     })[0]?.team ?? null;
+}
+
+function buildPlayerCareerRows(stats, group, {
+  careerLevel,
+  seasonHonors = {},
+  includeHonors = false,
+} = {}) {
+  const splits = getYearByYearSplitsFromStats(stats, group).filter((sp) => sp.season && sp.stat);
+  const seasonMeta = splits.reduce((acc, split) => {
+    const season = split.season;
+    if (!acc.has(season)) acc.set(season, { count: 0, hasTotal: false });
+    const meta = acc.get(season);
+    meta.count += 1;
+    if (!split.team?.id) meta.hasTotal = true;
+    return acc;
+  }, new Map());
+
+  return splits
+    .map((sp, stintOrder) => {
+      const minorsLevel = careerLevel === 'minors' ? sp.sport?.abbreviation : null;
+      const meta = seasonMeta.get(sp.season);
+      const showHonors =
+        includeHonors &&
+        (meta?.count <= 1 || !meta?.hasTotal || !sp.team?.id);
+      return {
+        id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}-${stintOrder}`,
+        season: Number(sp.season),
+        stintOrder,
+        isSeasonTotal: !sp.team?.id,
+        minorsLevel: !sp.team?.id ? minorsLevel : null,
+        label: (
+          <SeasonYearLabel
+            season={sp.season}
+            minorsLevel={minorsLevel}
+            badges={showHonors ? getActiveHonorBadges(seasonHonors[sp.season]) : []}
+          />
+        ),
+        team: sp.team,
+        stat: sp.stat,
+      };
+    })
+    .sort((a, b) => compareSeasonRows(a, b, 'desc'));
 }
 
 function compareSeasonRows(a, b, sortDir) {
@@ -2035,6 +2076,8 @@ function GameLogGlossary({ items }) {
 
 function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs available' }) {
   const navigate = useNavigate();
+  const headerScrollRef = useRef(null);
+  const bodyScrollRef = useRef(null);
   const monthSections = useMemo(() => buildGameLogMonthSections(rows, logGroup), [rows, logGroup]);
   const glossary = logGroup === 'pitching' ? GAME_LOG_PITCH_GLOSSARY : GAME_LOG_HIT_GLOSSARY;
 
@@ -2070,30 +2113,51 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
     left: gameLogAfterDateLeft,
     widthClass: gameLogOppWidth,
   });
+  const syncScroll = (source, target) => {
+    if (!target.current) return;
+    if (target.current.scrollLeft === source.currentTarget.scrollLeft) return;
+    target.current.scrollLeft = source.currentTarget.scrollLeft;
+  };
+  const renderHeader = ({ sticky = false } = {}) => (
+    <thead className={sticky ? '' : 'sr-only'}>
+      <tr className="text-slate-500 border-b border-slate-700/60">
+        {cols.map((c, i) => (
+          <th
+            key={c.key}
+            className={[
+              'font-normal whitespace-nowrap bg-[#121827]',
+              i === 0
+                ? dateStickyHead
+                : i === 1
+                  ? `${oppStickyHead} pr-4 shadow-[6px_0_10px_-8px_rgba(0,0,0,0.9)]`
+                  : scrollStatHead('text-center', { align: 'text-center', stickTop: true }),
+            ].join(' ')}
+          >
+            {c.label}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
 
   return (
     <div>
-      <div className={TABLE_SCROLL_BODY}>
-        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS}`}>
-          <thead>
-            <tr className="text-slate-500 border-b border-slate-700/60">
-              {cols.map((c, i) => (
-                <th
-                  key={c.key}
-                  className={[
-                    'font-normal whitespace-nowrap bg-[#121827]',
-                    i === 0
-                      ? dateStickyHead
-                      : i === 1
-                        ? `${oppStickyHead} pr-4 shadow-[6px_0_10px_-8px_rgba(0,0,0,0.9)]`
-                        : scrollStatHead('text-center', { align: 'text-center', stickTop: true }),
-                  ].join(' ')}
-                >
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
+      <div
+        ref={headerScrollRef}
+        className="sticky top-14 z-40 -mx-1 overflow-x-auto overflow-y-hidden rounded-t-xl border-x border-t border-slate-800/60 scrollbar-none sm:top-0"
+        onScroll={(event) => syncScroll(event, bodyScrollRef)}
+      >
+        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} min-w-max`}>
+          {renderHeader({ sticky: true })}
+        </table>
+      </div>
+      <div
+        ref={bodyScrollRef}
+        className="-mx-1 overflow-x-auto rounded-b-xl border border-slate-800/60 scrollbar-thin"
+        onScroll={(event) => syncScroll(event, headerScrollRef)}
+      >
+        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} min-w-max`}>
+          {renderHeader()}
           <tbody>
             {monthSections.map((section) => (
               <Fragment key={section.key}>
@@ -2287,13 +2351,16 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const [playerInfo, setPlayerInfo] = useState(null);
   const [draftPick, setDraftPick] = useState(null);
   const [yearByYear, setYearByYear] = useState(null);
+  const [postseasonYearByYear, setPostseasonYearByYear] = useState(null);
   const [yearByYearByLevel, setYearByYearByLevel] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const [careerLevel, setCareerLevel] = useState(initialViewState.careerLevel);
   const [careerGroup, setCareerGroup] = useState(initialViewState.careerGroup);
-  const [careerGameType, setCareerGameType] = useState(initialViewState.careerGameType);
+  const [careerGameType, setCareerGameType] = useState(
+    initialViewState.careerGameType === 'P' ? 'R' : initialViewState.careerGameType
+  );
   const [careerSeasonGroupsExpanded, setCareerSeasonGroupsExpanded] = useState(false);
 
   const [logLevel, setLogLevel] = useState(initialViewState.logLevel);
@@ -2432,6 +2499,16 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
 
   useEffect(() => {
     if (!playerId || !playerInfo) return;
+    const params = 'stats=yearByYear&group=hitting,pitching,fielding&hydrate=team&gameType=P';
+    fetchPlayerStats(playerId, params, careerLevel).then((data) => {
+      setPostseasonYearByYear(data.stats || []);
+    }).catch(() => {
+      setPostseasonYearByYear([]);
+    });
+  }, [playerId, playerInfo, careerLevel]);
+
+  useEffect(() => {
+    if (!playerId || !playerInfo) return;
     const neededLevels = [...new Set(['mlb', logLevel, splitLevel])].filter(
       (level) => level && !yearByYearByLevel[level],
     );
@@ -2485,34 +2562,14 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
     setSplitGroup(nextGroup);
   }, []);
 
-  const getYearByYearSplits = (group) =>
-    yearByYear?.find((s) => s.type?.displayName === 'yearByYear' && s.group?.displayName === group)?.splits ?? [];
-
   const seasonHonors = buildSeasonHonors(playerInfo?.awards);
 
   const careerRows = (() => {
-    const rows = getYearByYearSplits(statGroup)
-      .filter((sp) => sp.season && sp.stat)
-      .map((sp, stintOrder) => {
-        const minorsLevel = careerLevel === 'minors' ? sp.sport?.abbreviation : null;
-        return {
-          id: `${sp.season}-${sp.team?.id ?? 'total'}-${sp.sport?.id ?? 0}-${stintOrder}`,
-          season: Number(sp.season),
-          stintOrder,
-          isSeasonTotal: !sp.team?.id,
-          minorsLevel: !sp.team?.id ? minorsLevel : null,
-          label: (
-            <SeasonYearLabel
-              season={sp.season}
-              minorsLevel={minorsLevel}
-              badges={careerLevel === 'mlb' ? getActiveHonorBadges(seasonHonors[sp.season]) : []}
-            />
-          ),
-          team: sp.team,
-          stat: sp.stat,
-        };
-      })
-      .sort((a, b) => compareSeasonRows(a, b, 'desc'));
+    const rows = buildPlayerCareerRows(yearByYear, statGroup, {
+      careerLevel,
+      seasonHonors,
+      includeHonors: careerLevel === 'mlb',
+    });
 
     if (careerLevel !== 'minors') return rows;
 
@@ -2520,6 +2577,10 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
       <SeasonYearLabel season={season} />
     ));
   })();
+  const postseasonRows = buildPlayerCareerRows(postseasonYearByYear, statGroup, {
+    careerLevel,
+  });
+  const postseasonTotalsRow = computeCareerTotalsRow(postseasonRows, statGroup);
 
   const careerGroupOptions = [
     { value: 'hitting', label: 'Batting' },
@@ -2528,6 +2589,10 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   ];
 
   const careerTotalsRow = computeCareerTotalsRow(careerRows, statGroup);
+  const careerSeasonCount = new Set(careerRows.map((row) => row.season).filter(Boolean)).size;
+  const careerSeasonCountLabel = `${careerSeasonCount} ${careerSeasonCount === 1 ? 'Season' : 'Seasons'}${
+    playerInfo?.active === false ? ' total' : ' so far'
+  }`;
   const isMinorsProfile = isMinorsPlayerProfile(playerInfo);
   const useMostPlayedTeam = shouldUseMostPlayedTeam(playerInfo);
   const retiredTeamOverride = retiredPlayerTeamOverride(playerInfo?.id);
@@ -2677,6 +2742,10 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                           options={CAREER_GAME_TYPE_OPTIONS}
                           className="w-56"
                         />
+                        <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-200 shadow-inner shadow-white/5">
+                          <i className="fa-solid fa-calendar-days text-[11px]" aria-hidden />
+                          <span>{careerSeasonCountLabel}</span>
+                        </div>
                         {careerLevel === 'minors' && (
                           <button
                             type="button"
@@ -2702,6 +2771,26 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                         expandAllSeasonGroups={careerSeasonGroupsExpanded}
                         emptyMessage="No career stats available for this selection."
                       />
+                      {postseasonRows.length > 0 && (
+                        <section className="mt-6">
+                          <div className="mb-2 px-2 sm:px-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                              Postseason
+                            </div>
+                            <div className="mt-0.5 text-sm font-semibold text-slate-300">
+                              Cumulative playoff stats by season
+                            </div>
+                          </div>
+                          <StatsTable
+                            key={`postseason-${careerLevel}-${careerGroup}`}
+                            cols={displayCols}
+                            rows={postseasonRows}
+                            labelKey="season"
+                            footerRow={postseasonTotalsRow}
+                            emptyMessage="No postseason stats available."
+                          />
+                        </section>
+                      )}
                     </>
                   );
                 }
