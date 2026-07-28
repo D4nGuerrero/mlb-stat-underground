@@ -2346,6 +2346,625 @@ function PlayerSplitsPanel({ playerId, playerInfo, splitLevel, splitGroup, split
   );
 }
 
+const REWARD_STYLES = {
+  MVP: { icon: 'fa-crown', tone: 'border-yellow-400/35 bg-yellow-500/10 text-yellow-100', text: 'text-yellow-200' },
+  'Postseason MVP': { icon: 'fa-trophy', tone: 'border-orange-400/35 bg-orange-500/10 text-orange-100', text: 'text-orange-200' },
+  'Club MVP': { icon: 'fa-flag', tone: 'border-red-400/35 bg-red-500/10 text-red-100', text: 'text-red-200' },
+  'Cy Young': { icon: 'fa-baseball', tone: 'border-sky-400/35 bg-sky-500/10 text-sky-100', text: 'text-sky-200' },
+  'Gold Glove': { icon: 'fa-shield-halved', tone: 'border-amber-400/35 bg-amber-500/10 text-amber-100', text: 'text-amber-200' },
+  'Silver Slugger': { icon: 'fa-baseball-bat-ball', tone: 'border-slate-300/35 bg-slate-300/10 text-slate-100', text: 'text-slate-200' },
+  Rookie: { icon: 'fa-star', tone: 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100', text: 'text-emerald-200' },
+  'All-Star': { icon: 'fa-star', tone: 'border-blue-400/35 bg-blue-500/10 text-blue-100', text: 'text-blue-200' },
+  'MiLB Honor': { icon: 'fa-medal', tone: 'border-violet-400/35 bg-violet-500/10 text-violet-100', text: 'text-violet-200' },
+  'MLB.com Award': { icon: 'fa-medal', tone: 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100', text: 'text-cyan-200' },
+  'Hot Streak': { icon: 'fa-bolt', tone: 'border-orange-400/35 bg-orange-500/10 text-orange-100', text: 'text-orange-200' },
+  Honor: { icon: 'fa-award', tone: 'border-slate-600 bg-slate-800/60 text-slate-200', text: 'text-slate-400' },
+};
+
+const REGULAR_SEASON_MAJOR_AWARD_IDS = new Map([
+  ['ALMVP', 'MVP'],
+  ['NLMVP', 'MVP'],
+  ['ALCY', 'Cy Young'],
+  ['NLCY', 'Cy Young'],
+  ['ALGG', 'Gold Glove'],
+  ['NLGG', 'Gold Glove'],
+  ['ALSS', 'Silver Slugger'],
+  ['NLSS', 'Silver Slugger'],
+  ['ALROY', 'Rookie'],
+  ['NLROY', 'Rookie'],
+  ['ALAS', 'All-Star'],
+  ['NLAS', 'All-Star'],
+]);
+
+function rewardStyle(label) {
+  return REWARD_STYLES[label] ?? REWARD_STYLES.Honor;
+}
+
+function makeRewardMeta(label, bucket = 'other') {
+  return { label, bucket, ...rewardStyle(label) };
+}
+
+function rewardMeta(award = {}) {
+  const id = String(award.id ?? '').toUpperCase();
+  const name = String(award.name ?? '');
+  const text = `${id} ${name}`.toLowerCase();
+
+  if (REGULAR_SEASON_MAJOR_AWARD_IDS.has(id)) {
+    return makeRewardMeta(REGULAR_SEASON_MAJOR_AWARD_IDS.get(id), 'regular');
+  }
+  if (/^(ALCS|NLCS|WS)MVP$/.test(id) || /world series mvp|league championship series mvp|\b(alcs|nlcs) mvp\b/.test(text)) {
+    return makeRewardMeta('Postseason MVP', 'postseason');
+  }
+  if (/^[A-Z]{2,5}MVP$/.test(id) || /team mvp|club mvp|rangers mvp/.test(text)) {
+    return makeRewardMeta('Club MVP', 'club');
+  }
+  if (/mlb\.com|mlbcom/.test(text)) {
+    return makeRewardMeta('MLB.com Award');
+  }
+  if (/most valuable player|\bmvp\b/.test(text)) {
+    return makeRewardMeta('MVP');
+  }
+  if (id.endsWith('CY') || /cy young/.test(text)) {
+    return makeRewardMeta('Cy Young', REGULAR_SEASON_MAJOR_AWARD_IDS.has(id) ? 'regular' : 'other');
+  }
+  if (id.endsWith('GG') || /gold glove/.test(text)) {
+    return makeRewardMeta('Gold Glove', REGULAR_SEASON_MAJOR_AWARD_IDS.has(id) ? 'regular' : 'other');
+  }
+  if (id.endsWith('SS') || /silver slugger/.test(text)) {
+    return makeRewardMeta('Silver Slugger', REGULAR_SEASON_MAJOR_AWARD_IDS.has(id) ? 'regular' : 'other');
+  }
+  if (id.endsWith('ROY') || /rookie of the year/.test(text)) {
+    return makeRewardMeta('Rookie', REGULAR_SEASON_MAJOR_AWARD_IDS.has(id) ? 'regular' : 'other');
+  }
+  if (/milb|minor league|futures game|mid-season all-star|post-season all-star|baseball america.*all-star|organization all-star|triple-a all-star|class a all-star/.test(text)) {
+    return makeRewardMeta('MiLB Honor');
+  }
+  if (id.endsWith('AS') || /all-star|all star/.test(text)) {
+    return makeRewardMeta('All-Star', REGULAR_SEASON_MAJOR_AWARD_IDS.has(id) ? 'regular' : 'other');
+  }
+  if (/player of the week|player of the month/.test(text)) {
+    return makeRewardMeta('Hot Streak');
+  }
+  return makeRewardMeta('Honor');
+}
+
+function normalizeRewardTeamName(team) {
+  return team?.name ?? team?.teamName ?? team?.shortName ?? '—';
+}
+
+function awardRowGames(row = {}) {
+  return Number(row.stat?.gamesPlayed ?? row.stat?.games ?? row.stat?.gamesPitched ?? 0) || 0;
+}
+
+function resolveAwardDisplayTeam(award = {}, seasonRows = []) {
+  if (!award.season) return award.team;
+  const rows = seasonRows.filter((row) => String(row.season) === String(award.season) && row.team?.id && !isSeasonTotalRow(row));
+  if (!rows.length) return award.team;
+  if (award.team?.id && rows.some((row) => Number(row.team.id) === Number(award.team.id))) return award.team;
+  return [...rows].sort((a, b) => awardRowGames(b) - awardRowGames(a))[0]?.team ?? award.team;
+}
+
+function isMvpAwardMeta(meta = {}) {
+  return /\bMVP\b/.test(meta.label);
+}
+
+function pickAwardSeasonRow(award = {}, rows = [], displayTeam = null) {
+  if (!award.season || !rows.length) return null;
+  const matchingSeason = rows.filter((row) => String(row.season) === String(award.season));
+  if (!matchingSeason.length) return null;
+  const teamRows = matchingSeason.filter((row) => row.team?.id && !isSeasonTotalRow(row));
+  if (displayTeam?.id) {
+    const teamMatch = teamRows.find((row) => Number(row.team.id) === Number(displayTeam.id));
+    if (teamMatch) return teamMatch;
+  }
+  const totalRow = matchingSeason.find((row) => isSeasonTotalRow(row));
+  if (totalRow) return totalRow;
+  return [...teamRows].sort((a, b) => awardRowGames(b) - awardRowGames(a))[0] ?? null;
+}
+
+function awardSeasonStatItems(row, group) {
+  const stat = row?.stat;
+  if (!stat) return [];
+  return awardStatItems(stat, group);
+}
+
+function awardStatItems(stat, group) {
+  if (!stat) return [];
+  if (group === 'pitching') {
+    return [
+      { label: 'W-L', value: `${formatWholeStat(stat.wins)}-${formatWholeStat(stat.losses)}` },
+      { label: 'ERA', value: formatTwoDecimalStat(stat.era) },
+      { label: 'IP', value: stat.inningsPitched ?? '—' },
+      { label: 'K', value: formatWholeStat(stat.strikeOuts) },
+      { label: 'WHIP', value: formatTwoDecimalStat(stat.whip) },
+    ];
+  }
+  return [
+    { label: 'AVG', value: formatRateStat(stat.avg) },
+    { label: 'HR', value: formatWholeStat(stat.homeRuns) },
+    { label: 'RBI', value: formatWholeStat(stat.rbi) },
+    { label: 'OPS', value: formatRateStat(stat.ops) },
+    { label: 'WAR', value: stat.war ?? stat.warOffensive ?? '—' },
+  ];
+}
+
+function awardPostseasonGameType(award = {}) {
+  const id = String(award.id ?? '').toUpperCase();
+  if (id === 'WSMVP') return 'W';
+  if (id === 'ALCSMVP' || id === 'NLCSMVP') return 'L';
+  return null;
+}
+
+function awardPostseasonSeriesLabel(award = {}) {
+  const id = String(award.id ?? '').toUpperCase();
+  if (id === 'WSMVP') return 'World Series Line';
+  if (id === 'ALCSMVP') return 'ALCS Line';
+  if (id === 'NLCSMVP') return 'NLCS Line';
+  return 'Series Line';
+}
+
+function apiDateFromIso(value) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}/${day}/${date.getFullYear()}`;
+}
+
+function isoDateIsSameOrBefore(a, b) {
+  return String(a ?? '') <= String(b ?? '');
+}
+
+function AwardPostseasonSeriesStats({ playerId, award, displayTeam }) {
+  const group = isPitchingAward(award) ? 'pitching' : 'hitting';
+  const gameType = awardPostseasonGameType(award);
+  const [state, setState] = useState({ loading: Boolean(playerId && gameType), stat: null, rangeLabel: '' });
+
+  useEffect(() => {
+    if (!playerId || !award.season || !award.date || !gameType) return undefined;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadSeriesStats = async () => {
+      try {
+        const teamId = displayTeam?.id ?? award.team?.id;
+        const scheduleQuery = {
+          sportId: 1,
+          season: award.season,
+          gameTypes: gameType,
+          ...(teamId ? { teamId } : {}),
+        };
+        const scheduleData = await fetchStatsApiJson('/api/v1/schedule', {
+          query: scheduleQuery,
+          signal: controller.signal,
+          ttl: 60 * 60_000,
+          retries: 1,
+        });
+        if (cancelled) return;
+
+        const seriesDates = (scheduleData.dates ?? [])
+          .map((dateRow) => dateRow.date)
+          .filter((date) => date && isoDateIsSameOrBefore(date, award.date));
+        const startIso = seriesDates[0];
+        const endIso = seriesDates[seriesDates.length - 1] ?? award.date;
+        const startDate = apiDateFromIso(startIso);
+        const endDate = apiDateFromIso(endIso);
+
+        if (!startDate || !endDate) {
+          setState({ loading: false, stat: null, rangeLabel: '' });
+          return;
+        }
+
+        const statsData = await fetchStatsApiJson(`/api/v1/people/${playerId}/stats`, {
+          query: {
+            stats: 'byDateRange',
+            group: 'hitting,pitching',
+            startDate,
+            endDate,
+            sportId: 1,
+            gameType,
+          },
+          signal: controller.signal,
+          ttl: 60 * 60_000,
+          retries: 1,
+        });
+        if (cancelled) return;
+
+        const stat = pickDateRangeStat(statsData?.stats, group);
+        const rangeLabel =
+          startIso && endIso && startIso !== endIso
+            ? `${fmtDate(startIso)} - ${fmtDate(endIso)}`
+            : fmtDate(endIso);
+        setState({ loading: false, stat, rangeLabel });
+      } catch {
+        if (!cancelled) setState({ loading: false, stat: null, rangeLabel: '' });
+      }
+    };
+
+    loadSeriesStats();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [award.date, award.season, award.team?.id, displayTeam?.id, gameType, group, playerId]);
+
+  if (!gameType) return null;
+  const items = awardStatItems(state.stat, group).filter((item) => item.value !== '—' && item.value != null);
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-800/80 bg-slate-950/35 px-3 py-2">
+      <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+        {awardPostseasonSeriesLabel(award)}
+      </span>
+      {state.rangeLabel && <span className="text-[10px] font-semibold text-slate-600">{state.rangeLabel}</span>}
+      {state.loading ? (
+        <span className="h-4 w-28 animate-pulse rounded-full bg-slate-800/70" />
+      ) : items.length ? (
+        items.map((item) => (
+          <span key={item.label} className="text-xs font-semibold text-slate-500">
+            <span className="font-black text-slate-200 tabular-nums">{item.value}</span> {item.label}
+          </span>
+        ))
+      ) : (
+        <span className="text-xs font-semibold text-slate-600">No series stats found.</span>
+      )}
+    </div>
+  );
+}
+
+function AwardSeasonStats({ playerId, award, meta, displayTeam, seasonRowsByGroup }) {
+  if (!isMvpAwardMeta(meta)) return null;
+  const group = isPitchingAward(award) ? 'pitching' : 'hitting';
+  const seasonType = meta.bucket === 'postseason' ? 'postseason' : 'regular';
+  if (seasonType === 'postseason') {
+    return <AwardPostseasonSeriesStats playerId={playerId} award={award} displayTeam={displayTeam} />;
+  }
+
+  const row = pickAwardSeasonRow(award, seasonRowsByGroup?.[seasonType]?.[group], displayTeam);
+  const items = awardSeasonStatItems(row, group).filter((item) => item.value !== '—' && item.value != null);
+  if (!items.length) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-800/80 bg-slate-950/35 px-3 py-2">
+      <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+        {seasonType === 'postseason' ? 'Postseason Line' : 'Season Line'}
+      </span>
+      {items.map((item) => (
+        <span key={item.label} className="text-xs font-semibold text-slate-500">
+          <span className="font-black text-slate-200 tabular-nums">{item.value}</span> {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function rewardDateRange(award = {}) {
+  if (!award.date) return null;
+  const end = new Date(`${award.date}T12:00:00`);
+  if (Number.isNaN(end.getTime())) return null;
+  const name = String(award.name ?? '').toLowerCase();
+  const start = new Date(end);
+
+  if (/player of the month/.test(name)) {
+    start.setDate(1);
+  } else if (/player of the week/.test(name)) {
+    start.setDate(end.getDate() - 6);
+  } else {
+    return null;
+  }
+
+  const apiDate = (date) => {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${month}/${day}/${date.getFullYear()}`;
+  };
+
+  return {
+    startDate: apiDate(start),
+    endDate: apiDate(end),
+    label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+  };
+}
+
+function awardPrimaryPosition(award = {}) {
+  return award.player?.primaryPosition?.abbreviation ?? '';
+}
+
+function isPitchingAward(award = {}) {
+  const position = awardPrimaryPosition(award);
+  const text = `${award.id ?? ''} ${award.name ?? ''}`.toLowerCase();
+  return position === 'P' || /pitcher|cy young|reliever/.test(text);
+}
+
+function pickDateRangeStat(stats, group) {
+  const splits = stats?.find((item) => item.group?.displayName === group)?.splits ?? [];
+  return (
+    splits.find((split) => Number(split.sport?.id) === 1)?.stat ??
+    splits.find((split) => Number(split.sport?.id) !== 0)?.stat ??
+    splits[0]?.stat ??
+    null
+  );
+}
+
+function AwardDateRangeStats({ playerId, award }) {
+  const range = useMemo(() => rewardDateRange(award), [award]);
+  const [loading, setLoading] = useState(Boolean(range));
+  const [stat, setStat] = useState(null);
+
+  useEffect(() => {
+    if (!playerId || !range) return undefined;
+
+    let cancelled = false;
+    const params = new URLSearchParams({
+      stats: 'byDateRange',
+      group: 'hitting,pitching',
+      startDate: range.startDate,
+      endDate: range.endDate,
+    });
+
+    fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?${params}&sportId=1`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const group = isPitchingAward(award) ? 'pitching' : 'hitting';
+        setStat(pickDateRangeStat(data?.stats, group));
+      })
+      .catch(() => {
+        if (!cancelled) setStat(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [award, playerId, range]);
+
+  if (!range) return null;
+
+  const isPitcherAward = isPitchingAward(award);
+  const items = isPitcherAward
+    ? [
+        { label: 'G', value: formatWholeStat(stat?.gamesPlayed ?? stat?.gamesPitched) },
+        { label: 'IP', value: stat?.inningsPitched ?? '—' },
+        { label: 'ERA', value: formatTwoDecimalStat(stat?.era) },
+        { label: 'K', value: formatWholeStat(stat?.strikeOuts) },
+        { label: 'WHIP', value: formatTwoDecimalStat(stat?.whip) },
+      ]
+    : [
+        { label: 'G', value: formatWholeStat(stat?.gamesPlayed) },
+        { label: 'AVG', value: formatRateStat(stat?.avg) },
+        { label: 'HR', value: formatWholeStat(stat?.homeRuns) },
+        { label: 'RBI', value: formatWholeStat(stat?.rbi) },
+        { label: 'OPS', value: formatRateStat(stat?.ops) },
+      ];
+
+  return (
+    <div className="mt-3 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-2.5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+          Award Window
+        </span>
+        <span className="text-[10px] font-semibold text-slate-600">{range.label}</span>
+      </div>
+      {loading ? (
+        <div className="h-9 animate-pulse rounded-xl bg-slate-800/60" />
+      ) : stat ? (
+        <div className="grid grid-cols-5 divide-x divide-slate-800/80">
+          {items.map((item) => (
+            <div key={item.label} className="px-1 text-center">
+              <div className="text-[9px] font-black uppercase text-slate-600">{item.label}</div>
+              <div className="mt-0.5 text-xs font-black tabular-nums text-slate-200">{item.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-[11px] text-slate-600">No date-range stats found.</div>
+      )}
+    </div>
+  );
+}
+
+function buildRewardGroups(awards = []) {
+  const seen = new Set();
+  const deduped = [];
+
+  for (const award of awards) {
+    const key = [
+      award.season,
+      award.id,
+      award.name,
+      award.date,
+      award.player?.primaryPosition?.abbreviation,
+    ].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(award);
+  }
+
+  const groups = new Map();
+  for (const award of deduped) {
+    const season = award.season ?? 'Unknown';
+    if (!groups.has(season)) groups.set(season, []);
+    groups.get(season).push(award);
+  }
+
+  return [...groups.entries()]
+    .sort(([a], [b]) => Number(b) - Number(a))
+    .map(([season, items]) => ({
+      season,
+      items: items.sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''))),
+    }));
+}
+
+function buildRewardCountChips(awards, labels, bucket) {
+  return labels
+    .map((label) => {
+      const matchingAwards = awards.filter((award) => {
+        const meta = rewardMeta(award);
+        return meta.label === label && meta.bucket === bucket;
+      });
+      return {
+        label,
+        count: matchingAwards.length,
+        meta: matchingAwards.length ? rewardMeta(matchingAwards[0]) : null,
+      };
+    })
+    .filter((item) => item.count > 0);
+}
+
+function PlayerRewardsTab({ playerId, awards = [], seasonRows = [], seasonRowsByGroup = {} }) {
+  const groups = useMemo(() => buildRewardGroups(awards), [awards]);
+  const uniqueAwards = groups.flatMap((group) => group.items);
+  const regularAwardCounts = buildRewardCountChips(
+    uniqueAwards,
+    ['MVP', 'All-Star', 'Gold Glove', 'Silver Slugger', 'Cy Young', 'Rookie'],
+    'regular'
+  );
+  const postseasonAwardCounts = buildRewardCountChips(uniqueAwards, ['Postseason MVP'], 'postseason');
+
+  if (!uniqueAwards.length) {
+    return (
+      <div className="mx-2 my-4 rounded-3xl border border-dashed border-slate-700/70 bg-slate-900/45 px-5 py-12 text-center sm:mx-0">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-800 text-slate-500">
+          <i className="fa-solid fa-award text-2xl" aria-hidden />
+        </div>
+        <div className="mt-4 text-base font-black text-slate-200">No rewards found</div>
+        <div className="mt-1 text-sm text-slate-500">
+          MLB Stats API did not return award history for this player.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-2 my-4 space-y-5 sm:mx-0">
+      <section className="relative overflow-hidden border-b border-slate-800/80 px-2 pb-4">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-yellow-500/10 blur-3xl" />
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-yellow-300">Awards</div>
+            <div className="mt-1 text-2xl font-black text-white">Trophy Case</div>
+            <div className="mt-1 text-sm text-slate-500">
+              {uniqueAwards.length} total honors across {groups.length} {groups.length === 1 ? 'season' : 'seasons'}.
+            </div>
+          </div>
+          {(regularAwardCounts.length > 0 || postseasonAwardCounts.length > 0) && (
+            <div className="space-y-3">
+              {regularAwardCounts.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+                    Regular Season
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {regularAwardCounts.map(({ label, count, meta }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className={`flex h-8 w-8 items-center justify-center rounded-full border ${meta.tone}`}>
+                          <i className={`fa-solid ${meta.icon} text-xs`} aria-hidden />
+                        </span>
+                        <span className="font-display text-2xl leading-none text-white tabular-nums">{count}</span>
+                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {postseasonAwardCounts.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+                    Postseason
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {postseasonAwardCounts.map(({ label, count, meta }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className={`flex h-8 w-8 items-center justify-center rounded-full border ${meta.tone}`}>
+                          <i className={`fa-solid ${meta.icon} text-xs`} aria-hidden />
+                        </span>
+                        <span className="font-display text-2xl leading-none text-white tabular-nums">{count}</span>
+                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="divide-y divide-slate-800/80 overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/45">
+        {groups.map((group) => (
+          <section key={group.season} className="grid gap-0 sm:grid-cols-[6rem_minmax(0,1fr)]">
+            <div className="flex items-center justify-between bg-slate-950/35 px-4 py-3 sm:block sm:border-r sm:border-slate-800/80">
+              <div className="text-xl font-black text-white">{group.season}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                {group.items.length} {group.items.length === 1 ? 'honor' : 'honors'}
+              </div>
+            </div>
+            <div className="divide-y divide-slate-800/70">
+              {group.items.map((award, index) => {
+                const meta = rewardMeta(award);
+                const displayTeam = resolveAwardDisplayTeam(award, seasonRows);
+                const teamName = normalizeRewardTeamName(displayTeam);
+                const position = award.player?.primaryPosition?.abbreviation;
+                return (
+                  <article
+                    key={`${award.season}-${award.id}-${award.date}-${displayTeam?.id ?? teamName}-${index}`}
+                    className="px-4 py-3 transition-colors hover:bg-slate-800/20"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border ${meta.tone}`}>
+                        <i className={`fa-solid ${meta.icon}`} aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <div className="text-sm font-black leading-snug text-slate-100">{award.name ?? 'Award'}</div>
+                          <span className={`text-[10px] font-black uppercase tracking-wide ${meta.text}`}>
+                            {meta.label}
+                          </span>
+                          {award.date && <span className="text-[11px] font-semibold text-slate-600">{fmtDate(award.date)}</span>}
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+                          {displayTeam?.id && (
+                            <img
+                              src={teamLogoUrl(displayTeam.id)}
+                              alt=""
+                              className="h-6 w-6 object-contain"
+                              onError={(event) => {
+                                event.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          )}
+                          <span className="truncate">{teamName}</span>
+                          {position && (
+                            <span className="rounded-full bg-slate-800 px-1.5 py-0.5 text-[10px] font-black text-slate-400">
+                              {position}
+                            </span>
+                          )}
+                        </div>
+                        <AwardSeasonStats
+                          playerId={playerId}
+                          award={award}
+                          meta={meta}
+                          displayTeam={displayTeam}
+                          seasonRowsByGroup={seasonRowsByGroup}
+                        />
+                        <AwardDateRangeStats playerId={playerId} award={award} />
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFromHistory }) {
   const restoredFromHistoryRef = useRef(restoredFromHistory);
   const [playerInfo, setPlayerInfo] = useState(null);
@@ -2610,6 +3229,25 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const regularMinorsYearByYear =
     yearByYearByLevel.minors ??
     (careerLevel === 'minors' && careerGameType === 'R' ? yearByYear : null);
+  const awardSeasonRowsByGroup = {
+    regular: {
+      hitting: buildPlayerCareerRows(regularMlbYearByYear, 'hitting', { careerLevel: 'mlb' }),
+      pitching: buildPlayerCareerRows(regularMlbYearByYear, 'pitching', { careerLevel: 'mlb' }),
+    },
+    postseason: {
+      hitting: buildPlayerCareerRows(postseasonYearByYear, 'hitting', { careerLevel: 'mlb' }),
+      pitching: buildPlayerCareerRows(postseasonYearByYear, 'pitching', { careerLevel: 'mlb' }),
+    },
+  };
+  const awardTeamRows = (() => {
+    const primaryRows = buildPlayerCareerRows(regularMlbYearByYear, isPitcher ? 'pitching' : 'hitting', {
+      careerLevel: 'mlb',
+    });
+    if (primaryRows.length) return primaryRows;
+    return buildPlayerCareerRows(regularMlbYearByYear, isPitcher ? 'hitting' : 'pitching', {
+      careerLevel: 'mlb',
+    });
+  })();
   const summaryStatsLevel = isMinorsProfile && regularMinorsYearByYear ? 'minors' : 'mlb';
   const summaryStats = summaryStatsLevel === 'minors' ? regularMinorsYearByYear : regularMlbYearByYear;
 
@@ -2619,6 +3257,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
     { key: 'splits', label: 'Splits' },
     { key: 'transactions', label: 'Transactions' },
     { key: 'bvp', label: 'Batter vs. Pitcher' },
+    { key: 'rewards', label: 'Awards' },
   ];
 
   return (
@@ -2742,8 +3381,8 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                           options={CAREER_GAME_TYPE_OPTIONS}
                           className="w-56"
                         />
-                        <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-200 shadow-inner shadow-white/5">
-                          <i className="fa-solid fa-calendar-days text-[11px]" aria-hidden />
+                        <div className="inline-flex items-center gap-1.5 px-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                          <i className="fa-solid fa-calendar-days text-[10px] text-emerald-300" aria-hidden />
                           <span>{careerSeasonCountLabel}</span>
                         </div>
                         {careerLevel === 'minors' && (
@@ -2817,6 +3456,16 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                         gameLogCols={gameLogCols}
                       />
                     </>
+                  );
+                }
+                if (key === 'rewards') {
+                  return (
+                    <PlayerRewardsTab
+                      playerId={playerId}
+                      awards={playerInfo.awards}
+                      seasonRows={awardTeamRows}
+                      seasonRowsByGroup={awardSeasonRowsByGroup}
+                    />
                   );
                 }
                 if (key === 'splits') {
