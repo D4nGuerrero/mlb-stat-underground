@@ -40,6 +40,7 @@ import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const MLB_PARENT_TEAM_IDS = new Set(mlbTeams.map((team) => Number(team.id)));
+const BVP_SEARCH_SPORT_IDS = '1,11,12,13,14,15,16,17';
 
 const playerViewStateCache = new Map();
 const TXN_SHEET_RETURN_PREFIX = 'playerTxnSheetReturn:';
@@ -722,6 +723,10 @@ function formatWholeStat(value) {
   if (value == null || value === '') return '—';
   const numeric = Number(value);
   return Number.isFinite(numeric) ? String(Math.round(numeric)) : String(value);
+}
+
+function isCurrentMlbTeam(team) {
+  return MLB_PARENT_TEAM_IDS.has(Number(team?.id));
 }
 
 function getYearByYearSplitsFromStats(stats, group) {
@@ -2346,6 +2351,441 @@ function PlayerSplitsPanel({ playerId, playerInfo, splitLevel, splitGroup, split
   );
 }
 
+function bvpSearchSort(expectedPitcher) {
+  return (a, b) => {
+    const aPitcher = isPitcherPosition(a.primaryPosition?.abbreviation);
+    const bPitcher = isPitcherPosition(b.primaryPosition?.abbreviation);
+    if (aPitcher !== bPitcher) return aPitcher === expectedPitcher ? -1 : 1;
+    const currentMlbDiff = Number(isCurrentMlbTeam(b.currentTeam)) - Number(isCurrentMlbTeam(a.currentTeam));
+    if (currentMlbDiff !== 0) return currentMlbDiff;
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    return String(a.fullName ?? '').localeCompare(String(b.fullName ?? ''));
+  };
+}
+
+function bvpPersonMeta(person = {}) {
+  const team = person.currentTeam;
+  return {
+    id: person.id,
+    fullName: person.fullName ?? 'Unknown Player',
+    position: person.primaryPosition?.abbreviation ?? '',
+    teamName: team?.name ?? team?.teamName ?? '',
+    teamId: team?.id,
+    active: person.active,
+  };
+}
+
+function bvpPersonMetaWithTeam(person = {}, team = null) {
+  const meta = bvpPersonMeta(person);
+  if (!team) return meta;
+  return {
+    ...meta,
+    teamId: team.id ?? meta.teamId,
+    teamName: team.name ?? team.teamName ?? meta.teamName,
+  };
+}
+
+function bvpStatCards(stat = {}) {
+  return [
+    { label: 'AB', value: formatWholeStat(stat.atBats) },
+    { label: 'H', value: formatWholeStat(stat.hits) },
+    { label: 'AVG', value: formatRateStat(stat.avg) },
+    { label: 'OPS', value: formatRateStat(stat.ops) },
+    { label: 'HR', value: formatWholeStat(stat.homeRuns) },
+    { label: 'RBI', value: formatWholeStat(stat.rbi) },
+    { label: 'BB', value: formatWholeStat(stat.baseOnBalls) },
+    { label: 'K', value: formatWholeStat(stat.strikeOuts) },
+  ];
+}
+
+function isoDateOffset(days = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function bvpGameTeamSlot(game, teamId) {
+  const awayId = Number(game?.teams?.away?.team?.id);
+  const homeId = Number(game?.teams?.home?.team?.id);
+  if (awayId === Number(teamId)) return 'away';
+  if (homeId === Number(teamId)) return 'home';
+  return null;
+}
+
+function bvpNextGameContext(game, playerTeamId) {
+  const playerSlot = bvpGameTeamSlot(game, playerTeamId);
+  if (!playerSlot) return null;
+  const opponentSlot = playerSlot === 'away' ? 'home' : 'away';
+  const playerTeam = game.teams?.[playerSlot]?.team;
+  const opponentTeam = game.teams?.[opponentSlot]?.team;
+  const opposingProbable = game.teams?.[opponentSlot]?.probablePitcher;
+  const ownProbable = game.teams?.[playerSlot]?.probablePitcher;
+
+  return {
+    gamePk: game.gamePk,
+    gameDate: game.officialDate,
+    detailedState: game.status?.detailedState,
+    playerTeam,
+    opponentTeam,
+    opposingProbable,
+    ownProbable,
+  };
+}
+
+async function fetchBvpStats({ batterId, pitcherId, scope }) {
+  const data = await fetchStatsApiJson(`/api/v1/people/${batterId}/stats`, {
+    query: {
+      stats: 'vsPlayerTotal',
+      group: 'hitting',
+      opposingPlayerId: pitcherId,
+      ...(scope === 'season' ? { season: CURRENT_YEAR } : {}),
+    },
+    ttl: 10 * 60_000,
+    retries: 1,
+  });
+  return data.stats?.find((block) => block.type?.displayName === 'vsPlayerTotal')?.splits?.[0] ?? null;
+}
+
+function PlayerBvpTab({ playerInfo }) {
+  const playerInfoId = playerInfo?.id;
+  const playerCurrentTeam = playerInfo?.currentTeam;
+  const currentIsPitcher = isPitcherPosition(playerInfo?.primaryPosition?.abbreviation);
+  const expectedOpponentPitcher = !currentIsPitcher;
+  const opponentLabel = expectedOpponentPitcher ? 'pitcher' : 'batter';
+  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState('career');
+  const [results, setResults] = useState([]);
+  const [selectedOpponent, setSelectedOpponent] = useState(null);
+  const [searchState, setSearchState] = useState({ loading: false, message: '' });
+  const [matchupState, setMatchupState] = useState({ loading: false, split: null, error: '' });
+  const [nextGameState, setNextGameState] = useState({ loading: false, context: null, message: '' });
+  const requestIdRef = useRef(0);
+
+  const loadMatchup = useCallback(async (opponent, nextScope = scope) => {
+    if (!playerInfoId || !opponent?.id) return;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    const batterId = currentIsPitcher ? opponent.id : playerInfoId;
+    const pitcherId = currentIsPitcher ? playerInfoId : opponent.id;
+    setSelectedOpponent(opponent);
+    setMatchupState({ loading: true, split: null, error: '' });
+
+    try {
+      const split = await fetchBvpStats({ batterId, pitcherId, scope: nextScope });
+      if (requestIdRef.current !== requestId) return;
+      setMatchupState({
+        loading: false,
+        split,
+        error: split?.stat ? '' : `No ${nextScope === 'season' ? CURRENT_YEAR : 'career'} matchup plate appearances found.`,
+      });
+    } catch {
+      if (requestIdRef.current !== requestId) return;
+      setMatchupState({ loading: false, split: null, error: 'Could not load batter vs pitcher stats.' });
+    }
+  }, [currentIsPitcher, playerInfoId, scope]);
+
+  const handleSearch = async (event) => {
+    event?.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSearchState({ loading: false, message: 'Type at least 2 characters.' });
+      setResults([]);
+      return;
+    }
+
+    setSearchState({ loading: true, message: `Searching ${opponentLabel}s...` });
+    try {
+      const data = await fetchStatsApiJson('/api/v1/people/search', {
+        query: {
+          names: trimmed,
+          sportIds: BVP_SEARCH_SPORT_IDS,
+          hydrate: 'currentTeam',
+        },
+        ttl: 5 * 60_000,
+        retries: 1,
+      });
+      const people = (data.people ?? [])
+        .filter((person) => Number(person.id) !== Number(playerInfo?.id))
+        .sort(bvpSearchSort(expectedOpponentPitcher));
+      const roleMatches = people.filter((person) => isPitcherPosition(person.primaryPosition?.abbreviation) === expectedOpponentPitcher);
+      const mapped = (roleMatches.length ? roleMatches : people).slice(0, 8).map(bvpPersonMeta);
+      setResults(mapped);
+      setSearchState({
+        loading: false,
+        message: mapped.length ? `${mapped.length} result${mapped.length === 1 ? '' : 's'} found.` : 'No players found.',
+      });
+    } catch {
+      setResults([]);
+      setSearchState({ loading: false, message: 'Search failed. Try again.' });
+    }
+  };
+
+  const handleScopeChange = (nextScope) => {
+    setScope(nextScope);
+    if (selectedOpponent) loadMatchup(selectedOpponent, nextScope);
+  };
+
+  useEffect(() => {
+    const teamId = playerCurrentTeam?.id;
+    if (!teamId || !isCurrentMlbTeam(playerCurrentTeam)) return undefined;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    fetchStatsApiJson('/api/v1/schedule', {
+      query: {
+        sportId: 1,
+        teamId,
+        startDate: isoDateOffset(0),
+        endDate: isoDateOffset(14),
+        hydrate: 'probablePitcher,team',
+      },
+      signal: controller.signal,
+      ttl: 5 * 60_000,
+      retries: 1,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        const game = (data.dates ?? []).flatMap((dateRow) => dateRow.games ?? [])[0];
+        const context = game ? bvpNextGameContext(game, teamId) : null;
+        setNextGameState({
+          loading: false,
+          context,
+          message: context ? '' : 'No upcoming MLB game found in the next two weeks.',
+        });
+
+        if (!currentIsPitcher && context?.opposingProbable?.id) {
+          const opponent = bvpPersonMetaWithTeam(context.opposingProbable, context.opponentTeam);
+          setResults((current) => (
+            current.some((row) => Number(row.id) === Number(opponent.id)) ? current : [opponent, ...current].slice(0, 8)
+          ));
+          loadMatchup(opponent);
+          setSearchState({ loading: false, message: 'Loaded the announced opposing probable pitcher.' });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNextGameState({ loading: false, context: null, message: 'Could not load next matchup.' });
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [currentIsPitcher, loadMatchup, playerCurrentTeam]);
+
+  const batter = currentIsPitcher ? selectedOpponent : bvpPersonMeta(playerInfo);
+  const pitcher = currentIsPitcher ? bvpPersonMeta(playerInfo) : selectedOpponent;
+  const stat = matchupState.split?.stat;
+  const hasMatchup = Boolean(stat?.plateAppearances || stat?.atBats);
+  const nextContext = nextGameState.context;
+  const nextGameUnavailableMessage =
+    !playerCurrentTeam?.id || !isCurrentMlbTeam(playerCurrentTeam)
+      ? 'Next matchup is only available for current MLB players.'
+      : nextGameState.message;
+  const nextProbable = nextContext?.opposingProbable
+    ? bvpPersonMetaWithTeam(nextContext.opposingProbable, nextContext.opponentTeam)
+    : null;
+
+  return (
+    <div className="mx-2 my-4 space-y-4 sm:mx-0">
+      <section className="rounded-3xl border border-slate-800/80 bg-slate-900/45 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-300">
+              Batter vs. Pitcher
+            </div>
+            <div className="mt-1 text-xl font-black text-white">
+              Search a {opponentLabel} to compare against {playerInfo?.fullName}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              Stats are shown from the batter&apos;s perspective.
+            </div>
+          </div>
+          <SegmentedControl
+            value={scope}
+            onChange={handleScopeChange}
+            options={[
+              { value: 'career', label: 'Career' },
+              { value: 'season', label: String(CURRENT_YEAR) },
+            ]}
+            className="w-full sm:w-56"
+          />
+        </div>
+
+        <form onSubmit={handleSearch} className="mt-4 flex gap-2">
+          <div className="relative flex-1">
+            <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-600" aria-hidden />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Search ${opponentLabel}s...`}
+              className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/70 pl-9 pr-3 text-sm font-semibold text-slate-100 outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-500/15"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={searchState.loading}
+            className="h-11 rounded-2xl bg-blue-500 px-4 text-sm font-black text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {searchState.loading ? 'Searching' : 'Search'}
+          </button>
+        </form>
+
+        <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950/35 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">
+                Next Matchup
+              </div>
+              {nextGameState.loading ? (
+                <div className="mt-1 h-5 w-48 animate-pulse rounded-full bg-slate-800/70" />
+              ) : nextContext ? (
+                <div className="mt-1 flex min-w-0 items-center gap-2 text-sm font-black text-slate-100">
+                  {nextContext.opponentTeam?.id && (
+                    <img src={teamLogoUrl(nextContext.opponentTeam.id)} alt="" className="h-6 w-6 object-contain" />
+                  )}
+                  <span className="truncate">
+                    vs {nextContext.opponentTeam?.name ?? 'Opponent'} · {fmtDate(nextContext.gameDate)}
+                  </span>
+                  {nextContext.detailedState && (
+                    <span className="hidden text-xs font-semibold text-slate-600 sm:inline">{nextContext.detailedState}</span>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-1 text-sm font-semibold text-slate-500">{nextGameUnavailableMessage}</div>
+              )}
+              {!currentIsPitcher && nextContext && !nextProbable && (
+                <div className="mt-1 text-xs font-semibold text-slate-500">
+                  Opposing probable pitcher has not been announced yet.
+                </div>
+              )}
+              {currentIsPitcher && nextContext && (
+                <div className="mt-1 text-xs font-semibold text-slate-500">
+                  Search an opposing hitter from {nextContext.opponentTeam?.teamName ?? nextContext.opponentTeam?.name ?? 'the opponent'} to view BvP.
+                </div>
+              )}
+            </div>
+            {!currentIsPitcher && nextProbable && (
+              <button
+                type="button"
+                onClick={() => loadMatchup(nextProbable)}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-400/40 bg-blue-500/15 px-3 py-2 text-xs font-black text-blue-100 transition hover:bg-blue-500/25"
+              >
+                <img src={playerHeadshotUrl(nextProbable.id)} alt="" className="h-7 w-7 rounded-full bg-slate-800 object-cover" />
+                <span className="text-left">
+                  <span className="block leading-tight">Use Probable</span>
+                  <span className="block leading-tight text-blue-200/70">{nextProbable.fullName}</span>
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {(searchState.message || results.length > 0) && (
+          <div className="mt-3">
+            {searchState.message && (
+              <div className="mb-2 text-xs font-semibold text-slate-500">{searchState.message}</div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2">
+              {results.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  onClick={() => loadMatchup(person)}
+                  className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
+                    Number(selectedOpponent?.id) === Number(person.id)
+                      ? 'border-blue-400/60 bg-blue-500/15'
+                      : 'border-slate-800 bg-slate-950/35 hover:border-slate-700 hover:bg-slate-800/40'
+                  }`}
+                >
+                  <img
+                    src={playerHeadshotUrl(person.id)}
+                    alt=""
+                    className="h-11 w-11 rounded-full bg-slate-800 object-cover"
+                    onError={(event) => {
+                      event.currentTarget.style.visibility = 'hidden';
+                    }}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-black text-slate-100">{person.fullName}</span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                      {person.teamId && <img src={teamLogoUrl(person.teamId)} alt="" className="h-4 w-4 object-contain" />}
+                      <span className="truncate">{person.teamName || 'No team'}</span>
+                      {person.position && <span className="text-slate-600">• {person.position}</span>}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {selectedOpponent && (
+        <section className="overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-900/45">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-800/80 bg-slate-950/35 px-4 py-4">
+            {[batter, pitcher].map((person, index) => (
+              <div key={`${person?.id}-${index}`} className={`flex min-w-0 items-center gap-3 ${index === 1 ? 'justify-end text-right' : ''}`}>
+                {index === 1 && (
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-black text-white">{person?.fullName}</div>
+                    <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Pitcher</div>
+                  </div>
+                )}
+                <img
+                  src={playerHeadshotUrl(person?.id)}
+                  alt=""
+                  className="h-12 w-12 rounded-full bg-slate-800 object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.visibility = 'hidden';
+                  }}
+                />
+                {index === 0 && (
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-black text-white">{person?.fullName}</div>
+                    <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Batter</div>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-200">
+              vs
+            </div>
+          </div>
+
+          {matchupState.loading ? (
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div key={index} className="h-16 animate-pulse rounded-2xl bg-slate-800/60" />
+                ))}
+              </div>
+            </div>
+          ) : hasMatchup ? (
+            <div className="grid grid-cols-2 gap-px bg-slate-800/80 sm:grid-cols-4">
+              {bvpStatCards(stat).map((item) => (
+                <div key={item.label} className="bg-slate-950/40 px-4 py-3 text-center">
+                  <div className="text-[10px] font-black uppercase tracking-wide text-slate-600">{item.label}</div>
+                  <div className="mt-1 font-display text-2xl text-white tabular-nums">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-5 py-10 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-slate-500">
+                <i className="fa-solid fa-user-slash" aria-hidden />
+              </div>
+              <div className="mt-3 text-sm font-black text-slate-200">No matchup history</div>
+              <div className="mt-1 text-sm text-slate-500">{matchupState.error}</div>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
 const REWARD_STYLES = {
   MVP: { icon: 'fa-crown', tone: 'border-yellow-400/35 bg-yellow-500/10 text-yellow-100', text: 'text-yellow-200' },
   'Postseason MVP': { icon: 'fa-trophy', tone: 'border-orange-400/35 bg-orange-500/10 text-orange-100', text: 'text-orange-200' },
@@ -2446,6 +2886,13 @@ function resolveAwardDisplayTeam(award = {}, seasonRows = []) {
 
 function isMvpAwardMeta(meta = {}) {
   return /\bMVP\b/.test(meta.label);
+}
+
+function shouldShowAwardSeasonStats(award = {}, meta = {}) {
+  if (isMvpAwardMeta(meta)) return true;
+  const text = `${award.id ?? ''} ${award.name ?? ''}`.toLowerCase();
+  if (/of the week|of the month/.test(text)) return false;
+  return /of the year|outstanding pitcher|cy young|comeback player|hank aaron|reliever/.test(text);
 }
 
 function pickAwardSeasonRow(award = {}, rows = [], displayTeam = null) {
@@ -2614,7 +3061,7 @@ function AwardPostseasonSeriesStats({ playerId, award, displayTeam }) {
 }
 
 function AwardSeasonStats({ playerId, award, meta, displayTeam, seasonRowsByGroup }) {
-  if (!isMvpAwardMeta(meta)) return null;
+  if (!shouldShowAwardSeasonStats(award, meta)) return null;
   const group = isPitchingAward(award) ? 'pitching' : 'hitting';
   const seasonType = meta.bucket === 'postseason' ? 'postseason' : 'regular';
   if (seasonType === 'postseason') {
@@ -2646,9 +3093,9 @@ function rewardDateRange(award = {}) {
   const name = String(award.name ?? '').toLowerCase();
   const start = new Date(end);
 
-  if (/player of the month/.test(name)) {
+  if (/of the month/.test(name)) {
     start.setDate(1);
-  } else if (/player of the week/.test(name)) {
+  } else if (/of the week/.test(name)) {
     start.setDate(end.getDate() - 6);
   } else {
     return null;
@@ -3495,11 +3942,10 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                 if (key === 'transactions') {
                   return <PlayerTransactionsTab key={playerId} playerId={playerId} playerInfo={playerInfo} />;
                 }
-                return (
-                  <div className="text-slate-500 text-sm text-center py-12 border border-dashed border-slate-700 rounded-2xl">
-                    Batter vs. Pitcher matchup data coming soon.
-                  </div>
-                );
+                if (key === 'bvp') {
+                  return <PlayerBvpTab playerInfo={playerInfo} />;
+                }
+                return null;
               }}
             </TabBar>
           </div>
