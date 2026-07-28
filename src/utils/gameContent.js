@@ -105,6 +105,103 @@ export function parseGameHighlightVideos(content) {
     }));
 }
 
+function normalizeVideoItem(item, source = 'highlights') {
+  if (!item?.id && !item?.content_id && !item?.slug) return null;
+  const id = item.id ?? item.content_id ?? item.slug;
+  const taxonomies = keywordValues(item.keywordsAll, 'taxonomy');
+  const playerIds = keywordValues(item.keywordsAll, 'player_id').map(Number).filter(Boolean);
+  return {
+    id,
+    source,
+    headline: item.headline ?? item.title ?? '',
+    description: item.description ?? item.blurb ?? '',
+    duration: item.duration ?? item.durationSeconds ?? null,
+    date: item.date ?? item.updated ?? item.created ?? null,
+    thumbnail: pickThumbnail(item.image),
+    mp4Url: pickPlayback(item.playbacks, [
+      'mp4Avc',
+      'highBit',
+      'FLASH_2500K_1280X720',
+      'FLASH_1800K_960X540',
+      'FLASH_1200K_640X360',
+    ]),
+    hlsUrl: pickPlayback(item.playbacks, [
+      'hlsCloud',
+      'HTTP_CLOUD_WIRED',
+      'HTTP_CLOUD_WIRED_60',
+      'HTTP_CLOUD_TABLET',
+      'HTTP_CLOUD_MOBILE',
+    ]),
+    shareUrl: id ? `https://www.mlb.com/video/${id}` : null,
+    playerIds,
+    taxonomies,
+    keywordsAll: item.keywordsAll ?? [],
+  };
+}
+
+function collectVideoItems(node, source, out, seenNode = new WeakSet()) {
+  if (!node || typeof node !== 'object') return;
+  if (seenNode.has(node)) return;
+  seenNode.add(node);
+
+  if (Array.isArray(node.items)) {
+    node.items.forEach((item) => {
+      if (item?.type === 'video' && item?.state === 'A') {
+        const video = normalizeVideoItem(item, source);
+        if (video) out.push(video);
+      }
+    });
+  }
+
+  Object.entries(node).forEach(([key, value]) => {
+    if (!value || typeof value !== 'object') return;
+    const nextSource = source === 'content' ? key : `${source}.${key}`;
+    collectVideoItems(value, nextSource, out, seenNode);
+  });
+}
+
+export function classifyGameVideo(video) {
+  const text = [
+    video?.headline,
+    video?.description,
+    ...(video?.taxonomies ?? []),
+  ].join(' ').toLowerCase();
+
+  if (/condensed/.test(text)) return 'Condensed Game';
+  if (/recap|game[-\s]?recap|highlights/.test(text) && !/in-game-highlight/.test(text)) return 'Game Recap';
+  if (/interview|postgame|post-game|press conference|manager/.test(text)) return 'Interview';
+  if (/milestone|curtain|ceremony/.test(text)) return 'Moment';
+  if (/in-game-highlight|highlight|clutch/.test(text)) return 'Highlight';
+  return 'Video';
+}
+
+/** Parse all active game videos from the content payload, deduped by content id. */
+export function parseGameVideoLibrary(content) {
+  const videos = [];
+  collectVideoItems(content, 'content', videos);
+
+  const rank = (video) => {
+    const category = classifyGameVideo(video);
+    if (category === 'Game Recap') return 0;
+    if (category === 'Condensed Game') return 1;
+    if (category === 'Interview') return 2;
+    if (category === 'Moment') return 3;
+    if (category === 'Highlight') return 4;
+    return 5;
+  };
+
+  return [...videos.reduce((map, video) => {
+    const existing = map.get(video.id);
+    if (!existing || rank(video) < rank(existing)) map.set(video.id, video);
+    return map;
+  }, new Map()).values()]
+    .sort((a, b) => {
+      const rankDelta = rank(a) - rank(b);
+      if (rankDelta) return rankDelta;
+      return String(a.headline).localeCompare(String(b.headline));
+    });
+}
+
 function parseMiLBVideo(item) {
   if (!item?.id && !item?.content_id && !item?.slug) return null;
   const id = item.id ?? item.content_id ?? item.slug;

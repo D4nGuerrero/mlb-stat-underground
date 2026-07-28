@@ -20,6 +20,7 @@ import {
 } from '../../../utils/gamePlaySummary';
 import {
   parseGameHighlightVideos,
+  parseGameVideoLibrary,
   buildHighlightMap,
   buildMiLBHighlightMap,
   buildYoutubeHighlightFallbackMap,
@@ -45,6 +46,7 @@ import {
 import LiveMatchupStrip from '../components/LiveMatchupStrip';
 import PlayDetailSheet from '../components/PlayDetailSheet';
 import SummarySection, { ScoringPlayVideo } from '../components/SummarySection';
+import GameVideoSection from '../components/GameVideoSection';
 import SavantStatcastSection from '../components/SavantStatcastSection';
 import TeamBoxSection, { TeamReservesSection } from '../components/TeamBoxSection';
 import { useDaySchedule } from '../hooks/useDaySchedule';
@@ -3337,6 +3339,14 @@ function GamePageContent({ gamePk, navigate, location }) {
     ...buildHighlightMap(allSummaryItems, highlightVideos),
     ...milbHighlightByItemKey,
   };
+  const scoringVideoIds = new Set(
+    allSummaryItems
+      .filter((item) => item.isScoring)
+      .map((item) => highlightByItemKey[item.key]?.id)
+      .filter(Boolean)
+  );
+  const gameVideos = parseGameVideoLibrary(gameContent)
+    .filter((video) => !scoringVideoIds.has(video.id));
 
   const handleSummaryPlayerClick = (e, batterId) => {
     e.stopPropagation();
@@ -3359,6 +3369,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     ...(isLive ? [{ key: 'live', label: 'Live At Bat' }] : []),
     { key: 'boxscore', label: 'Box Score' },
     { key: 'summary', label: 'Summary' },
+    { key: 'video', label: 'Video' },
     { key: 'savant', label: '⚾ Savant' },
   ];
 
@@ -3564,6 +3575,23 @@ function GamePageContent({ gamePk, navigate, location }) {
     />
   );
 
+  const videoPanel = (
+    <GameVideoSection
+      videos={gameVideos}
+      expandedVideoKey={expandedVideoKey}
+      onToggleVideo={handleSummaryVideoToggle}
+    />
+  );
+
+  const compactVideoPanel = (
+    <GameVideoSection
+      videos={gameVideos}
+      expandedVideoKey={expandedVideoKey}
+      onToggleVideo={handleSummaryVideoToggle}
+      compact
+    />
+  );
+
   const recentPlaysPanel = (
     <div className="relative z-0 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-visible">
       <div className="pointer-events-none absolute -top-4 left-0 right-0 z-30 h-5 bg-slate-900 sm:rounded-t-2xl" aria-hidden />
@@ -3572,6 +3600,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           {[
             { key: 'live', label: 'Live' },
             { key: 'summary', label: 'Summary' },
+            { key: 'video', label: 'Video' },
             { key: 'tools', label: 'Game Tools' },
           ].map((tab) => (
             <button
@@ -3614,6 +3643,10 @@ function GamePageContent({ gamePk, navigate, location }) {
         {leftRailView === 'summary' ? (
           <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
             {railSummaryPanel}
+          </div>
+        ) : leftRailView === 'video' ? (
+          <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
+            {compactVideoPanel}
           </div>
         ) : leftRailView === 'tools' ? (
           <div className="space-y-3 p-1">
@@ -3849,7 +3882,11 @@ function GamePageContent({ gamePk, navigate, location }) {
               Game Feed
             </div>
             <div className="text-sm font-black text-white">
-              {finalRailView === 'savant' ? 'Statcast Metrics' : 'Summary'}
+              {finalRailView === 'savant'
+                ? 'Statcast Metrics'
+                : finalRailView === 'video'
+                  ? 'Video'
+                  : 'Summary'}
             </div>
           </div>
           <SegmentedControl
@@ -3859,12 +3896,17 @@ function GamePageContent({ gamePk, navigate, location }) {
             size="sm"
             options={[
               { value: 'summary', label: 'Summary' },
+              { value: 'video', label: 'Video' },
               { value: 'savant', label: '⚾ Savant' },
             ]}
           />
         </div>
         <div className="gameday-scroll-rail h-[calc(100%-4.5rem)] min-h-0 overflow-y-auto">
-          {finalRailView === 'savant' ? savantPanel : summaryPanel}
+          {finalRailView === 'savant'
+            ? savantPanel
+            : finalRailView === 'video'
+              ? compactVideoPanel
+              : summaryPanel}
         </div>
       </aside>
     </div>
@@ -4218,6 +4260,12 @@ function GamePageContent({ gamePk, navigate, location }) {
         {currentTab === 'summary' && (
           <div className={isFinal ? 'xl:hidden' : ''}>
             {summaryPanel}
+          </div>
+        )}
+
+        {currentTab === 'video' && (
+          <div className={isFinal ? 'xl:hidden' : ''}>
+            {videoPanel}
           </div>
         )}
 
