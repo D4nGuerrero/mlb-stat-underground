@@ -12,6 +12,7 @@ import { useWatchlist } from '../hooks/useWatchlist';
 import { fetchStatsApiJson } from '../lib/mlb/client';
 import { countryFlagUrl } from '../utils/countryFlags';
 import { getHistoricalTradeBundle, getHistoricalTradesForPlayer, isHistoricalTrade } from '../utils/historicalTrades';
+import { fetchOpposingBatterMatchups, formatMatchupStat } from '../utils/gamePreview';
 import {
   SegmentedControl,
   Select,
@@ -2398,6 +2399,94 @@ function bvpStatCards(stat = {}) {
   ];
 }
 
+const BVP_TEAM_MATCHUP_COLS = [
+  ['HR', 'hr'],
+  ['RBI', 'rbi'],
+  ['AB', 'ab'],
+  ['AVG', 'avg'],
+  ['OPS', 'ops'],
+];
+
+function PitcherOpponentMatchupGrid({ rows = [], teamName = '', loading = false, error = '' }) {
+  return (
+    <section className="overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-900/45">
+      <div className="border-b border-slate-800/80 bg-slate-950/35 px-4 py-3">
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-300">
+          Scheduled Opponent Matchups
+        </div>
+        <div className="mt-1 text-sm font-black text-slate-100">
+          {teamName ? `${teamName} hitters vs this pitcher` : 'Next opponent hitters'}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="h-12 animate-pulse rounded-2xl bg-slate-800/55" />
+          ))}
+        </div>
+      ) : rows.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-800/80 text-slate-500">
+                <th className="px-4 py-2 text-left font-black uppercase tracking-wide">Batter</th>
+                {BVP_TEAM_MATCHUP_COLS.map(([label]) => (
+                  <th key={label} className="w-14 px-2 py-2 text-center font-black uppercase tracking-wide">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const stats = formatMatchupStat(row.stat);
+                return (
+                  <tr key={row.batterId} className="border-b border-slate-800/60 last:border-b-0">
+                    <td className="px-4 py-2">
+                      <Link to={`/player/${row.batterId}`} className="group flex min-w-0 items-center gap-2">
+                        <img
+                          src={playerHeadshotUrl(row.batterId)}
+                          alt=""
+                          className="h-8 w-8 flex-shrink-0 rounded-full bg-slate-800 object-cover"
+                          onError={(event) => {
+                            event.currentTarget.style.visibility = 'hidden';
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-black text-slate-100 group-hover:text-blue-300">
+                            {row.fullName ?? row.lastName}
+                          </span>
+                          {row.position && (
+                            <span className="text-[10px] font-semibold text-slate-600">{row.position}</span>
+                          )}
+                        </span>
+                      </Link>
+                    </td>
+                    {BVP_TEAM_MATCHUP_COLS.map(([label, key]) => (
+                      <td
+                        key={label}
+                        className={`px-2 py-2 text-center font-mono font-black tabular-nums ${stats ? 'text-slate-100' : 'text-slate-600'}`}
+                      >
+                        {stats ? stats[key] : '-'}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="px-5 py-10 text-center">
+          <div className="text-sm font-black text-slate-200">No scheduled matchup rows</div>
+          <div className="mt-1 text-sm text-slate-500">{error || 'No active opposing hitters found.'}</div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function isoDateOffset(days = 0) {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -2459,6 +2548,7 @@ function PlayerBvpTab({ playerInfo }) {
   const [searchState, setSearchState] = useState({ loading: false, message: '' });
   const [matchupState, setMatchupState] = useState({ loading: false, split: null, error: '' });
   const [nextGameState, setNextGameState] = useState({ loading: false, context: null, message: '' });
+  const [pitcherTeamMatchups, setPitcherTeamMatchups] = useState({ loading: false, rows: [], error: '' });
   const requestIdRef = useRef(0);
 
   const loadMatchup = useCallback(async (opponent, nextScope = scope) => {
@@ -2526,6 +2616,21 @@ function PlayerBvpTab({ playerInfo }) {
     if (selectedOpponent) loadMatchup(selectedOpponent, nextScope);
   };
 
+  const loadPitcherTeamMatchups = useCallback(async (opposingTeamId, season = CURRENT_YEAR) => {
+    if (!playerInfoId || !opposingTeamId) return;
+    setPitcherTeamMatchups({ loading: true, rows: [], error: '' });
+    try {
+      const rows = await fetchOpposingBatterMatchups(playerInfoId, opposingTeamId, season);
+      setPitcherTeamMatchups({
+        loading: false,
+        rows,
+        error: rows.length ? '' : 'No active hitter matchup rows found for this opponent.',
+      });
+    } catch {
+      setPitcherTeamMatchups({ loading: false, rows: [], error: 'Could not load opposing hitter matchups.' });
+    }
+  }, [playerInfoId]);
+
   useEffect(() => {
     const teamId = playerCurrentTeam?.id;
     if (!teamId || !isCurrentMlbTeam(playerCurrentTeam)) return undefined;
@@ -2562,6 +2667,8 @@ function PlayerBvpTab({ playerInfo }) {
           ));
           loadMatchup(opponent);
           setSearchState({ loading: false, message: 'Loaded the announced opposing probable pitcher.' });
+        } else if (currentIsPitcher && context?.opponentTeam?.id) {
+          loadPitcherTeamMatchups(context.opponentTeam.id, Number(game?.season) || CURRENT_YEAR);
         }
       })
       .catch(() => {
@@ -2572,7 +2679,7 @@ function PlayerBvpTab({ playerInfo }) {
       cancelled = true;
       controller.abort();
     };
-  }, [currentIsPitcher, loadMatchup, playerCurrentTeam]);
+  }, [currentIsPitcher, loadMatchup, loadPitcherTeamMatchups, playerCurrentTeam]);
 
   const batter = currentIsPitcher ? selectedOpponent : bvpPersonMeta(playerInfo);
   const pitcher = currentIsPitcher ? bvpPersonMeta(playerInfo) : selectedOpponent;
@@ -2721,6 +2828,15 @@ function PlayerBvpTab({ playerInfo }) {
           </div>
         )}
       </section>
+
+      {currentIsPitcher && (nextContext || pitcherTeamMatchups.loading) && (
+        <PitcherOpponentMatchupGrid
+          rows={pitcherTeamMatchups.rows}
+          loading={pitcherTeamMatchups.loading}
+          error={pitcherTeamMatchups.error}
+          teamName={nextContext?.opponentTeam?.name ?? nextContext?.opponentTeam?.teamName ?? ''}
+        />
+      )}
 
       {selectedOpponent && (
         <section className="overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-900/45">

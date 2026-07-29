@@ -119,7 +119,7 @@ function buildActiveHitterMatchupRow(entry, matchup = null) {
   };
 }
 
-async function fetchOpposingBatterMatchups(pitcherId, opposingTeamId, season, activeHitters = null) {
+export async function fetchOpposingBatterMatchups(pitcherId, opposingTeamId, season, activeHitters = null) {
   const hitters = activeHitters ?? await fetchActiveOpposingHitters(opposingTeamId, season);
 
   const rows = await Promise.all(
