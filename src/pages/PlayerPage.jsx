@@ -390,7 +390,7 @@ const GAME_LOG_PITCH_GLOSSARY = [
   { key: 'P', text: 'Pitches thrown' },
   { key: 'TBF', text: 'Batters faced' },
   { key: 'GSC', text: 'Game score (Bill James)' },
-  { key: 'DEC', text: 'Decision (W/L/S)' },
+  { key: 'DEC', text: 'Decision/relief credit (W/L/SV/HLD/BLSV)' },
   { key: 'REL', text: 'Relief appearance' },
   { key: 'ERA', text: 'Earned run average' },
 ];
@@ -1043,6 +1043,11 @@ function sumGameLogField(rows, key) {
   return rows.reduce((acc, row) => acc + (Number(getGameLogStat(row)[key]) || 0), 0);
 }
 
+function gameLogNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function computePitcherGameScore(stat) {
   if (!stat) return null;
   const outs = ipToOuts(stat.inningsPitched);
@@ -1059,11 +1064,70 @@ function computePitcherGameScore(stat) {
   );
 }
 
+function buildPitcherDecisionMeta(stat, totals) {
+  const items = [];
+  if (gameLogNumber(stat.wins) > 0) {
+    items.push({ code: 'W', suffix: `${totals.wins}-${totals.losses}`, className: 'text-emerald-400' });
+  }
+  if (gameLogNumber(stat.losses) > 0) {
+    items.push({ code: 'L', suffix: `${totals.wins}-${totals.losses}`, className: 'text-red-400' });
+  }
+  if (gameLogNumber(stat.saves) > 0) {
+    items.push({ code: 'SV', suffix: totals.saves, className: 'text-emerald-400' });
+  }
+  if (gameLogNumber(stat.holds) > 0) {
+    items.push({ code: 'HLD', suffix: totals.holds, className: 'text-sky-300' });
+  }
+  if (gameLogNumber(stat.blownSaves) > 0) {
+    items.push({ code: 'BLSV', suffix: totals.blownSaves, className: 'text-red-400' });
+  }
+  return items;
+}
+
+function annotatePitcherGameLogDecisions(splits, group) {
+  if (group !== 'pitching') return splits;
+
+  const totals = { wins: 0, losses: 0, saves: 0, holds: 0, blownSaves: 0 };
+  return [...splits]
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .map((split) => {
+      const stat = split.stat ?? {};
+      totals.wins += gameLogNumber(stat.wins);
+      totals.losses += gameLogNumber(stat.losses);
+      totals.saves += gameLogNumber(stat.saves);
+      totals.holds += gameLogNumber(stat.holds);
+      totals.blownSaves += gameLogNumber(stat.blownSaves);
+
+      return {
+        ...split,
+        stat: {
+          ...stat,
+          decisionMeta: buildPitcherDecisionMeta(stat, totals),
+        },
+      };
+    });
+}
+
 function formatPitcherDecision(stat) {
   if (!stat) return '—';
-  if (stat.wins === 1) return 'W';
-  if (stat.losses === 1) return 'L';
-  if (stat.saves === 1) return 'S';
+  const decisionItems = stat.decisionMeta;
+  if (decisionItems?.length) {
+    return (
+      <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap">
+        {decisionItems.map((item) => (
+          <span key={item.code} className={`font-black ${item.className}`}>
+            {item.code}
+            <span className="text-[10px] font-black opacity-85">({item.suffix})</span>
+          </span>
+        ))}
+      </span>
+    );
+  }
+  if (gameLogNumber(stat.wins) > 0) return <span className="font-black text-emerald-400">W</span>;
+  if (gameLogNumber(stat.losses) > 0) return <span className="font-black text-red-400">L</span>;
+  if (gameLogNumber(stat.saves) > 0) return <span className="font-black text-emerald-400">SV</span>;
+  if (gameLogNumber(stat.holds) > 0) return <span className="font-black text-sky-300">HLD</span>;
+  if (gameLogNumber(stat.blownSaves) > 0) return <span className="font-black text-red-400">BLSV</span>;
   return '—';
 }
 
@@ -2267,6 +2331,7 @@ function PlayerGameLogsPanel({
       try {
         const data = await fetchPlayerStats(playerId, params.toString(), logLevel);
         let splits = data.stats?.find((s) => s.type?.displayName === 'gameLog')?.splits ?? [];
+        splits = annotatePitcherGameLogDecisions(splits, logGroup);
         splits = [...splits].sort((a, b) => new Date(b.date) - new Date(a.date));
 
         if (!cancelled) {
