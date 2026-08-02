@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { compactPlayerName, teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
+import { formatNationalBroadcastLine } from '../utils/broadcasts';
 import {
   BaseDiamondIndicator,
   getRunnersOnBase,
@@ -21,6 +22,7 @@ const WINDOW_PAST = 60;
 const FUTURE_DAYS = 180;
 const LIVE_SCORES_POLL_MS = 10_000;
 const TODAY_SCORES_POLL_MS = 30_000;
+const SCOREBOARD_RESUME_REFRESH_DEBOUNCE_MS = 1_500;
 // Dev note: this is intentionally split between a code flag and a user toggle.
 // Keep the code flag as a quick kill-switch while the baseball easter egg controls the UX.
 const ENABLE_SCOREBOARD_ROOTING_INTERESTS = true;
@@ -101,6 +103,24 @@ const loadRootingInterestsEnabled = () => {
     return false;
   }
 };
+
+function NationalBroadcastPill({ game, compact = false }) {
+  const line = formatNationalBroadcastLine(game);
+  if (!line) return null;
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1 font-bold uppercase tracking-[0.12em] text-cyan-200/70',
+        compact ? 'text-[8px]' : 'text-[9px]',
+      ].join(' ')}
+      title={line}
+    >
+      <i className="fa-solid fa-tv text-cyan-300/60" aria-hidden />
+      {line.replace('Watch on ', 'Watch: ')}
+    </span>
+  );
+}
 
 const computeDateWindow = (center, maxDate) => {
   const start = addDays(center, -WINDOW_PAST);
@@ -440,8 +460,10 @@ export default function Scores() {
     }
   });
   const [gamesMap, setGamesMap] = useState({});
+  const [gamesErrorMap, setGamesErrorMap] = useState({});
   const gamesCacheRef = useRef({});
   const fetchInflightRef = useRef(new Map());
+  const lastResumeRefreshRef = useRef(0);
   const [, setLoadingDates] = useState(() => new Set());
   const [liveCount, setLiveCount] = useState(0);
   const maxDate = useMemo(() => getMaxDate(), []);
@@ -534,12 +556,19 @@ export default function Scores() {
     const request = (async () => {
       try {
         const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/schedule?${selectedLeague.sportQuery}&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore`,
+          `https://statsapi.mlb.com/api/v1/schedule?${selectedLeague.sportQuery}&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore,broadcasts(all)`,
         );
+        if (!res.ok) throw new Error(`Schedule ${res.status}`);
         const data = await res.json();
         const dayGames = data.dates?.[0]?.games || [];
         gamesCacheRef.current[cacheKey] = dayGames;
         setGamesMap((prev) => ({ ...prev, [cacheKey]: dayGames }));
+        setGamesErrorMap((prev) => {
+          if (!prev[cacheKey]) return prev;
+          const next = { ...prev };
+          delete next[cacheKey];
+          return next;
+        });
         const currentDate = dates[selectedIndexRef.current];
         if (currentDate && isSameDay(date, currentDate)) {
           setLiveCount(dayGames.filter((g) => g.status.abstractGameState === 'Live').length);
@@ -547,9 +576,10 @@ export default function Scores() {
         return dayGames;
       } catch (err) {
         console.error(err);
-        gamesCacheRef.current[cacheKey] = [];
-        setGamesMap((prev) => ({ ...prev, [cacheKey]: [] }));
-        return [];
+        setGamesErrorMap((prev) => ({ ...prev, [cacheKey]: true }));
+        // Do not cache a failed request as "no games"; PWA resumes can briefly
+        // fail while the network reconnects, and that should not erase real games.
+        return gamesCacheRef.current[cacheKey] ?? [];
       } finally {
         fetchInflightRef.current.delete(cacheKey);
         setLoadingDates((prev) => {
@@ -699,6 +729,28 @@ export default function Scores() {
     );
     return () => clearInterval(interval);
   }, [selectedDate, fetchGamesForDate, liveCount]);
+
+  useEffect(() => {
+    if (!isInitialReady) return undefined;
+
+    const refreshVisibleDate = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastResumeRefreshRef.current < SCOREBOARD_RESUME_REFRESH_DEBOUNCE_MS) return;
+      lastResumeRefreshRef.current = now;
+      void fetchGamesForDate(selectedDate, { force: true });
+      prefetchAroundIndex(selectedIndex, { ahead: 2, behind: 2 });
+    };
+
+    document.addEventListener('visibilitychange', refreshVisibleDate);
+    window.addEventListener('focus', refreshVisibleDate);
+    window.addEventListener('pageshow', refreshVisibleDate);
+    return () => {
+      document.removeEventListener('visibilitychange', refreshVisibleDate);
+      window.removeEventListener('focus', refreshVisibleDate);
+      window.removeEventListener('pageshow', refreshVisibleDate);
+    };
+  }, [fetchGamesForDate, isInitialReady, prefetchAroundIndex, selectedDate, selectedIndex]);
 
   useEffect(() => {
     if (!ENABLE_SCOREBOARD_ROOTING_INTERESTS || !showRootingInterests || scoreboardLeague !== 'mlb' || !favoriteMlbTeamId) {
@@ -970,12 +1022,28 @@ export default function Scores() {
   const renderGamesForDate = (date, { isActive = false, isAdjacent = false } = {}) => {
     const dateKey = getLeagueDateKey(date);
     const hasLoaded = Object.prototype.hasOwnProperty.call(gamesMap, dateKey);
+    const hasLoadError = Boolean(gamesErrorMap[dateKey]);
     const games = gamesMap[dateKey];
     const sortedGames = sortGames(games ?? []);
 
     if (!hasLoaded) {
       if (!isActive && !isAdjacent) {
         return <div className="min-h-[1px]" aria-hidden />;
+      }
+      if (hasLoadError) {
+        return (
+          <div className="border border-dashed border-red-500/40 rounded-3xl p-8 text-center">
+            <div className="text-sm font-bold text-red-200">Could not refresh games.</div>
+            <div className="mt-1 text-xs text-slate-500">Your connection may still be waking up. Try again in a second.</div>
+            <button
+              type="button"
+              onClick={() => fetchGamesForDate(date, { force: true })}
+              className="mt-4 rounded-full border border-slate-700 px-4 py-2 text-xs font-bold text-slate-200 hover:border-slate-500"
+            >
+              Retry
+            </button>
+          </div>
+        );
       }
       return <LoadingSpinner size="lg" py="py-12" />;
     }
@@ -1118,6 +1186,7 @@ export default function Scores() {
                     )}
                   </div>
                   <div className="flex flex-row items-end gap-1 flex-shrink-0">
+                    <NationalBroadcastPill game={game} compact />
                     {noHitAlerts?.map((a) => (
                       <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
                         {a.label}
@@ -1284,6 +1353,7 @@ export default function Scores() {
                   )}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  <NationalBroadcastPill game={game} compact />
                   {noHitAlerts?.map((a) => (
                     <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
                       {a.label}

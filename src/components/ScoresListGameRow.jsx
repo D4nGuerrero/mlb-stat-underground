@@ -1,4 +1,5 @@
 import { teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
+import { formatNationalBroadcastLine } from '../utils/broadcasts';
 import { LiveSituationStack } from './LiveGameIndicators';
 import ScoreboardFireworks from './ScoreboardFireworks';
 
@@ -187,6 +188,24 @@ function RootAgainstLabel({ game, rootingInterest, compact = false, ultraCompact
   );
 }
 
+function NationalBroadcastLabel({ game, compact = false, ultraCompact = false }) {
+  const line = formatNationalBroadcastLine(game);
+  if (!line || ultraCompact) return null;
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1 font-bold uppercase tracking-[0.12em] text-cyan-200/70',
+        compact ? 'text-[7px]' : 'text-[8px]',
+      ].join(' ')}
+      title={line}
+    >
+      <i className="fa-solid fa-tv text-cyan-300/60" aria-hidden />
+      {line.replace('Watch on ', 'Watch: ')}
+    </span>
+  );
+}
+
 function ListGameCenter({ game, status, noHitAlerts, rootingInterest, compact = false, ultraCompact = false }) {
   const { isLive, isFinal, isDelayed, isPostponed } = status;
   const isPreview = !isFinal && !isLive;
@@ -246,6 +265,11 @@ function ListGameCenter({ game, status, noHitAlerts, rootingInterest, compact = 
       <RootAgainstLabel
         game={game}
         rootingInterest={rootingInterest}
+        compact={compact}
+        ultraCompact={ultraCompact}
+      />
+      <NationalBroadcastLabel
+        game={game}
         compact={compact}
         ultraCompact={ultraCompact}
       />

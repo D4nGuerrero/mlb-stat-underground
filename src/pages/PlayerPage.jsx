@@ -2146,8 +2146,6 @@ function GameLogGlossary({ items }) {
 
 function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs available' }) {
   const navigate = useNavigate();
-  const headerScrollRef = useRef(null);
-  const bodyScrollRef = useRef(null);
   const monthSections = useMemo(() => buildGameLogMonthSections(rows, logGroup), [rows, logGroup]);
   const glossary = logGroup === 'pitching' ? GAME_LOG_PITCH_GLOSSARY : GAME_LOG_HIT_GLOSSARY;
 
@@ -2183,13 +2181,8 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
     left: gameLogAfterDateLeft,
     widthClass: gameLogOppWidth,
   });
-  const syncScroll = (source, target) => {
-    if (!target.current) return;
-    if (target.current.scrollLeft === source.currentTarget.scrollLeft) return;
-    target.current.scrollLeft = source.currentTarget.scrollLeft;
-  };
-  const renderHeader = ({ sticky = false } = {}) => (
-    <thead className={sticky ? '' : 'sr-only'}>
+  const renderHeader = () => (
+    <thead>
       <tr className="text-slate-500 border-b border-slate-700/60">
         {cols.map((c, i) => (
           <th
@@ -2212,20 +2205,7 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
 
   return (
     <div>
-      <div
-        ref={headerScrollRef}
-        className="sticky top-14 z-40 -mx-1 overflow-x-auto overflow-y-hidden rounded-t-xl border-x border-t border-slate-800/60 scrollbar-none sm:top-0"
-        onScroll={(event) => syncScroll(event, bodyScrollRef)}
-      >
-        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} min-w-max`}>
-          {renderHeader({ sticky: true })}
-        </table>
-      </div>
-      <div
-        ref={bodyScrollRef}
-        className="-mx-1 overflow-x-auto rounded-b-xl border border-slate-800/60 scrollbar-thin"
-        onScroll={(event) => syncScroll(event, headerScrollRef)}
-      >
+      <div className="-mx-1 overflow-x-auto rounded-xl border border-slate-800/60 scrollbar-thin">
         <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} min-w-max`}>
           {renderHeader()}
           <tbody>
