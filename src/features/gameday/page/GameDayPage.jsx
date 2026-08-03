@@ -3081,7 +3081,7 @@ function GamePageContent({ gamePk, navigate, location }) {
 
     const controller = new AbortController();
     const summaryRows = buildSummaryItems(feed.liveData.plays.allPlays, feed.gameData);
-    buildMiLBHighlightMap(summaryRows, { signal: controller.signal })
+    buildMiLBHighlightMap(summaryRows, { gamePk, signal: controller.signal })
       .then((map) => setMilbHighlightByItemKey(map))
       .catch((err) => {
         if (err?.name !== 'AbortError') setMilbHighlightByItemKey({});
