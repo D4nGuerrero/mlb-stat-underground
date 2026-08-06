@@ -2241,7 +2241,12 @@ function InjuriesTab({ teamId, season, onNavigateAway }) {
         const info = {};
         [...(txnsJson.transactions ?? [])]
           .filter(injuryTransactionMatches)
-          .sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0))
+          .sort((a, b) => {
+            const day = (t) => String(t?.date ?? '').slice(0, 10);
+            const d = day(b).localeCompare(day(a));
+            if (d) return d;
+            return Number(b?.id ?? 0) - Number(a?.id ?? 0);
+          })
           .forEach((txn) => {
             if (!info[txn.person.id]) info[txn.person.id] = parseInjuryInfo(txn);
           });
@@ -2739,9 +2744,17 @@ function TransactionsTab({ teamId, onNavigateAway }) {
         if (statsResult.status === 'rejected' && historicalResult.status === 'rejected') throw statsResult.reason;
         const json = statsResult.status === 'fulfilled' ? statsResult.value : { transactions: [] };
         const historicalTrades = historicalResult.status === 'fulfilled' ? historicalResult.value : [];
-        const sorted = [...(json.transactions ?? []), ...historicalTrades].sort(
-          (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
-        );
+        const sorted = [...(json.transactions ?? []), ...historicalTrades].sort((a, b) => {
+          const day = (t) => String(t?.date ?? t?.effectiveDate ?? t?.resolutionDate ?? '').slice(0, 10);
+          const sec = (t) => String(t?.resolutionDate ?? t?.effectiveDate ?? t?.date ?? '').slice(0, 10);
+          const d = day(b).localeCompare(day(a));
+          if (d) return d;
+          const s = sec(b).localeCompare(sec(a));
+          if (s) return s;
+          const id = Number(b?.id ?? 0) - Number(a?.id ?? 0);
+          if (id) return id;
+          return String(b?.description ?? '').localeCompare(String(a?.description ?? ''));
+        });
         const display = txnMode === 'trades'
           ? collapseTradeTransactions(sorted.filter(isTradeTransaction))
           : collapseTradeTransactions(sorted);

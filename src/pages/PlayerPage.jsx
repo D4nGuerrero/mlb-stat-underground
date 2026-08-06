@@ -1635,6 +1635,14 @@ function isTradeTransaction(txn) {
   return txn?.typeCode === 'TR' || /^trade$/i.test(txn?.typeDesc?.trim() ?? '');
 }
 
+/** Best team to badge a transaction with (destination, then origin). */
+function transactionPrimaryTeam(txn) {
+  if (txn?.toTeam?.id) return txn.toTeam;
+  if (txn?.fromTeam?.id) return txn.fromTeam;
+  if (txn?.team?.id) return txn.team;
+  return null;
+}
+
 const isCashTradeItem = (txn) => /cash/i.test(`${txn?.description ?? ''} ${txn?.typeDesc ?? ''}`);
 
 const formatCashTransactionText = (text = '') => {
@@ -1724,10 +1732,77 @@ async function fetchPlayerTransactions(playerId, yearsBack) {
   return sortTransactions(json.transactions);
 }
 
+/** YYYY-MM-DD from a transaction date field (avoids timezone shifts from Date parsing). */
+function txnIsoDay(value) {
+  if (!value) return '';
+  const raw = String(value);
+  const m = raw.match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : raw.slice(0, 10);
+}
+
+function txnPrimaryDay(txn) {
+  return txnIsoDay(txn?.date) || txnIsoDay(txn?.effectiveDate) || txnIsoDay(txn?.resolutionDate);
+}
+
+function txnSecondaryDay(txn) {
+  // Prefer resolution, then effective — helps when MLB posts multiple steps same calendar day.
+  return txnIsoDay(txn?.resolutionDate) || txnIsoDay(txn?.effectiveDate) || txnIsoDay(txn?.date);
+}
+
+function txnIdValue(txn) {
+  const n = Number(txn?.id);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Same-day type weight for reverse-chronological lists (higher = later in a typical roster sequence).
+ * Used only when date + id cannot separate two rows.
+ */
+const TXN_TYPE_LATE_WEIGHT = {
+  NUM: 5,
+  SFA: 10,
+  SGN: 12,
+  SE: 18,
+  TR: 20,
+  CLW: 22,
+  DES: 30,
+  OPT: 35,
+  OUT: 38,
+  ASG: 42,
+  SC: 50,
+  REL: 55,
+  CU: 60, // Recalled
+  CNT: 65,
+};
+
+function txnTypeWeight(txn) {
+  return TXN_TYPE_LATE_WEIGHT[txn?.typeCode] ?? 40;
+}
+
+/**
+ * Newest first. Same calendar day is ordered by:
+ * 1) resolution/effective date
+ * 2) transaction id (MLB ids are largely monotonic)
+ * 3) type weight (roster-sequence fallback for historical rows without ids)
+ */
 function sortTransactions(transactions = []) {
-  return [...transactions].sort(
-    (a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0),
-  );
+  return [...transactions].sort((a, b) => {
+    const dayA = txnPrimaryDay(a);
+    const dayB = txnPrimaryDay(b);
+    if (dayA !== dayB) return dayB.localeCompare(dayA);
+
+    const secA = txnSecondaryDay(a);
+    const secB = txnSecondaryDay(b);
+    if (secA !== secB) return secB.localeCompare(secA);
+
+    const idDiff = txnIdValue(b) - txnIdValue(a);
+    if (idDiff !== 0) return idDiff;
+
+    const typeDiff = txnTypeWeight(b) - txnTypeWeight(a);
+    if (typeDiff !== 0) return typeDiff;
+
+    return String(b?.description ?? '').localeCompare(String(a?.description ?? ''));
+  });
 }
 
 function transactionDedupeKey(txn) {
@@ -2078,9 +2153,25 @@ function PlayerTransactionsTab({ playerId, playerInfo }) {
         {visibleTxns.map((t, i) => {
           const isTrade = isTradeTransaction(t);
           const rowKey = `${t.id ?? t.date}-${t.person?.id ?? i}`;
+          const club = transactionPrimaryTeam(t);
           const rowContent = (
             <>
-              <div className="w-24 text-xs text-slate-500 flex-shrink-0 pt-0.5 tabular-nums">{fmtDate(t.date)}</div>
+              <div className="w-14 sm:w-20 flex-shrink-0 flex flex-col items-start gap-1.5 pt-0.5">
+                <div className="text-[11px] sm:text-xs text-slate-500 tabular-nums leading-tight">
+                  {fmtDate(t.date)}
+                </div>
+                {club?.id ? (
+                  <span title={club.name ?? undefined} className="inline-flex">
+                    <TeamLogoImg
+                      teamId={club.id}
+                      alt={club.name ?? club.abbreviation ?? ''}
+                      className="h-7 w-7 sm:h-8 sm:w-8 object-contain"
+                    />
+                  </span>
+                ) : (
+                  <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-md bg-slate-800/60 ring-1 ring-slate-700/50" aria-hidden />
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <TransactionTypeLabel typeDesc={t.typeDesc ?? t.description} className="text-sm" />
                 {t.fromTeam?.name && t.toTeam?.name && (
