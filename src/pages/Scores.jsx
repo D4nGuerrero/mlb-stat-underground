@@ -4,7 +4,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { compactPlayerName, teamLogoUrl, formatFinalStatus } from '../utils/mlbHelpers';
-import { formatNationalBroadcastLine } from '../utils/broadcasts';
 import {
   BaseDiamondIndicator,
   getRunnersOnBase,
@@ -13,6 +12,7 @@ import {
 } from '../components/LiveGameIndicators';
 import ScoresListGameRow from '../components/ScoresListGameRow';
 import ScoreboardFireworks from '../components/ScoreboardFireworks';
+import NationalBroadcastIcons from '../components/NationalBroadcastIcons';
 import { SegmentedControl, SwipeableCarousel, LoadingSpinner } from '../components/ui';
 import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
@@ -103,24 +103,6 @@ const loadRootingInterestsEnabled = () => {
     return false;
   }
 };
-
-function NationalBroadcastPill({ game, compact = false }) {
-  const line = formatNationalBroadcastLine(game);
-  if (!line) return null;
-
-  return (
-    <span
-      className={[
-        'inline-flex items-center gap-1 font-bold uppercase tracking-[0.12em] text-cyan-200/70',
-        compact ? 'text-[8px]' : 'text-[9px]',
-      ].join(' ')}
-      title={line}
-    >
-      <i className="fa-solid fa-tv text-cyan-300/60" aria-hidden />
-      {line.replace('Watch on ', 'Watch: ')}
-    </span>
-  );
-}
 
 const computeDateWindow = (center, maxDate) => {
   const start = addDays(center, -WINDOW_PAST);
@@ -1186,7 +1168,7 @@ export default function Scores() {
                     )}
                   </div>
                   <div className="flex flex-row items-end gap-1 flex-shrink-0">
-                    <NationalBroadcastPill game={game} compact />
+                    <NationalBroadcastIcons game={game} compact />
                     {noHitAlerts?.map((a) => (
                       <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
                         {a.label}
@@ -1353,7 +1335,7 @@ export default function Scores() {
                   )}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <NationalBroadcastPill game={game} compact />
+                  <NationalBroadcastIcons game={game} compact />
                   {noHitAlerts?.map((a) => (
                     <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
                       {a.label}
