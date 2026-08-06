@@ -17,6 +17,7 @@ const BaseballSimulator = lazy(() => import('./pages/BaseballSimulator.jsx'));
 const TeamPage = lazy(() => import('./pages/TeamPage.jsx'));
 const Debug = lazy(() => import('./pages/Debug.jsx'));
 const ProspectWatch = lazy(() => import('./pages/ProspectWatch.jsx'));
+const DraftTracker = lazy(() => import('./pages/DraftTracker.jsx'));
 
 function StandingsFlagIcon({ className = 'w-4 h-4' }) {
   return (
@@ -99,6 +100,8 @@ function App() {
           <Route path="/standings" element={<Standings />} />
           <Route path="/simulator" element={<BaseballSimulator />} />
           <Route path="/prospects" element={<ProspectWatch />} />
+          <Route path="/draft" element={<DraftTracker />} />
+          <Route path="/draft/:year" element={<DraftTracker />} />
           <Route path="/docs" element={<APIDocs />} />
           <Route path="/debug" element={<Debug />} />
           <Route path="/player/:playerId" element={<PlayerPage />} />

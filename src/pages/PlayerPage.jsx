@@ -436,6 +436,17 @@ function formatDraftPick(draftPick, draftYear) {
   return parts.join(' · ');
 }
 
+function buildDraftTrackerPath(playerInfo, draftPick) {
+  const year = playerInfo?.draftYear;
+  if (!year) return null;
+  const params = new URLSearchParams();
+  if (playerInfo?.id) params.set('player', String(playerInfo.id));
+  const round = draftPick?.pickRound ?? draftPick?.round;
+  if (round) params.set('round', String(round));
+  const qs = params.toString();
+  return `/draft/${year}${qs ? `?${qs}` : ''}`;
+}
+
 function buildPlayerBioRows(playerInfo, draftPick) {
   if (!playerInfo) return { base: [], expanded: [] };
 
@@ -450,6 +461,7 @@ function buildPlayerBioRows(playerInfo, draftPick) {
   const college = joinEducation(playerInfo.education?.colleges);
   const highSchool = joinEducation(playerInfo.education?.highschools);
   const draftText = formatDraftPick(draftPick, playerInfo.draftYear);
+  const draftPath = buildDraftTrackerPath(playerInfo, draftPick);
   const relationships = (playerInfo.relatives ?? []).filter((relative) => relative?.id && relative?.hasStats !== false);
 
   const expanded = [
@@ -457,7 +469,9 @@ function buildPlayerBioRows(playerInfo, draftPick) {
       ? { label: 'Full Name', value: playerInfo.fullFMLName }
       : null,
     playerInfo.nickName ? { label: 'Nickname', value: playerInfo.nickName } : null,
-    draftText ? { label: 'Drafted', value: draftText } : null,
+    draftText
+      ? { label: 'Drafted', value: draftText, format: 'draft', href: draftPath }
+      : null,
     playerInfo.mlbDebutDate ? { label: 'MLB Debut', value: fmtDate(playerInfo.mlbDebutDate) } : null,
     relationships.length ? { label: 'Relationships', value: relationships, format: 'relationships' } : null,
     college ? { label: 'College', value: college } : null,
@@ -493,7 +507,7 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
         )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-        {visibleRows.map(({ label, value, format, country }) => (
+        {visibleRows.map(({ label, value, format, country, href }) => (
           <div key={label} className={label === 'Drafted' || label === 'Relationships' ? 'col-span-2 sm:col-span-4' : ''}>
             <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
             {format === 'relationships' ? (
@@ -522,6 +536,18 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
                 )}
                 <span>{value}</span>
               </div>
+            ) : format === 'draft' && href ? (
+              <Link
+                to={href}
+                className={`group inline-flex max-w-full items-center gap-2 text-sm font-semibold leading-snug text-${THEME_COLOR}-300 transition-colors hover:text-${THEME_COLOR}-200`}
+                title="Open Draft Tracker for this class"
+              >
+                <i className="fa-solid fa-clipboard-list text-[11px] text-slate-500 group-hover:text-inherit" aria-hidden />
+                <span className="underline decoration-slate-600 underline-offset-2 group-hover:decoration-current">
+                  {value}
+                </span>
+                <i className="fa-solid fa-arrow-up-right-from-square text-[9px] text-slate-600 group-hover:text-inherit" aria-hidden />
+              </Link>
             ) : (
               <div className="text-sm font-semibold text-slate-200 leading-snug">{value}</div>
             )}
