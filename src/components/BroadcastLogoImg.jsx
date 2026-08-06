@@ -1,14 +1,20 @@
 import { useTheme } from '../context/ThemeContext';
-import { broadcastLogoUrl, NATIONAL_BROADCAST_NETWORKS } from '../utils/broadcasts';
+import {
+  broadcastLogoUrl,
+  broadcastLogoClassName,
+  NATIONAL_BROADCAST_NETWORKS,
+} from '../utils/broadcasts';
 
 /**
  * Theme-aware national broadcaster logo from MLB static CDN.
  * Dark mode → broadcasters-on-dark; light mode → broadcasters-on-light.
+ * Default sizing keeps wide logos compact; narrow marks (MLB Network) get more height.
  */
 export default function BroadcastLogoImg({
   networkId,
   label,
-  className = 'h-7 w-auto max-w-[6.5rem] object-contain',
+  className,
+  size = 'md',
   alt,
   title,
   onError,
@@ -24,10 +30,14 @@ export default function BroadcastLogoImg({
   const src = broadcastLogoUrl(id, { preferDark: isDark });
   if (!src) return null;
 
+  const resolvedClass =
+    className
+    || broadcastLogoClassName(id, { size });
+
   return (
     <img
       src={src}
-      className={className}
+      className={resolvedClass}
       alt={alt ?? resolvedLabel}
       title={title ?? resolvedLabel}
       draggable={false}

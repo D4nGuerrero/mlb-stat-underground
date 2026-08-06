@@ -2,17 +2,44 @@
  * National TV broadcaster IDs and logos from MLB static CDN (2026).
  * Light:  https://www.mlbstatic.com/team-logos/broadcasters-on-light/{id}.svg
  * Dark:   https://www.mlbstatic.com/team-logos/broadcasters-on-dark/{id}.svg
+ *
+ * logoFit:
+ *   - "wide"   (default) — wordmarks; keep short height, allow more width
+ *   - "narrow" — square/tall marks (e.g. MLB Network); taller so they don't look tiny
  */
 export const NATIONAL_BROADCAST_NETWORKS = {
-  142: { label: 'ESPN', match: ['espn'] },
-  144: { label: 'FOX', match: ['fox'] },
-  4725: { label: 'FS1', match: ['fs1'] },
-  6019: { label: 'Apple TV', match: ['apple'] },
-  5725: { label: 'Peacock', match: ['peacock', 'nbcsn'] },
-  6021: { label: 'NBC', match: ['nbc'] },
-  129: { label: 'TBS', match: ['tbs'] },
-  5773: { label: 'MLB Network', match: ['mlb network', 'mlbn'] },
+  142: { label: 'ESPN', match: ['espn'], logoFit: 'wide' },
+  144: { label: 'FOX', match: ['fox'], logoFit: 'wide' },
+  4725: { label: 'FS1', match: ['fs1'], logoFit: 'wide' },
+  6019: { label: 'Apple TV', match: ['apple'], logoFit: 'wide' },
+  5725: { label: 'Peacock', match: ['peacock', 'nbcsn'], logoFit: 'wide' },
+  6021: { label: 'NBC', match: ['nbc'], logoFit: 'wide' },
+  129: { label: 'TBS', match: ['tbs'], logoFit: 'wide' },
+  5773: { label: 'MLB Network', match: ['mlb network', 'mlbn'], logoFit: 'narrow' },
 };
+
+/**
+ * Tailwind classes for national broadcast logos.
+ * Wide logos stay compact (h-4); narrow marks get a bit more height so they read.
+ */
+export function broadcastLogoClassName(networkId, { compact = false, size = 'sm' } = {}) {
+  const id = Number(networkId);
+  const fit = NATIONAL_BROADCAST_NETWORKS[id]?.logoFit || 'wide';
+
+  if (fit === 'narrow') {
+    // Square / tall marks: extra height so visual weight matches wide wordmarks
+    if (size === 'md') return 'h-7 w-auto max-w-[2.75rem] object-contain';
+    return compact
+      ? 'h-5 w-auto max-w-[2.25rem] object-contain'
+      : 'h-5 w-auto max-w-[2.5rem] object-contain';
+  }
+
+  // Wide wordmarks (ESPN, FOX, TBS, …)
+  if (size === 'md') return 'h-7 w-auto max-w-[6.5rem] object-contain';
+  return compact
+    ? 'h-4 w-auto max-w-[5.5rem] object-contain'
+    : 'h-4 w-auto max-w-[6.5rem] object-contain';
+}
 
 const KNOWN_NATIONAL_IDS = new Set(
   Object.keys(NATIONAL_BROADCAST_NETWORKS).map(Number),

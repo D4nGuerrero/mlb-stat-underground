@@ -1,8 +1,13 @@
 import BroadcastLogoImg from './BroadcastLogoImg';
-import { getNationalTvBroadcasts, formatNationalBroadcastLine } from '../utils/broadcasts';
+import {
+  getNationalTvBroadcasts,
+  formatNationalBroadcastLine,
+  broadcastLogoClassName,
+} from '../utils/broadcasts';
 
 /**
  * Renders national TV network logo icons for a schedule game (no "Watch:" text).
+ * Wide wordmarks stay compact; narrow marks (MLB Network) use a taller fit.
  */
 export default function NationalBroadcastIcons({
   game,
@@ -16,9 +21,6 @@ export default function NationalBroadcastIcons({
   if (!networks.length) return null;
 
   const title = formatNationalBroadcastLine(game) || networks.map((n) => n.label).join(', ');
-  const imgClass = compact
-    ? 'h-6 w-auto max-w-[5.5rem] object-contain'
-    : 'h-7 w-auto max-w-[6.5rem] object-contain';
 
   return (
     <span
@@ -34,7 +36,7 @@ export default function NationalBroadcastIcons({
           key={network.id}
           networkId={network.id}
           label={network.label}
-          className={imgClass}
+          className={broadcastLogoClassName(network.id, { compact })}
         />
       ))}
     </span>
