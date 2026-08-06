@@ -11,7 +11,6 @@ import {
   FileText,
   Settings as SettingsIcon,
   MoreHorizontal,
-  Bug,
 } from 'lucide-react';
 import { assetUrl } from './utils/baseUrl.js';
 import { LoadingSpinner } from './components/ui';
@@ -57,7 +56,6 @@ const MORE_NAV = [
   { to: '/draft', icon: ClipboardList, label: 'Draft Tracker', description: 'Browse draft classes' },
   { to: '/docs', icon: FileText, label: 'API Docs', description: 'Stats API reference' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings', description: 'Theme & mobile nav' },
-  { to: '/debug', icon: Bug, label: 'Debug', description: 'Dev utilities' },
 ];
 
 const MORE_PATHS = new Set(MORE_NAV.map((item) => item.to));
