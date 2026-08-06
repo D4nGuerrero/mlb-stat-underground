@@ -1,4 +1,5 @@
 import { getSituationBeforePlayResult } from '../utils/playSituation';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 /** Catcher's view: left = 3rd, top = 2nd, right = 1st (MLB At Bat bases SVG). */
 const BASES_SVG_WIDTH = {
@@ -133,8 +134,11 @@ export function BaseDiamondIndicator({
   size = 'md',
   className = '',
 }) {
+  const { isDark } = useTheme();
   const width = BASES_SVG_WIDTH[size] ?? BASES_SVG_WIDTH.md;
   const occupied = bases ?? { third: onThird, second: onSecond, first: onFirst };
+  // Light mode: black outline + black fill when occupied; dark mode: white.
+  const ink = isDark ? '#ffffff' : '#0f172a';
 
   return (
     <svg
@@ -149,24 +153,24 @@ export function BaseDiamondIndicator({
         width="6"
         height="6"
         transform="translate(5.25, 7.25) rotate(-315)"
-        fill={occupied.third ? '#ffffff' : 'transparent'}
-        stroke="#ffffff"
+        fill={occupied.third ? ink : 'transparent'}
+        stroke={ink}
         strokeWidth={1}
       />
       <rect
         width="6"
         height="6"
         transform="translate(12, 0.75) rotate(-315)"
-        fill={occupied.second ? '#ffffff' : 'transparent'}
-        stroke="#ffffff"
+        fill={occupied.second ? ink : 'transparent'}
+        stroke={ink}
         strokeWidth={1}
       />
       <rect
         width="6"
         height="6"
         transform="translate(18.75, 7.25) rotate(-315)"
-        fill={occupied.first ? '#ffffff' : 'transparent'}
-        stroke="#ffffff"
+        fill={occupied.first ? ink : 'transparent'}
+        stroke={ink}
         strokeWidth={1}
       />
     </svg>
