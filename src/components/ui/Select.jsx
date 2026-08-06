@@ -1,5 +1,4 @@
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react';
-import { THEME_COLOR } from '../../theme/theme.js';
 import { ChevronDown, Check } from 'lucide-react';
 
 export default function Select({
@@ -21,7 +20,7 @@ export default function Select({
         <ListboxButton
           className={[
             'relative w-full text-left bg-slate-800 border border-slate-700 rounded-2xl',
-            `focus:outline-none focus:border-${THEME_COLOR}-500 transition-colors`,
+            `focus:outline-none focus:border-accent-500 transition-colors`,
             'flex items-center justify-between gap-2',
             padding,
             textSize,
@@ -62,7 +61,7 @@ export default function Select({
                 [
                   'relative cursor-pointer select-none px-4 py-2.5 text-sm',
                   focus ? 'bg-slate-800 text-white' : 'text-slate-300',
-                  selected ? `text-${THEME_COLOR}-400` : '',
+                  selected ? `text-accent-400` : '',
                   opt.disabled ? 'opacity-40 cursor-not-allowed' : '',
                 ].join(' ')
               }
@@ -80,7 +79,7 @@ export default function Select({
                     )}
                     <span className="truncate">{opt.label}</span>
                   </span>
-                  {selected && <Check size={14} className={`text-${THEME_COLOR}-400 flex-shrink-0`} />}
+                  {selected && <Check size={14} className={`text-accent-400 flex-shrink-0`} />}
                 </div>
               )}
             </ListboxOption>

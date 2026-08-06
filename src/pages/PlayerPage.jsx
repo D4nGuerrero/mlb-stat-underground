@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, useLocation, useNavigationType, Link } from 'react-router-dom';
 import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackgroundClass, getTeamAbbr, spotracPlayerUrl, retiredPlayerTeamOverride, mlbTeams } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
@@ -498,7 +497,7 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
-            className={`inline-flex items-center gap-2 rounded-full border border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10 px-3 py-1.5 text-xs font-semibold text-${THEME_COLOR}-200 hover:bg-${THEME_COLOR}-500/20 transition-colors`}
+            className={`inline-flex items-center gap-2 rounded-full border border-accent-500/30 bg-accent-500/10 px-3 py-1.5 text-xs font-semibold text-accent-200 hover:bg-accent-500/20 transition-colors`}
             aria-expanded={expanded}
           >
             {expanded ? 'Show Less' : 'Show More'}
@@ -516,7 +515,7 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
                   <Link
                     key={relative.id}
                     to={`/player/${relative.id}`}
-                    className={`inline-flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:border-${THEME_COLOR}-500/50 hover:text-${THEME_COLOR}-300 transition-colors`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:border-accent-500/50 hover:text-accent-300 transition-colors`}
                   >
                     {relative.fullName ?? relative.nameFirstLast}
                     {relative.relation && <span className="text-slate-500 font-medium">({relative.relation})</span>}
@@ -539,7 +538,7 @@ function PlayerBioInfo({ playerInfo, draftPick }) {
             ) : format === 'draft' && href ? (
               <Link
                 to={href}
-                className={`group inline-flex max-w-full items-center gap-2 text-sm font-semibold leading-snug text-${THEME_COLOR}-300 transition-colors hover:text-${THEME_COLOR}-200`}
+                className={`group inline-flex max-w-full items-center gap-2 text-sm font-semibold leading-snug text-accent-300 transition-colors hover:text-accent-200`}
                 title="Open Draft Tracker for this class"
               >
                 <i className="fa-solid fa-clipboard-list text-[11px] text-slate-500 group-hover:text-inherit" aria-hidden />
@@ -795,7 +794,7 @@ function PlayerStatSummaryCard({ playerInfo, isPitcher, stats, levelLabel = '' }
     ? `${CURRENT_YEAR} ${levelLabel ? `${levelLabel} ` : ''}STATS`
     : 'CAREER STATS';
   const headerClass = isActive
-    ? `border-${THEME_COLOR}-500/25 bg-${THEME_COLOR}-500/10 text-${THEME_COLOR}-300`
+    ? `border-accent-500/25 bg-accent-500/10 text-accent-300`
     : 'border-slate-600/40 bg-slate-700/30 text-slate-300';
   const items = isPitcher
     ? [
@@ -993,7 +992,7 @@ function useTableSort(defaultCol, defaultDir = 'desc') {
     }
   };
   const sortMark = (key) => (sortCol === key ? (sortDir === 'asc' ? '▲' : '▼') : '');
-  const sortActive = (key) => (sortCol === key ? `text-${THEME_COLOR}-400` : '');
+  const sortActive = (key) => (sortCol === key ? `text-accent-400` : '');
   return { sortCol, sortDir, handleSort, sortMark, sortActive };
 }
 
@@ -1484,7 +1483,7 @@ function StatsTable({
                     isGroupedDetail
                       ? 'text-slate-500'
                       : isHigh
-                        ? `font-bold text-${THEME_COLOR}-500`
+                        ? `font-bold text-accent-500`
                         : isFooter
                           ? 'text-slate-100 bg-[#182030]'
                           : 'text-slate-300',
@@ -1704,7 +1703,7 @@ function TransactionTypeLabel({ typeDesc, className = '' }) {
   const isTrade = isTradeTransaction({ typeDesc: label });
   return (
     <span
-      className={`font-medium ${isTrade ? `text-${THEME_COLOR}-400` : 'text-slate-200'} ${className}`}
+      className={`font-medium ${isTrade ? `text-accent-400` : 'text-slate-200'} ${className}`}
     >
       {label}
     </span>
@@ -1845,7 +1844,7 @@ function TransactionPlayerLink({ person, onNavigate }) {
     <button
       type="button"
       onClick={() => onNavigate(person.id)}
-      className={`text-left text-sm text-slate-200 hover:text-${THEME_COLOR}-400 transition-colors`}
+      className={`text-left text-sm text-slate-200 hover:text-accent-400 transition-colors`}
     >
       {person.fullName}
     </button>
@@ -4000,7 +3999,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
         //fun bg: bg-[length:auto_1%]
         <div className="bg-[#121827] border border-slate-700/60 sm:rounded-2xl overflow-hidden">
           <div
-            className={`relative h-[200px] sm:h-[300px] bg-cover  ${heroBgClass} overflow-hidden px-5 sm:px-8 py-6 sm:py-8 flex flex-col justify-end`}
+            className={`player-hero-on-photo relative h-[200px] sm:h-[300px] bg-cover  ${heroBgClass} overflow-hidden px-5 sm:px-8 py-6 sm:py-8 flex flex-col justify-end`}
             style={{
               backgroundImage: `url(${playerHeroShotUrl(playerId, playerImageOptions)})`,
             
@@ -4046,7 +4045,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
                   {playerInfo.primaryPosition?.name || '—'}         {playerInfo.primaryNumber ? ` · #${playerInfo.primaryNumber}` : ''}
                 </div>
                 <div
-                  className={`text-[11px] text-${THEME_COLOR}-300 font-semibold uppercase tracking-widest truncate`}
+                  className={`text-[11px] text-accent-300 font-semibold uppercase tracking-widest truncate`}
                   style={HERO_TEXT_SHADOW}
                 >
                   {displayTeam?.id ? (

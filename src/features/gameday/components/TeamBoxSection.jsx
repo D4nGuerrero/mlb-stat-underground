@@ -1,4 +1,3 @@
-import { THEME_COLOR } from '../../../theme/theme.js';
 import { compactPlayerName, teamLogoUrl, sumInningsPitched } from '../../../utils/mlbHelpers';
 import { stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } from '../../../components/ui';
 import { TABLE_TEXT_CLASS } from '../../../theme/tableTheme';
@@ -123,7 +122,7 @@ function ReservePlayersSection({
               key={person.id}
               type="button"
               onClick={() => onPlayerSelect?.(person.id)}
-              className={`min-w-0 rounded-lg border border-slate-800/70 bg-slate-900/55 px-2 py-1.5 text-left transition-colors hover:border-${THEME_COLOR}-500/35 hover:bg-slate-800/70`}
+              className={`min-w-0 rounded-lg border border-slate-800/70 bg-slate-900/55 px-2 py-1.5 text-left transition-colors hover:border-accent-500/35 hover:bg-slate-800/70`}
             >
               <div className={`${fullscreenFit ? 'text-[9px]' : 'text-[11px]'} font-bold text-slate-200 truncate`}>
                 {name || person.fullName}
@@ -304,7 +303,7 @@ export default function TeamBoxSection({
                     <button
                       type="button"
                       onClick={() => onPlayerSelect(player.person?.id)}
-                      className={`text-left whitespace-nowrap hover:text-${THEME_COLOR}-400 transition-colors ${isSubstitute ? 'pl-3' : ''}`}
+                      className={`text-left whitespace-nowrap hover:text-accent-400 transition-colors ${isSubstitute ? 'pl-3' : ''}`}
                     >
                       {subLetter && <span className="text-slate-500 mr-0.5">{subLetter}-</span>}
                       <span className={isSubstitute ? 'text-slate-400' : 'text-slate-200'}>
@@ -410,7 +409,7 @@ export default function TeamBoxSection({
                       <div className="min-w-0">
                         <button
                           onClick={() => onPlayerSelect(player.person?.id)}
-                          className={`block max-w-full truncate hover:text-${THEME_COLOR}-400 transition-colors text-slate-200`}
+                          className={`block max-w-full truncate hover:text-accent-400 transition-colors text-slate-200`}
                         >
                           <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
                           {!compact && (

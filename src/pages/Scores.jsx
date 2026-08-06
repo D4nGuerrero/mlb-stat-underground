@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -1317,7 +1316,7 @@ export default function Scores() {
                 'relative overflow-hidden bg-slate-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.985]',
                 rootingInterest.hasAny ? 'scoreboard-watch-game' : '',
                 isExpanded
-                  ? `border-${THEME_COLOR}-500/50 shadow-lg shadow-black/20`
+                  ? `border-accent-500/50 shadow-lg shadow-black/20`
                   : rootingInterest.hasAny
                     ? 'border-transparent hover:-translate-y-0.5'
                     : 'border-slate-800 hover:border-slate-600 hover:-translate-y-0.5',
@@ -1557,7 +1556,7 @@ export default function Scores() {
               todayButton="Today"
               customInput={
                 <div className="flex items-center gap-x-2 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-2xl px-3 sm:px-4 py-2 cursor-pointer transition-all">
-                  <i className={`fa-solid fa-calendar text-${THEME_COLOR}-400 text-sm`} />
+                  <i className={`fa-solid fa-calendar text-accent-400 text-sm`} />
                   <span className="text-white font-medium text-sm">
                     {formatDisplayDate(selectedDate)}
                   </span>
@@ -1598,7 +1597,7 @@ export default function Scores() {
                 'inline-flex h-7 w-7 items-center justify-center rounded-full transition-all active:scale-90',
                 showRootingInterests
                   ? 'bg-amber-400/12 text-amber-300 ring-1 ring-amber-400/35 shadow-lg shadow-amber-950/20'
-                  : `text-${THEME_COLOR}-400 hover:bg-slate-800/70 hover:text-${THEME_COLOR}-300`,
+                  : `text-accent-400 hover:bg-slate-800/70 hover:text-accent-300`,
                 scoreboardLeague !== 'mlb' ? 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-500' : '',
               ].join(' ')}
             >

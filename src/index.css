@@ -4,18 +4,406 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Accent palette — mono default (white on dark). applyAccentToDocument() overrides at runtime. */
+:root,
+html[data-theme-color="default"] {
+  --accent-200: 203 213 225;
+  --accent-300: 226 232 240;
+  --accent-400: 241 245 249;
+  --accent-500: 255 255 255;
+  --accent-600: 226 232 240;
+  --accent-950: 15 23 42;
+  --accent-200-hex: #cbd5e1;
+  --accent-300-hex: #e2e8f0;
+  --accent-400-hex: #f1f5f9;
+  --accent-500-hex: #ffffff;
+  --accent-600-hex: #e2e8f0;
+  --accent-950-hex: #0f172a;
+  --accent: #ffffff;
+  --accent-soft: #f1f5f9;
+  --accent-strong: #e2e8f0;
+}
+
+html[data-theme-color="blue"] {
+  --accent-200: 191 219 254;
+  --accent-300: 147 197 253;
+  --accent-400: 96 165 250;
+  --accent-500: 59 130 246;
+  --accent-600: 37 99 235;
+  --accent-950: 23 37 84;
+  --accent-200-hex: #bfdbfe;
+  --accent-300-hex: #93c5fd;
+  --accent-400-hex: #60a5fa;
+  --accent-500-hex: #3b82f6;
+  --accent-600-hex: #2563eb;
+  --accent-950-hex: #172554;
+  --accent: #3b82f6;
+  --accent-soft: #60a5fa;
+  --accent-strong: #2563eb;
+}
+
+html[data-theme-color="emerald"] {
+  --accent-200: 167 243 208;
+  --accent-300: 110 231 183;
+  --accent-400: 52 211 153;
+  --accent-500: 16 185 129;
+  --accent-600: 5 150 105;
+  --accent-950: 2 44 34;
+  --accent-200-hex: #a7f3d0;
+  --accent-300-hex: #6ee7b7;
+  --accent-400-hex: #34d399;
+  --accent-500-hex: #10b981;
+  --accent-600-hex: #059669;
+  --accent-950-hex: #022c22;
+  --accent: #10b981;
+  --accent-soft: #34d399;
+  --accent-strong: #059669;
+}
+
+html[data-theme-color="sky"] {
+  --accent-200: 186 230 253;
+  --accent-300: 125 211 252;
+  --accent-400: 56 189 248;
+  --accent-500: 14 165 233;
+  --accent-600: 2 132 199;
+  --accent-950: 8 47 73;
+  --accent-200-hex: #bae6fd;
+  --accent-300-hex: #7dd3fc;
+  --accent-400-hex: #38bdf8;
+  --accent-500-hex: #0ea5e9;
+  --accent-600-hex: #0284c7;
+  --accent-950-hex: #082f49;
+  --accent: #0ea5e9;
+  --accent-soft: #38bdf8;
+  --accent-strong: #0284c7;
+}
+
+html[data-theme-color="violet"] {
+  --accent-200: 221 214 254;
+  --accent-300: 196 181 253;
+  --accent-400: 167 139 250;
+  --accent-500: 139 92 246;
+  --accent-600: 124 58 237;
+  --accent-950: 46 16 101;
+  --accent-200-hex: #ddd6fe;
+  --accent-300-hex: #c4b5fd;
+  --accent-400-hex: #a78bfa;
+  --accent-500-hex: #8b5cf6;
+  --accent-600-hex: #7c3aed;
+  --accent-950-hex: #2e1065;
+  --accent: #8b5cf6;
+  --accent-soft: #a78bfa;
+  --accent-strong: #7c3aed;
+}
+
+html[data-theme-color="rose"] {
+  --accent-200: 254 205 211;
+  --accent-300: 253 164 175;
+  --accent-400: 251 113 133;
+  --accent-500: 244 63 94;
+  --accent-600: 225 29 72;
+  --accent-950: 76 5 25;
+  --accent-200-hex: #fecdd3;
+  --accent-300-hex: #fda4af;
+  --accent-400-hex: #fb7185;
+  --accent-500-hex: #f43f5e;
+  --accent-600-hex: #e11d48;
+  --accent-950-hex: #4c0519;
+  --accent: #f43f5e;
+  --accent-soft: #fb7185;
+  --accent-strong: #e11d48;
+}
+
+html[data-theme-color="amber"] {
+  --accent-200: 253 230 138;
+  --accent-300: 252 211 77;
+  --accent-400: 251 191 36;
+  --accent-500: 245 158 11;
+  --accent-600: 217 119 6;
+  --accent-950: 69 26 3;
+  --accent-200-hex: #fde68a;
+  --accent-300-hex: #fcd34d;
+  --accent-400-hex: #fbbf24;
+  --accent-500-hex: #f59e0b;
+  --accent-600-hex: #d97706;
+  --accent-950-hex: #451a03;
+  --accent: #f59e0b;
+  --accent-soft: #fbbf24;
+  --accent-strong: #d97706;
+}
+
+html[data-theme-color="cyan"] {
+  --accent-200: 165 243 252;
+  --accent-300: 103 232 249;
+  --accent-400: 34 211 238;
+  --accent-500: 6 182 212;
+  --accent-600: 8 145 178;
+  --accent-950: 8 51 68;
+  --accent-200-hex: #a5f3fc;
+  --accent-300-hex: #67e8f9;
+  --accent-400-hex: #22d3ee;
+  --accent-500-hex: #06b6d4;
+  --accent-600-hex: #0891b2;
+  --accent-950-hex: #083344;
+  --accent: #06b6d4;
+  --accent-soft: #22d3ee;
+  --accent-strong: #0891b2;
+}
+
+/* Settings swatches (always available regardless of active accent) */
+:root {
+  --swatch-default: #f8fafc;
+  --swatch-blue: #60a5fa;
+  --swatch-emerald: #34d399;
+  --swatch-sky: #38bdf8;
+  --swatch-violet: #a78bfa;
+  --swatch-rose: #fb7185;
+  --swatch-amber: #fbbf24;
+  --swatch-cyan: #22d3ee;
+}
+
+body.theme-light {
+  --swatch-default: #0f172a;
+}
+
+/* Default mono dark: solid accent fills are white → use dark label text */
+html[data-theme-color="default"]:not([data-theme="light"]) .bg-accent-500,
+html[data-theme-color="default"]:not([data-theme="light"]) .bg-accent-600,
+html[data-theme-color="default"]:not([data-theme="light"]) .hover\:bg-accent-500:hover,
+html[data-theme-color="default"]:not([data-theme="light"]) .hover\:bg-accent-600:hover {
+  color: #0f172a !important;
+}
+
+/* Default mono light: solid accent fills are near-black → use light label text */
+html[data-theme="light"][data-theme-color="default"] .bg-accent-500,
+html[data-theme="light"][data-theme-color="default"] .bg-accent-600,
+html[data-theme="light"][data-theme-color="default"] .hover\:bg-accent-500:hover,
+html[data-theme="light"][data-theme-color="default"] .hover\:bg-accent-600:hover {
+  color: #f8fafc !important;
+}
+
+/*
+ * Hard fallbacks for accent text/bg (some browsers choke on rgb(var(--x)/a) without spaces).
+ * Inline style vars from applyAccentToDocument() still drive the live palette.
+ */
+.text-accent-200 { color: var(--accent-200-hex) !important; }
+.text-accent-300 { color: var(--accent-300-hex) !important; }
+.text-accent-400 { color: var(--accent-400-hex) !important; }
+.text-accent-500 { color: var(--accent-500-hex) !important; }
+.text-accent-600 { color: var(--accent-600-hex) !important; }
+.bg-accent-500 { background-color: var(--accent-500-hex) !important; }
+.bg-accent-600 { background-color: var(--accent-600-hex) !important; }
+.bg-accent-500\/10 { background-color: color-mix(in srgb, var(--accent-500-hex) 10%, transparent) !important; }
+.bg-accent-500\/15 { background-color: color-mix(in srgb, var(--accent-500-hex) 15%, transparent) !important; }
+.bg-accent-500\/20 { background-color: color-mix(in srgb, var(--accent-500-hex) 20%, transparent) !important; }
+.border-accent-500 { border-color: var(--accent-500-hex) !important; }
+.border-accent-500\/30 { border-color: color-mix(in srgb, var(--accent-500-hex) 30%, transparent) !important; }
+.border-accent-500\/40 { border-color: color-mix(in srgb, var(--accent-500-hex) 40%, transparent) !important; }
+.ring-accent-500\/30 { --tw-ring-color: color-mix(in srgb, var(--accent-500-hex) 30%, transparent) !important; }
+.ring-accent-500\/40 { --tw-ring-color: color-mix(in srgb, var(--accent-500-hex) 40%, transparent) !important; }
+.hover\:text-accent-400:hover { color: var(--accent-400-hex) !important; }
+.hover\:bg-accent-500:hover { background-color: var(--accent-500-hex) !important; }
+.hover\:bg-accent-600:hover { background-color: var(--accent-600-hex) !important; }
+.focus\:border-accent-500:focus { border-color: var(--accent-500-hex) !important; }
+
+:root {
+  --surface-page: #0f172a;
+  --surface-card: #121827;
+  --surface-sticky: #121827;
+  --surface-sticky-footer: #182030;
+  --text-primary: #e2e8f0;
+}
+
+html[data-theme="light"],
+body.theme-light {
+  --surface-page: #f1f5f9;
+  --surface-card: #ffffff;
+  --surface-sticky: #ffffff;
+  --surface-sticky-footer: #f1f5f9;
+  --text-primary: #0f172a;
+}
+
 body {
   font-family: "Inter", system-ui, sans-serif;
-  background-color: #0f172a;
+  background-color: var(--surface-page);
+  color: var(--text-primary);
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
   scrollbar-color: rgba(100, 116, 139, 0.72) rgba(15, 23, 42, 0.28);
   scrollbar-width: thin;
 }
 
+body.theme-light {
+  scrollbar-color: rgba(100, 116, 139, 0.55) rgba(241, 245, 249, 0.9);
+}
+
+/* Light-mode contrast pass for hard-coded dark slate utilities */
+body.theme-light .text-slate-100,
+body.theme-light .text-slate-200 {
+  color: #0f172a;
+}
+
+body.theme-light .text-slate-300 {
+  color: #1e293b;
+}
+
+body.theme-light .text-slate-400 {
+  color: #475569;
+}
+
+body.theme-light .text-slate-500,
+body.theme-light .text-slate-600 {
+  color: #64748b;
+}
+
+body.theme-light .border-slate-700,
+body.theme-light .border-slate-700\/40,
+body.theme-light .border-slate-700\/60,
+body.theme-light .border-slate-800,
+body.theme-light .border-slate-800\/30,
+body.theme-light .border-slate-800\/40,
+body.theme-light .border-slate-800\/60 {
+  border-color: rgb(203 213 225 / 0.95);
+}
+
+body.theme-light .bg-slate-800,
+body.theme-light .bg-slate-800\/20,
+body.theme-light .bg-slate-800\/40,
+body.theme-light .bg-slate-800\/60,
+body.theme-light .bg-slate-900,
+body.theme-light .bg-slate-900\/60,
+body.theme-light .bg-slate-900\/70,
+body.theme-light .bg-slate-900\/85,
+body.theme-light .bg-slate-950,
+body.theme-light .bg-slate-950\/20,
+body.theme-light .bg-slate-950\/45,
+body.theme-light .bg-slate-950\/55 {
+  background-color: #f8fafc;
+}
+
+body.theme-light .bg-\[\#121827\],
+body.theme-light .bg-\[\#0d1520\],
+body.theme-light .bg-\[\#101827\] {
+  background-color: #ffffff !important;
+}
+
+body.theme-light .bg-\[\#182030\] {
+  background-color: #f1f5f9 !important;
+}
+
+body.theme-light .hover\:bg-slate-800\/20:hover,
+body.theme-light .hover\:bg-slate-800\/25:hover,
+body.theme-light .hover\:bg-slate-800\/30:hover,
+body.theme-light .hover\:bg-slate-800\/40:hover,
+body.theme-light .hover\:bg-slate-800\/70:hover {
+  background-color: rgb(226 232 240 / 0.9);
+}
+
+body.theme-light .hover\:text-white:hover {
+  color: #0f172a;
+}
+
+/*
+ * text-white is used as “strong” emphasis on dark surfaces.
+ * On light shells it becomes invisible — force dark text, then restore white
+ * only on solid colored controls (accent/emerald buttons, active pills).
+ */
+body.theme-light .text-white {
+  color: #0f172a !important;
+}
+
+body.theme-light .bg-accent-500,
+body.theme-light .bg-accent-600,
+body.theme-light .bg-emerald-500,
+body.theme-light .bg-emerald-600,
+body.theme-light .bg-blue-500,
+body.theme-light .bg-blue-600,
+body.theme-light .bg-red-500,
+body.theme-light .bg-red-600,
+body.theme-light .bg-orange-500,
+body.theme-light .bg-yellow-500,
+body.theme-light .hover\:bg-accent-500:hover,
+body.theme-light .hover\:bg-accent-600:hover,
+body.theme-light .hover\:bg-emerald-500:hover,
+body.theme-light .hover\:bg-emerald-600:hover {
+  color: #ffffff !important;
+}
+
+/* Active top-nav chip that intentionally uses white bg + dark text */
+body.theme-light .bg-white.text-slate-900,
+body.theme-light .bg-white {
+  color: #0f172a;
+}
+
+/* Photo heroes stay light-on-dark for legibility */
+body.theme-light .player-hero-on-photo .text-white,
+body.theme-light .player-hero-on-photo .text-slate-100,
+body.theme-light .player-hero-on-photo .text-slate-200 {
+  color: #ffffff !important;
+}
+
+body.theme-light .player-hero-on-photo .text-slate-300 {
+  color: #e2e8f0 !important;
+}
+
+/* Yellow / amber / pink-red used for watch UI — too pale on light surfaces */
+body.theme-light .text-yellow-300,
+body.theme-light .text-yellow-300\/90,
+body.theme-light .text-yellow-400 {
+  color: #b45309 !important; /* amber-700 */
+}
+
+body.theme-light .text-red-300 {
+  color: #dc2626 !important; /* red-600 */
+}
+
+body.theme-light .border-yellow-400\/30,
+body.theme-light .border-yellow-500\/20 {
+  border-color: rgb(217 119 6 / 0.45) !important;
+}
+
+body.theme-light .border-red-500\/30 {
+  border-color: rgb(220 38 38 / 0.4) !important;
+}
+
+body.theme-light .bg-yellow-400\/10,
+body.theme-light .bg-yellow-400\/20 {
+  background-color: rgb(245 158 11 / 0.18) !important;
+}
+
+body.theme-light .bg-red-500\/10,
+body.theme-light .bg-red-500\/20 {
+  background-color: rgb(239 68 68 / 0.12) !important;
+}
+
+body.theme-light .hover\:bg-yellow-400\/20:hover {
+  background-color: rgb(245 158 11 / 0.28) !important;
+}
+
+body.theme-light .hover\:bg-red-500\/20:hover {
+  background-color: rgb(239 68 68 / 0.2) !important;
+}
+
 .font-display {
   font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
   font-weight: 600;
+}
+
+/*
+ * Sticky headers that sit under the main nav.
+ * When top bar is hidden (bottom nav + hide top bar), pin to top: 0.
+ * Nav heights: h-14 (3.5rem) mobile, h-16 (4rem) sm+.
+ */
+.sticky-under-nav {
+  top: 3.5rem;
+}
+@media (min-width: 640px) {
+  .sticky-under-nav {
+    top: 4rem;
+  }
+}
+html[data-hide-top-bar="true"] .sticky-under-nav {
+  top: 0;
 }
 
 .live-pulse {
@@ -1155,8 +1543,13 @@ body {
 
 /* Hide app nav on mobile when viewing a game page */
 @media (max-width: 639px) {
-  body.game-page-open nav#main-nav {
+  body.game-page-open nav#main-nav,
+  body.game-page-open nav#bottom-nav {
     display: none !important;
+  }
+
+  body.game-page-open .has-bottom-nav {
+    padding-bottom: 0 !important;
   }
 }
 

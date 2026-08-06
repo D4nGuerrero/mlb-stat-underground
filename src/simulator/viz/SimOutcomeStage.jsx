@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { THEME_COLOR } from '../../theme/theme.js';
 import { assetUrl } from '../../utils/baseUrl.js';
 import {
   stadiumExteriorUrl,
@@ -225,7 +224,7 @@ export default function SimOutcomeStage({
     <div className={`rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden ${className}`}>
       <div className="px-3 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2">
         <div className="text-[10px] uppercase tracking-widest text-slate-500">At-bat result</div>
-        <div className={`text-sm font-bold text-${THEME_COLOR}-300`}>{title}</div>
+        <div className={`text-sm font-bold text-accent-300`}>{title}</div>
       </div>
 
       <div className="relative min-h-[280px] sm:min-h-[320px] bg-slate-950">
@@ -249,7 +248,7 @@ export default function SimOutcomeStage({
               <div className={`px-4 py-1.5 rounded-full text-sm font-display tracking-wide border shadow-lg ${
                 outcome === 'HR'
                   ? 'bg-amber-500/90 border-amber-300 text-slate-900'
-                  : `bg-slate-900/85 border-${THEME_COLOR}-500/40 text-white`
+                  : `bg-slate-900/85 border-accent-500/40 text-white`
               }`}
               >
                 {title}
@@ -317,7 +316,7 @@ export default function SimOutcomeStage({
           onClick={onContinue}
           className={`w-full py-3.5 rounded-xl text-sm font-semibold transition-all border flex flex-col items-center gap-0.5 ${
             clipDone
-              ? `bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 border-${THEME_COLOR}-500/40 text-white`
+              ? `bg-accent-600 hover:bg-accent-500 border-accent-500/40 text-white`
               : 'bg-slate-800 border-slate-700 text-slate-500 cursor-wait'
           }`}
         >

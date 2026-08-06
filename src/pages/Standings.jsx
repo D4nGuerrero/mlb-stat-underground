@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { useNavigate } from 'react-router-dom';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
@@ -485,7 +484,7 @@ export default function Standings() {
     const active = sortCol === col;
     return (
       <th
-        className={`${statHead(`cursor-pointer select-none hover:text-slate-300 transition-colors ${active ? `text-${THEME_COLOR}-400` : ''}`)} ${className}`}
+        className={`${statHead(`cursor-pointer select-none hover:text-slate-300 transition-colors ${active ? `text-accent-400` : ''}`)} ${className}`}
         onClick={() => handleSort(col)}
       >
         {label}{active ? (sortDir === 'asc' ? '▲' : '▼') : ''}
@@ -510,7 +509,7 @@ export default function Standings() {
           nameClassName="text-[20px] font-medium"
         />
         {(team.clinched || team.divisionChamp) && (
-          <span className={`hidden sm:block text-[10px] text-${THEME_COLOR}-400 font-semibold mt-0.5`}>
+          <span className={`hidden sm:block text-[10px] text-accent-400 font-semibold mt-0.5`}>
             {team.divisionChamp ? 'y – Division' : 'x – Postseason'}
           </span>
         )}
@@ -531,7 +530,7 @@ export default function Standings() {
       case 'runsAllowed':
         return team[col.key] ?? '—';
       case 'wins':
-        return <span className="font-semibold text-white">{team.wins}</span>;
+        return <span className="font-semibold text-slate-100">{team.wins}</span>;
       case 'losses':
         return <span className="text-slate-400">{team.losses}</span>;
       case 'pct':
@@ -621,7 +620,7 @@ export default function Standings() {
               {teams.map((team, i) => (
                 <tr
                   key={team.teamId}
-                  className={`group border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors ${i === 0 && highlightLeader ? `bg-${THEME_COLOR}-500/[0.04]` : ''}`}
+                  className={`group border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors ${i === 0 && highlightLeader ? `bg-accent-500/[0.04]` : ''}`}
                 >
                   {renderTeamCell(team)}
                   {columns.map((col) => (
@@ -657,7 +656,7 @@ export default function Standings() {
     <div className="max-w-7xl mx-auto sm:px-6 py-0 sm:py-8 max-w-3xl">
       <div className="mb-0 px-4 sm:px-0">
         <div className="flex items-center justify-between gap-3">
-          <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
+          <div className={`text-accent-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
             {selectedLeague.shortLabel} Standings
           </div>
           <LeagueLevelPicker
@@ -735,9 +734,9 @@ export default function Standings() {
 
       <div className="mt-8 space-y-3">
         <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-          <span><span className={`text-${THEME_COLOR}-400 font-semibold`}>x</span> – Clinched Postseason</span>
-          <span><span className={`text-${THEME_COLOR}-400 font-semibold`}>y</span> – Clinched Division</span>
-          <span><span className={`text-${THEME_COLOR}-400`}>W3</span> – Win streak</span>
+          <span><span className={`text-accent-400 font-semibold`}>x</span> – Clinched Postseason</span>
+          <span><span className={`text-accent-400 font-semibold`}>y</span> – Clinched Division</span>
+          <span><span className={`text-accent-400`}>W3</span> – Win streak</span>
           <span><span className="text-red-400">L2</span> – Loss streak</span>
           <span className="text-slate-600 italic">Click column headers to sort</span>
         </div>

@@ -1,6 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
-import { THEME_COLOR } from '../../../theme/theme.js';
 import { BaseballSpinner } from '../../../components/ui';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useMLBWebSocket } from '../../../hooks/useMLBWebSocket';
@@ -227,15 +226,15 @@ async function fetchEventTypes() {
 const PLAY_BADGE = {
   single: {
     label: 'Single',
-    cls: `bg-${THEME_COLOR}-500/20 text-${THEME_COLOR}-300 border-${THEME_COLOR}-500/40`,
+    cls: `bg-accent-500/20 text-accent-300 border-accent-500/40`,
   },
   double: {
     label: 'Double',
-    cls: `bg-${THEME_COLOR}-500/20 text-${THEME_COLOR}-300 border-${THEME_COLOR}-500/40`,
+    cls: `bg-accent-500/20 text-accent-300 border-accent-500/40`,
   },
   triple: {
     label: 'Triple',
-    cls: `bg-${THEME_COLOR}-400/20 text-${THEME_COLOR}-200 border-${THEME_COLOR}-400/50`,
+    cls: `bg-accent-400/20 text-accent-200 border-accent-400/50`,
   },
   home_run: {
     label: 'Home Run',
@@ -521,7 +520,7 @@ function GamedayOptionsMenu({
                   ].join(' ')}
                 >
                   <span>In-play outs blue</span>
-                  {!usePurpleInPlayOuts && <i className={`fa-solid fa-check text-${THEME_COLOR}-300`} aria-hidden />}
+                  {!usePurpleInPlayOuts && <i className={`fa-solid fa-check text-accent-300`} aria-hidden />}
                 </button>
                 <button
                   type="button"
@@ -552,7 +551,7 @@ function GamedayOptionsMenu({
                   className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
                 >
                   <span>Pitch breakdown</span>
-                  <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
+                  <i className={`fa-solid fa-chart-simple text-accent-300`} aria-hidden />
                 </button>
                 <button
                   type="button"
@@ -563,7 +562,7 @@ function GamedayOptionsMenu({
                   className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
                 >
                   <span>Situation breakdown</span>
-                  <i className={`fa-solid fa-diamond text-${THEME_COLOR}-300`} aria-hidden />
+                  <i className={`fa-solid fa-diamond text-accent-300`} aria-hidden />
                 </button>
               </>
             )}
@@ -697,7 +696,7 @@ function PitchCountTeamTable({ data, onPitcherSelect }) {
     ? 'bg-teal-400'
     : data.team?.abbreviation === 'SF'
       ? 'bg-orange-500'
-      : `bg-${THEME_COLOR}-400`;
+      : `bg-accent-400`;
   const allPitchersRow = buildAllPitchersMapRow(data);
 
   return (
@@ -717,7 +716,7 @@ function PitchCountTeamTable({ data, onPitcherSelect }) {
           <button
             type="button"
             onClick={() => onPitcherSelect?.(allPitchersRow, data.team)}
-            className={`inline-flex flex-shrink-0 items-center gap-2 rounded-full border border-slate-700/70 bg-slate-950/45 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200 sm:text-xs`}
+            className={`inline-flex flex-shrink-0 items-center gap-2 rounded-full border border-slate-700/70 bg-slate-950/45 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-accent-500/40 hover:bg-accent-500/10 hover:text-accent-200 sm:text-xs`}
           >
             <i className="fa-solid fa-location-crosshairs" aria-hidden />
             All pitchers
@@ -740,7 +739,7 @@ function PitchCountTeamTable({ data, onPitcherSelect }) {
                 key={pitcher.id}
                 type="button"
                 onClick={() => onPitcherSelect?.(pitcher, data.team)}
-                className={`block w-full border-b border-slate-700/60 px-1 py-3 text-left transition-colors hover:bg-slate-900/35 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-${THEME_COLOR}-400/70 sm:py-6`}
+                className={`block w-full border-b border-slate-700/60 px-1 py-3 text-left transition-colors hover:bg-slate-900/35 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-accent-400/70 sm:py-6`}
               >
                 {(() => {
                 return (
@@ -750,7 +749,7 @@ function PitchCountTeamTable({ data, onPitcherSelect }) {
                         <div className="truncate text-base font-black leading-tight text-white sm:text-2xl">{pitcher.name}</div>
                       </div>
                       <div className="flex flex-shrink-0 items-center gap-1.5 pt-0.5 text-[10px] sm:gap-3 sm:pt-1 sm:text-base">
-                        <span className={`inline-flex items-center gap-1 text-${THEME_COLOR}-300 sm:gap-1.5`}>
+                        <span className={`inline-flex items-center gap-1 text-accent-300 sm:gap-1.5`}>
                           <i className="fa-solid fa-location-dot" aria-hidden />
                           {role}
                         </span>
@@ -782,7 +781,7 @@ function PitchCountTeamTable({ data, onPitcherSelect }) {
                               {pitcher.byInning[inning]}
                             </div>
                           ))}
-                          <div className={`px-1.5 py-2 text-base font-black text-${THEME_COLOR}-300 sm:px-5 sm:py-3 sm:text-xl`}>
+                          <div className={`px-1.5 py-2 text-base font-black text-accent-300 sm:px-5 sm:py-3 sm:text-xl`}>
                             {pitcher.total}
                           </div>
                         </div>
@@ -1037,7 +1036,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
               className={[
                 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
                 countFilter.balls != null || countFilter.strikes != null
-                  ? `border-${THEME_COLOR}-400/50 bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`
+                  ? `border-accent-400/50 bg-accent-500/15 text-accent-200`
                   : 'border-slate-700 bg-slate-900 text-slate-500 hover:text-slate-200',
               ].join(' ')}
               aria-expanded={countPickerOpen}
@@ -1448,7 +1447,7 @@ function BaseModeButton({ value, active, onClick, children }) {
       className={[
         'rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition-colors',
         active
-          ? `border-${THEME_COLOR}-300 bg-${THEME_COLOR}-400 text-slate-950`
+          ? `border-accent-300 bg-accent-400 text-slate-950`
           : 'border-slate-700 bg-slate-900 text-slate-500 hover:border-slate-500 hover:text-slate-200',
       ].join(' ')}
       aria-pressed={active}
@@ -1512,7 +1511,7 @@ function SituationBaseSelector({ value, mode, matchMode, onChange, onModeChange,
                 'absolute grid h-20 w-20 place-items-center rounded-2xl border rotate-45 transition-all focus:outline-none focus:ring-2 focus:ring-white/25 xl:h-24 xl:w-24 xl:rounded-[1.7rem]',
                 base.position,
                 active
-                  ? `border-${THEME_COLOR}-300 bg-${THEME_COLOR}-400 text-slate-950 shadow-lg shadow-${THEME_COLOR}-950/30`
+                  ? `border-accent-300 bg-accent-400 text-slate-950 shadow-lg shadow-accent-950/30`
                   : 'border-slate-600 bg-slate-900 text-slate-300 hover:border-slate-400 hover:bg-slate-800',
               ].join(' ')}
               aria-pressed={active}
@@ -1553,7 +1552,7 @@ function SituationMatchModeControl({ value, onChange }) {
             className={[
               'flex-1 rounded-xl px-3 py-3 text-sm font-black transition-all',
               active
-                ? `bg-${THEME_COLOR}-500 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16),0_10px_24px_rgba(15,23,42,0.35)]`
+                ? `bg-accent-500 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16),0_10px_24px_rgba(15,23,42,0.35)]`
                 : 'text-slate-500 hover:bg-slate-900/80 hover:text-slate-200',
             ].join(' ')}
             aria-pressed={active}
@@ -1883,21 +1882,21 @@ function SituationBreakdownSheet({
 const exitVeloTone = (mph) => {
   if (mph == null || Number.isNaN(mph)) return 'text-slate-400';
   if (mph >= 100) return 'text-yellow-300';
-  if (mph >= 95) return `text-${THEME_COLOR}-300`;
+  if (mph >= 95) return `text-accent-300`;
   return 'text-white';
 };
 
 const exitVeloBarColor = (mph) => {
   if (mph == null || Number.isNaN(mph)) return 'bg-slate-600';
   if (mph >= 100) return 'bg-yellow-400';
-  if (mph >= 95) return `bg-${THEME_COLOR}-400`;
+  if (mph >= 95) return `bg-accent-400`;
   return 'bg-slate-400';
 };
 
 const distanceTone = (ft) => {
   if (ft == null || Number.isNaN(ft)) return 'text-slate-400';
   if (ft >= 400) return 'text-yellow-300';
-  if (ft >= 350) return `text-${THEME_COLOR}-300`;
+  if (ft >= 350) return `text-accent-300`;
   return 'text-white';
 };
 
@@ -1953,7 +1952,7 @@ function HitDataPanel({ hitData }) {
         distance != null && distance >= 400
           ? 'bg-yellow-400'
           : distance != null && distance >= 350
-            ? `bg-${THEME_COLOR}-400`
+            ? `bg-accent-400`
             : 'bg-slate-400',
     },
     {
@@ -2176,7 +2175,7 @@ function FinalHeaderDecisionLine({ label, player, stats, onPlayerSelect }) {
       <button
         type="button"
         onClick={() => onPlayerSelect(player.id)}
-        className={`font-bold hover:text-${THEME_COLOR}-400 transition-colors`}
+        className={`font-bold hover:text-accent-400 transition-colors`}
       >
         {name}
       </button>
@@ -2279,7 +2278,7 @@ function FinalGameHeader({
             <button
               type="button"
               onClick={onOpenPitchBreakdown}
-              className={`mt-0.5 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200`}
+              className={`mt-0.5 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-accent-500/40 hover:bg-accent-500/10 hover:text-accent-200`}
             >
               <i className="fa-solid fa-chart-simple text-[10px]" aria-hidden />
               Pitch breakdown
@@ -2289,7 +2288,7 @@ function FinalGameHeader({
             <button
               type="button"
               onClick={onOpenSituationBreakdown}
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10 hover:text-${THEME_COLOR}-200`}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-accent-500/40 hover:bg-accent-500/10 hover:text-accent-200`}
             >
               <i className="fa-solid fa-diamond text-[10px]" aria-hidden />
               Situation breakdown
@@ -2423,10 +2422,10 @@ function WatchMenu({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
               rel="noreferrer"
               className={[
                 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors',
-                focus ? `bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200` : 'text-slate-200',
+                focus ? `bg-accent-500/15 text-accent-200` : 'text-slate-200',
               ].join(' ')}
             >
-              <span className={`grid h-8 w-8 place-items-center rounded-lg bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200`}>
+              <span className={`grid h-8 w-8 place-items-center rounded-lg bg-accent-500/15 text-accent-200`}>
                 <i className="fa-solid fa-tv text-xs" aria-hidden />
               </span>
               <span className="min-w-0">
@@ -2450,7 +2449,7 @@ function WatchInlineLink({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
       href={buildMlbTvUrl(gamePk)}
       target="_blank"
       rel="noreferrer"
-      className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-${THEME_COLOR}-500/10`}
+      className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-accent-500/10`}
       aria-label={`Watch this ${leagueLabel} game`}
     >
       <img src={logoSrc} alt="" className="h-8 w-8 object-contain" draggable={false} />
@@ -2458,7 +2457,7 @@ function WatchInlineLink({ gamePk, logoSrc, leagueLabel = 'MLB' }) {
         <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
           Watch:
         </span>
-        <span className={`mt-0.5 flex items-center gap-2 text-sm font-black text-${THEME_COLOR}-200`}>
+        <span className={`mt-0.5 flex items-center gap-2 text-sm font-black text-accent-200`}>
           {Number.isFinite(Number(gamePk)) ? `${leagueLabel}.TV` : 'Broadcast'}
           <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-500" aria-hidden />
         </span>
@@ -2598,14 +2597,14 @@ function GamedayDayPicker({
                   className={[
                     'relative h-8 rounded-lg text-xs font-bold transition-colors',
                     isSelected
-                      ? `bg-${THEME_COLOR}-400 text-slate-950 shadow-lg shadow-${THEME_COLOR}-950/30`
+                      ? `bg-accent-400 text-slate-950 shadow-lg shadow-accent-950/30`
                       : 'text-slate-200 hover:bg-slate-800 hover:text-white',
                     isOutsideMonth ? 'opacity-35' : '',
                   ].filter(Boolean).join(' ')}
                 >
                   {day.getDate()}
                   {isToday && !isSelected && (
-                    <span className={`absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-${THEME_COLOR}-300`} />
+                    <span className={`absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent-300`} />
                   )}
                 </button>
               );
@@ -3531,12 +3530,12 @@ function GamePageContent({ gamePk, navigate, location }) {
               <div className="live-info-swap__line live-info-swap__line--primary">
                 {vsMatchupLine}
               </div>
-              <div className={`live-info-swap__line live-info-swap__line--secondary text-${THEME_COLOR}-300`}>
+              <div className={`live-info-swap__line live-info-swap__line--secondary text-accent-300`}>
                 {dueUpTickerLine}
               </div>
             </div>
           ) : (
-            <div className={`flex h-5 items-center justify-center truncate text-center text-[11px] sm:text-xs font-semibold leading-none ${vsMatchupLine ? 'text-slate-300' : `text-${THEME_COLOR}-300`}`}>
+            <div className={`flex h-5 items-center justify-center truncate text-center text-[11px] sm:text-xs font-semibold leading-none ${vsMatchupLine ? 'text-slate-300' : `text-accent-300`}`}>
               {vsMatchupLine || dueUpTickerLine}
             </div>
           )}
@@ -3662,13 +3661,13 @@ function GamePageContent({ gamePk, navigate, location }) {
               <button
                 type="button"
                 onClick={() => setPitchCountSheetOpen(true)}
-                className={`flex w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-left transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10`}
+                className={`flex w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-left transition-colors hover:border-accent-500/40 hover:bg-accent-500/10`}
               >
                 <span>
                   <span className="block text-sm font-black text-white">Pitch Breakdown</span>
                   <span className="mt-0.5 block text-xs text-slate-500">Pitch counts and location maps by pitcher.</span>
                 </span>
-                <i className={`fa-solid fa-chart-simple text-${THEME_COLOR}-300`} aria-hidden />
+                <i className={`fa-solid fa-chart-simple text-accent-300`} aria-hidden />
               </button>
             )}
             <button
@@ -3677,13 +3676,13 @@ function GamePageContent({ gamePk, navigate, location }) {
                 setSituationReturn(null);
                 setSituationBreakdownOpen(true);
               }}
-              className={`flex w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-left transition-colors hover:border-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/10`}
+              className={`flex w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-950/55 px-4 py-3 text-left transition-colors hover:border-accent-500/40 hover:bg-accent-500/10`}
             >
               <span>
                 <span className="block text-sm font-black text-white">Situation Breakdown</span>
                 <span className="mt-0.5 block text-xs text-slate-500">Filter plate appearances by base state and outs.</span>
               </span>
-              <i className={`fa-solid fa-diamond text-${THEME_COLOR}-300`} aria-hidden />
+              <i className={`fa-solid fa-diamond text-accent-300`} aria-hidden />
             </button>
           </div>
         ) : (
@@ -3966,14 +3965,14 @@ function GamePageContent({ gamePk, navigate, location }) {
             <div
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
                 wsStatus === 'connected'
-                  ? `text-${THEME_COLOR}-400 border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10`
+                  ? `text-accent-400 border-accent-500/30 bg-accent-500/10`
                   : wsStatus === 'connecting' || wsStatus === 'reconnecting'
                     ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10'
                     : 'text-slate-500 border-slate-700/40'
               }`}
             >
               <div
-                className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? `bg-${THEME_COLOR}-400 animate-pulse` : wsStatus === 'reconnecting' ? 'bg-yellow-400 animate-pulse' : 'bg-slate-600'}`}
+                className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? `bg-accent-400 animate-pulse` : wsStatus === 'reconnecting' ? 'bg-yellow-400 animate-pulse' : 'bg-slate-600'}`}
               />
               {wsStatus === 'connected'
                 ? 'Live'
@@ -4153,7 +4152,7 @@ function GamePageContent({ gamePk, navigate, location }) {
                       </span>
                       <button
                         onClick={() => navigate(`/player/${player.id}`)}
-                        className={`font-semibold text-slate-100 hover:text-${THEME_COLOR}-400 transition-colors`}
+                        className={`font-semibold text-slate-100 hover:text-accent-400 transition-colors`}
                       >
                         {lastName}
                       </button>

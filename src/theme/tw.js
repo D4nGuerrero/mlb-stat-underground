@@ -1,10 +1,9 @@
-import { THEME_COLOR } from './theme';
-
 /**
- * Build Tailwind utility classes with the configured palette name.
- * @param {string} [color] — defaults to THEME_COLOR from theme.js
+ * Build Tailwind utility classes with a palette name.
+ * Prefer static `accent-*` classes so Settings can recolor the whole app via CSS vars.
+ * @param {string} [color='accent']
  */
-export function tw(color = THEME_COLOR) {
+export function tw(color = 'accent') {
   const u =
     (prefix) =>
     (shade, opacity) => {
@@ -34,5 +33,5 @@ export function tw(color = THEME_COLOR) {
   };
 }
 
-/** Pre-bound helpers using THEME_COLOR from theme.js */
-export const t = tw();
+/** Pre-bound helpers using the runtime accent palette */
+export const t = tw('accent');

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { Link } from 'react-router-dom';
 import {
   mlbTeams,
@@ -16,6 +15,7 @@ import {
   enrichMoversWithDeltaScores,
   formatDeltaScore,
 } from '../utils/playerDeltaScore';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 const STATS_APP_RETURN_KEY = 'stats-center:return';
 const STATS_APP_SCROLL_KEY = 'stats-center';
@@ -394,141 +394,145 @@ function StatPreviewStrip({ preview }) {
   );
 }
 
+/** Shared watermark behind player photos — identical layout in light & dark. */
+const WATCHLIST_WATERMARK_CLASS =
+  'absolute top-14 left-1/2 w-[200px] h-[200px] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain pointer-events-none';
+
 function PlayerSearchRow({ player, isWatched, isWatchAnimating, onToggleWatch }) {
+  const { isDark } = useTheme();
+  // Cap logos share the same SVG canvas (size matches). Light = cap-on-light (full color);
+  // dark = cap-on-dark. Small inline logo can use full-color mark in light mode.
+  const watermarkSrc = player.teamId
+    ? teamLogoUrl(player.teamId, { preferDark: isDark })
+    : '';
+  const inlineLogoSrc = player.teamId
+    ? teamLogoUrl(player.teamId, isDark ? { preferDark: true } : { forceRegular: true })
+    : '';
+
   return (
-   <div className="relative flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
-  <Link to={`/player/${player.id}`} className="flex items-end gap-3 flex-1 min-w-0">
-
-    {/* IMAGE AREA */}
-    <div className="relative w-24 h-22 flex-shrink-0 overflow-hidden">
-      {/* BACKGROUND LOGO */}
-      <img
-        src={teamLogoUrl(player.teamId)}
-        alt=""
-        className="
-          absolute
-          top-14
-          left-1/2
-          w-[200px]
-          max-w-none
-          -translate-x-1/2
-          -translate-y-1/2
-          opacity-30
-          object-contain
-          pointer-events-none
-        "
-      />
-
-      {/* PLAYER */}
-      <img
-        src={playerHeadshotUrl(player.id)}
-        alt=""
-        className="relative z-10 w-21 h-21 top-2 object-contain"
-        onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-      />
-    </div>
-
-    <div className="flex-1 min-w-0">
-      <div className={`font-semibold text-sm truncate hover:text-${THEME_COLOR}-400 transition-colors`}>
-        {player.fullName}
-      </div>
-
-      <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
-        {player.teamId && (
+    <div className="relative flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/25 transition-colors">
+      <Link to={`/player/${player.id}`} className="flex items-end gap-3 flex-1 min-w-0">
+        <div className="relative w-24 h-22 flex-shrink-0 overflow-hidden">
+          {player.teamId && (
+            <img
+              src={watermarkSrc}
+              alt=""
+              className={`${WATCHLIST_WATERMARK_CLASS} ${isDark ? 'opacity-30' : 'opacity-100'}`}
+              onError={(e) => {
+                // Same size fallback: full-color mark if themed cap is missing
+                const img = e.currentTarget;
+                if (!img.dataset.fallback && player.teamId) {
+                  img.dataset.fallback = '1';
+                  img.src = teamLogoUrl(player.teamId, { forceRegular: true });
+                  return;
+                }
+                img.style.display = 'none';
+              }}
+            />
+          )}
           <img
-            src={teamLogoUrl(player.teamId)}
+            src={playerHeadshotUrl(player.id)}
             alt=""
-            className="w-4 h-4 object-contain flex-shrink-0"
-            onError={(e) => (e.target.style.display = 'none')}
+            className="relative z-10 w-21 h-21 top-2 object-contain"
+            onError={(e) => { e.currentTarget.src = FALLBACK_HEADSHOT; }}
           />
-        )}
-        <span className="truncate">{player.team}</span>
-        {player.position && (
-          <span className="text-slate-600">· {player.position}</span>
-        )}
-      </div>
+        </div>
 
-      <StatPreviewStrip preview={player.statsPreview} />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm truncate hover:text-accent-400 transition-colors">
+            {player.fullName}
+          </div>
+
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
+            {player.teamId && (
+              <img
+                src={inlineLogoSrc}
+                alt=""
+                className="w-4 h-4 object-contain flex-shrink-0"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            )}
+            <span className="truncate">{player.team}</span>
+            {player.position && (
+              <span className="text-slate-600">· {player.position}</span>
+            )}
+          </div>
+
+          <StatPreviewStrip preview={player.statsPreview} />
+        </div>
+      </Link>
+
+      <button
+        type="button"
+        onClick={() => onToggleWatch(player)}
+        className={[
+          'absolute right-3 text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0 mt-0.5',
+          isWatchAnimating ? 'watch-pop' : '',
+          isWatched
+            ? isDark
+              ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
+              : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-300'
+            : isDark
+              ? 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30'
+              : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300',
+        ].join(' ')}
+      >
+        {isWatched ? '✕ Unwatch' : '★ Watch'}
+      </button>
     </div>
-  </Link>
-
-  <button
-    type="button"
-    onClick={() => onToggleWatch(player)}
-    className={[
-      'absolute right-3 text-xs px-3 py-1.5 font-semibold rounded-xl flex items-center gap-1 border transition-all active:scale-[0.98] flex-shrink-0 mt-0.5',
-      isWatchAnimating ? 'watch-pop' : '',
-      isWatched
-        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/30'
-        : 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border-yellow-400/30',
-    ].join(' ')}
-  >
-    {isWatched ? '✕ Unwatch' : '★ Watch'}
-  </button>
-</div>
   );
 }
 
 function HotColdPlayerRow({ player, team, ops, rank, accentClass, days = 10, onPlayerClick }) {
+  const { isDark } = useTheme();
   const playerId = player?.id;
+  const watermarkSrc = team?.id
+    ? teamLogoUrl(team.id, { preferDark: isDark })
+    : '';
+  const inlineLogoSrc = team?.id
+    ? teamLogoUrl(team.id, isDark ? { preferDark: true } : { forceRegular: true })
+    : '';
   const className = 'flex items-center gap-3 px-4 pt-4 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors cursor-pointer block w-full';
   const content = (
     <>
-     <span
-  className="
-    w-10
-    text-center
-    flex-shrink-0
-    font-black
-    text-3xl
-    italic
-    text-white-700
-    leading-none
-    select-none
-  "
->
-  {rank}
-</span>
-    <div className="relative w-20 h-20 flex-shrink-0 overflow-hidden">
-
-      {/* BACKGROUND LOGO */}
-
-  <img
-    src={teamLogoUrl(team?.id)}
-    alt=""
-    className="
-      absolute
-      top-12
-      left-8
-      w-[150px]
-      h-[150px]
-      max-w-none
-      -translate-x-1/2
-      -translate-y-1/2
-      opacity-50
-      object-contain
-      pointer-events-none
-    "
-  />
-
-  <img
-    src={playerHeadshotUrl(playerId)}
-    alt=""
-    className="relative z-10 w-20 h-20 object-cover"
-    onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-  />
-</div>
+      <span className="w-10 text-center flex-shrink-0 font-black text-3xl italic text-slate-200 leading-none select-none">
+        {rank}
+      </span>
+      <div className="relative w-20 h-20 flex-shrink-0 overflow-hidden">
+        {team?.id && (
+          <img
+            src={watermarkSrc}
+            alt=""
+            className={`absolute top-12 left-8 w-[150px] h-[150px] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain pointer-events-none ${isDark ? 'opacity-50' : 'opacity-100'}`}
+            onError={(e) => {
+              const img = e.currentTarget;
+              if (!img.dataset.fallback && team?.id) {
+                img.dataset.fallback = '1';
+                img.src = teamLogoUrl(team.id, { forceRegular: true });
+                return;
+              }
+              img.style.display = 'none';
+            }}
+          />
+        )}
+        <img
+          src={playerHeadshotUrl(playerId)}
+          alt=""
+          className="relative z-10 w-20 h-20 object-cover"
+          onError={(e) => { e.currentTarget.src = FALLBACK_HEADSHOT; }}
+        />
+      </div>
       <div className="flex-1 min-w-0">
-        <div className={`font-semibold text-sm truncate hover:text-${THEME_COLOR}-400 transition-colors`}>
+        <div className="font-semibold text-sm truncate hover:text-accent-400 transition-colors">
           {player?.fullName ?? '—'}
         </div>
         <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
           {team?.id && (
             <img
-              src={teamLogoUrl(team.id)}
+              src={inlineLogoSrc}
               alt=""
               className="w-3.5 h-3.5 object-contain"
-              onError={(e) => (e.target.style.display = 'none')}
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           )}
           <span className="truncate">{team?.name}</span>
@@ -552,6 +556,39 @@ function HotColdPlayerRow({ player, team, ops, rank, accentClass, days = 10, onP
   );
 }
 
+function TeamHotColdAvatar({ teamId, playerId }) {
+  const { isDark } = useTheme();
+  const watermarkSrc = teamId
+    ? teamLogoUrl(teamId, { preferDark: isDark })
+    : '';
+  return (
+    <div className="relative w-14 h-14 flex-shrink-0 overflow-hidden">
+      {teamId && (
+        <img
+          src={watermarkSrc}
+          alt=""
+          className={`absolute top-8 left-6 w-24 h-24 max-w-none -translate-x-1/2 -translate-y-1/2 object-contain pointer-events-none ${isDark ? 'opacity-35' : 'opacity-100'}`}
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (!img.dataset.fallback && teamId) {
+              img.dataset.fallback = '1';
+              img.src = teamLogoUrl(teamId, { forceRegular: true });
+              return;
+            }
+            img.style.display = 'none';
+          }}
+        />
+      )}
+      <img
+        src={playerHeadshotUrl(playerId)}
+        alt=""
+        className="relative z-10 w-14 h-14 object-cover"
+        onError={(e) => { e.currentTarget.src = FALLBACK_HEADSHOT; }}
+      />
+    </div>
+  );
+}
+
 function TeamHotColdPlayerRow({ split, rank, days = 10, onPlayerClick }) {
   const player = split?.player;
   const team = split?.team;
@@ -563,27 +600,12 @@ function TeamHotColdPlayerRow({ split, rank, days = 10, onPlayerClick }) {
   const className = `group flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 bg-gradient-to-r to-transparent hover:bg-slate-800/25 transition-colors cursor-pointer w-full ${rowTone}`;
   const content = (
     <>
-      <span className="w-9 text-center flex-shrink-0 font-black text-2xl italic text-white leading-none select-none">
+      <span className="w-9 text-center flex-shrink-0 font-black text-2xl italic text-slate-200 leading-none select-none">
         {rank}
       </span>
-      <div className="relative w-14 h-14 flex-shrink-0 overflow-hidden">
-        {team?.id && (
-          <img
-            src={teamLogoUrl(team.id)}
-            alt=""
-            className="absolute top-8 left-6 w-24 h-24 max-w-none -translate-x-1/2 -translate-y-1/2 opacity-35 object-contain pointer-events-none"
-            onError={(e) => (e.target.style.display = 'none')}
-          />
-        )}
-        <img
-          src={playerHeadshotUrl(playerId)}
-          alt=""
-          className="relative z-10 w-14 h-14 object-cover"
-          onError={(e) => (e.target.src = FALLBACK_HEADSHOT)}
-        />
-      </div>
+      <TeamHotColdAvatar teamId={team?.id} playerId={playerId} />
       <div className="flex-1 min-w-0">
-        <div className={`font-semibold text-sm truncate group-hover:text-${THEME_COLOR}-400 transition-colors`}>
+        <div className="font-semibold text-sm truncate group-hover:text-accent-400 transition-colors">
           {player?.fullName ?? '—'}
         </div>
         <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
@@ -609,11 +631,21 @@ function TeamHotColdPlayerRow({ split, rank, days = 10, onPlayerClick }) {
 }
 
 function WatchlistSection({ watchlist, watchAnimId, onToggleWatch, onClear }) {
+  const { isDark } = useTheme();
   if (!watchlist.length) return null;
   return (
-    <div className="bg-slate-900 border border-yellow-500/20 rounded-3xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-yellow-300/90 uppercase tracking-wider">
+    <div className={[
+      'rounded-3xl overflow-hidden border',
+      isDark ? 'bg-slate-900 border-yellow-500/20' : 'bg-white border-amber-300/60 shadow-sm',
+    ].join(' ')}>
+      <div className={[
+        'px-4 py-3 border-b flex items-center justify-between gap-2',
+        isDark ? 'border-slate-800' : 'border-amber-200/80',
+      ].join(' ')}>
+        <div className={[
+          'text-xs font-semibold uppercase tracking-wider',
+          isDark ? 'text-yellow-300/90' : 'text-amber-800',
+        ].join(' ')}>
           ★ Watchlist · {watchlist.length} player{watchlist.length !== 1 ? 's' : ''}
         </div>
         <button
@@ -1282,7 +1314,7 @@ export default function StatsApp() {
   return (
     <div className="max-w-5xl mx-auto sm:px-6 py-0 sm:py-8">
       <div className="mb-0 px-4 sm:px-0">
-        <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] m-4 uppercase`}>Player Stats</div>
+        <div className={`text-accent-400 text-xs font-mono tracking-[3px] m-4 uppercase`}>Player Stats</div>
         <h1 className="font-display py-3 text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
       </div>
 
@@ -1319,14 +1351,14 @@ export default function StatsApp() {
                 enterKeyHint="search"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
-                className={`flex-1 bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-${THEME_COLOR}-500 transition-colors`}
+                className={`flex-1 bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-accent-500 transition-colors`}
                 placeholder="Search players…"
               />
               <button
                 type="submit"
                 disabled={isLoading || !playerName.trim()}
                 aria-label="Search players"
-                className={`w-11 h-11 flex items-center justify-center bg-${THEME_COLOR}-500 hover:bg-${THEME_COLOR}-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0`}
+                className={`w-11 h-11 flex items-center justify-center bg-accent-500 hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all active:scale-95 flex-shrink-0`}
               >
                 {isLoading ? (
                   <BaseballSpinner size="xs" inline />

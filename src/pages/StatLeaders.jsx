@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { restoreListScroll, saveListScroll } from '../utils/listScrollRestore';
 import { mlbTeams, playerHeadshotUrl, teamLogoUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
@@ -651,7 +650,7 @@ function PlayerIdentity({ player, team, onPlayerClick, onTeamClick }) {
       <Link
         to={`/player/${player?.id}`}
         onClick={onPlayerClick}
-        className={`min-w-0 truncate font-semibold text-slate-200 transition-colors hover:text-${THEME_COLOR}-400`}
+        className={`min-w-0 truncate font-semibold text-slate-200 transition-colors hover:text-accent-400`}
       >
         {compactPlayerName(player?.fullName)}
       </Link>
@@ -1207,7 +1206,7 @@ const rankedCompletePlayers = useMemo(
     <div className={`mx-auto px-4 sm:px-6 py-0 sm:py-8 ${isTeam || isCompletePlayer ? 'max-w-7xl' : 'max-w-4xl'}`}>
       <div className="">
         <div className="flex items-center justify-between gap-3">
-          <div className={`text-${THEME_COLOR}-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
+          <div className={`text-accent-400 text-xs font-mono tracking-[3px] mb-1 uppercase`}>
             League Leaders
           </div>
           <LeagueLevelPicker
@@ -1447,7 +1446,7 @@ const rankedCompletePlayers = useMemo(
                     <th
                       key={col.key}
                       className={scrollStatHead(
-                        `font-semibold cursor-pointer select-none transition-colors ${teamSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`,
+                        `font-semibold cursor-pointer select-none transition-colors ${teamSortCol === col.key ? `text-accent-400` : 'text-slate-400 hover:text-slate-200'}`,
                         { stickTop: true, bg: 'bg-slate-900' },
                       )}
                       onClick={() => handleTeamSort(col.key)}
@@ -1482,7 +1481,7 @@ const rankedCompletePlayers = useMemo(
                     {teamCols.map((col) => (
                       <td
                         key={col.key}
-                        className={scrollStatCell(teamSortCol === col.key ? `text-${THEME_COLOR}-300` : '')}
+                        className={scrollStatCell(teamSortCol === col.key ? `text-accent-300` : '')}
                       >
                         {formatValue(row.stat?.[col.key], col.format)}
                       </td>
@@ -1532,7 +1531,7 @@ const rankedCompletePlayers = useMemo(
                     <th
                       key={col.key}
                       className={scrollStatHead(
-                        `font-semibold cursor-pointer select-none transition-colors ${playerSortCol === col.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`,
+                        `font-semibold cursor-pointer select-none transition-colors ${playerSortCol === col.key ? `text-accent-400` : 'text-slate-400 hover:text-slate-200'}`,
                         { stickTop: true, bg: 'bg-slate-900' },
                       )}
                       onClick={() => handlePlayerSort(col.key)}
@@ -1572,7 +1571,7 @@ const rankedCompletePlayers = useMemo(
                     {playerCols.map((col) => (
                       <td
                         key={col.key}
-                        className={scrollStatCell(playerSortCol === col.key ? `text-${THEME_COLOR}-300` : '')}
+                        className={scrollStatCell(playerSortCol === col.key ? `text-accent-300` : '')}
                       >
                         {formatValue(row.stat?.[col.key], col.format)}
                       </td>
@@ -1586,7 +1585,7 @@ const rankedCompletePlayers = useMemo(
                 <button
                   type="button"
                   onClick={() => setCompletePlayerDisplayLimit((n) => n + COMPLETE_PLAYER_ROWS_STEP)}
-                  className={`rounded-2xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-bold text-${THEME_COLOR}-300 transition-colors hover:border-${THEME_COLOR}-500/50 hover:bg-slate-800/80`}
+                  className={`rounded-2xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-bold text-accent-300 transition-colors hover:border-accent-500/50 hover:bg-slate-800/80`}
                 >
                   Show more
                   <span className="ml-2 text-xs font-semibold text-slate-500">
@@ -1626,7 +1625,7 @@ const rankedCompletePlayers = useMemo(
                 <Link
                   to={`/player/${leader.person?.id}`}
                   onClick={saveScroll}
-                  className={`font-semibold hover:text-${THEME_COLOR}-400 transition-colors truncate block text-sm sm:text-base`}
+                  className={`font-semibold hover:text-accent-400 transition-colors truncate block text-sm sm:text-base`}
                 >
                   {compactPlayerName(leader.person?.fullName)}
                 </Link>

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { mlbTeams } from '../utils/mlbHelpers';
 import { TeamPicker, SegmentedControl, BaseballSpinner } from '../components/ui';
 import { simulateGame } from '../simulator/game';
@@ -508,7 +507,7 @@ export default function BaseballSimulator() {
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
       <div className="text-center mb-6">
-        <div className={`text-${THEME_COLOR}-400 text-[10px] font-mono tracking-[3px] uppercase mb-1`}>Rebuild</div>
+        <div className={`text-accent-400 text-[10px] font-mono tracking-[3px] uppercase mb-1`}>Rebuild</div>
         <h1 className="font-display text-3xl sm:text-4xl tracking-tighter mb-1">Baseball Simulator</h1>
         <p className="text-slate-500 text-sm">
           Instant / Live = full game sim · ◎ AB = live pitch-by-pitch
@@ -588,7 +587,7 @@ export default function BaseballSimulator() {
                 <div className="text-xs font-mono text-slate-400">
                   <span className="text-slate-300">{seasonPreview.completed.length}</span> played
                   <span className="text-slate-600 mx-2">·</span>
-                  <span className={seasonPreview.remaining.length > 0 ? `text-${THEME_COLOR}-400` : 'text-slate-300'}>
+                  <span className={seasonPreview.remaining.length > 0 ? `text-accent-400` : 'text-slate-300'}>
                     {seasonPreview.remaining.length}
                   </span> remaining
                   <span className="text-slate-600 mx-2">·</span>
@@ -612,7 +611,7 @@ export default function BaseballSimulator() {
             type="button"
             onClick={runSeasonSimulation}
             disabled={!homeTeam || simming || seasonPreview?.remaining?.length === 0}
-            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
           >
             {simming ? (
               <>
@@ -668,7 +667,7 @@ export default function BaseballSimulator() {
             type="button"
             onClick={runPlayoffSimulation}
             disabled={simming}
-            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
           >
             {simming ? (
               <>
@@ -771,7 +770,7 @@ export default function BaseballSimulator() {
             type="button"
             onClick={runHistoricalSimulation}
             disabled={!awayTeam || !homeTeam || simming}
-            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+            className={`w-full mb-5 flex items-center justify-center gap-2 py-3 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
           >
             {simming ? (
               <>
@@ -825,7 +824,7 @@ export default function BaseballSimulator() {
               {(awayLoading || homeLoading) && (
                 <>
                   <BaseballSpinner size="xs" inline />
-                  <span className={`text-${THEME_COLOR}-400`}>Loading real stats…</span>
+                  <span className={`text-accent-400`}>Loading real stats…</span>
                 </>
               )}
             </button>
@@ -886,7 +885,7 @@ export default function BaseballSimulator() {
               type="button"
               onClick={runSimulation}
               disabled={!awayTeam || !homeTeam || simming || awayLoading || homeLoading}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all text-sm`}
             >
               {simming ? (
                 <>
@@ -924,7 +923,7 @@ export default function BaseballSimulator() {
                 </div>
                 {result && (speed === 'instant' || isLiveComplete) && result.winner && (
                   <div className="mt-4 text-center">
-                    <span className={`inline-flex items-center gap-2 px-4 py-2 bg-${THEME_COLOR}-500/10 border border-${THEME_COLOR}-500/30 rounded-xl text-${THEME_COLOR}-400 text-sm font-semibold`}>
+                    <span className={`inline-flex items-center gap-2 px-4 py-2 bg-accent-500/10 border border-accent-500/30 rounded-xl text-accent-400 text-sm font-semibold`}>
                       {result.winner.abbr} win{(result.innings?.length || 0) > 9 ? ` (F/${result.innings.length})` : '!'}
                     </span>
                   </div>
@@ -1016,7 +1015,7 @@ export default function BaseballSimulator() {
                 <button
                   type="button"
                   onClick={advanceLivePlay}
-                  className={`w-full py-3 bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 border border-${THEME_COLOR}-500/40 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2`}
+                  className={`w-full py-3 bg-accent-600 hover:bg-accent-500 border border-accent-500/40 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2`}
                 >
                   Next At-Bat
                   <span className="text-[11px] font-mono text-white/70">

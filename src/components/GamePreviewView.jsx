@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { THEME_COLOR } from '../theme/theme.js';
 import { BaseballSpinner } from './ui';
 import {
   playerHeadshotUrl,
@@ -98,7 +97,7 @@ function ProbablePitcherCard({ pitcher, align = 'left', onPlayerClick }) {
             <button
               type="button"
               onClick={() => pitcher?.id && onPlayerClick(pitcher.id)}
-              className={`font-semibold text-slate-100 hover:text-${THEME_COLOR}-400 transition-colors text-sm leading-tight`}
+              className={`font-semibold text-slate-100 hover:text-accent-400 transition-colors text-sm leading-tight`}
             >
               {pitcher.lastName}
             </button>
@@ -151,7 +150,7 @@ function MatchupTable({ rows, onPlayerClick }) {
                     <button
                       type="button"
                       onClick={() => onPlayerClick(row.batterId)}
-                      className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors block max-w-full text-left`}
+                      className={`font-medium hover:text-accent-400 transition-colors block max-w-full text-left`}
                     >
                       {renderName(row)}
                     </button>

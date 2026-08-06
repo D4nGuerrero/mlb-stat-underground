@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom';
-import { THEME_COLOR } from '../theme/theme.js';
 import { teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 
 function TeamLineupTable({ team, players, onPlayerClick }) {
@@ -35,7 +34,7 @@ function TeamLineupTable({ team, players, onPlayerClick }) {
                   <button
                     type="button"
                     onClick={() => onPlayerClick(player.id)}
-                    className={`flex items-center gap-2 min-w-0 text-left hover:text-${THEME_COLOR}-400 transition-colors`}
+                    className={`flex items-center gap-2 min-w-0 text-left hover:text-accent-400 transition-colors`}
                   >
                     <img
                       src={playerHeadshotUrl(player.id)}

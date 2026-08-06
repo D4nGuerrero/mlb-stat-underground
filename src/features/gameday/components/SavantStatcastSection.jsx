@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { THEME_COLOR } from '../../../theme/theme.js';
 import { playerHeadshotUrl, teamLogoUrl } from '../../../utils/mlbHelpers';
 import { Modal } from '../../../components/ui';
 
@@ -253,7 +252,7 @@ function SavantStatCell({ column, row, onHrParksClick }) {
               event.stopPropagation();
               onHrParksClick?.(row);
             }}
-            className={`font-bold text-${THEME_COLOR}-200 underline decoration-${THEME_COLOR}-300/70 decoration-dotted underline-offset-2 hover:text-white`}
+            className={`font-bold text-accent-200 underline decoration-accent-300/70 decoration-dotted underline-offset-2 hover:text-white`}
           >
             {value}
           </button>
@@ -327,8 +326,8 @@ function SortHeader({ column, sort, onSort }) {
         className={`fa-solid text-[8px] ${
           active
             ? sort.dir === 'asc'
-              ? `fa-caret-up text-${THEME_COLOR}-300`
-              : `fa-caret-down text-${THEME_COLOR}-300`
+              ? `fa-caret-up text-accent-300`
+              : `fa-caret-down text-accent-300`
             : 'fa-sort text-slate-700'
         }`}
         aria-hidden
@@ -340,7 +339,7 @@ function SortHeader({ column, sort, onSort }) {
 function ParkList({ title, parks, tone }) {
   return (
     <div className="min-w-0">
-      <h4 className={`mb-2 font-display text-lg font-black ${tone === 'hr' ? `text-${THEME_COLOR}-200` : 'text-slate-300'}`}>
+      <h4 className={`mb-2 font-display text-lg font-black ${tone === 'hr' ? `text-accent-200` : 'text-slate-300'}`}>
         {title} - ({parks.length})
       </h4>
       <div className="overflow-hidden rounded-2xl border border-slate-800">
@@ -404,7 +403,7 @@ function HrParkSheet({ open, onClose, selected, loading, error, details }) {
 
         {loading && (
           <div className="flex items-center justify-center gap-3 py-10 text-sm text-slate-400">
-            <div className={`h-2 w-2 rounded-full bg-${THEME_COLOR}-400 live-pulse`} />
+            <div className={`h-2 w-2 rounded-full bg-accent-400 live-pulse`} />
             Loading park breakdown...
           </div>
         )}
@@ -507,7 +506,7 @@ export default function SavantStatcastSection({ gamePk, allPlays = [], onOpenPla
 
       {state.loading && (
         <div className="flex items-center justify-center gap-3 px-4 py-12 text-sm text-slate-400">
-          <div className={`h-2 w-2 rounded-full bg-${THEME_COLOR}-400 live-pulse`} />
+          <div className={`h-2 w-2 rounded-full bg-accent-400 live-pulse`} />
           Loading Statcast metrics...
         </div>
       )}
@@ -561,7 +560,7 @@ export default function SavantStatcastSection({ gamePk, allPlays = [], onOpenPla
                       openAtBat(row);
                     }
                   }}
-                  className={`group ${stickyBg} cursor-pointer transition-colors hover:bg-slate-800/70 focus:outline-none focus:ring-1 focus:ring-${THEME_COLOR}-400/60`}
+                  className={`group ${stickyBg} cursor-pointer transition-colors hover:bg-slate-800/70 focus:outline-none focus:ring-1 focus:ring-accent-400/60`}
                   title="Open At Bat Details"
                 >
                   <td className={`sticky left-0 z-10 w-px whitespace-nowrap ${stickyBg} px-2 py-1.5 shadow-[10px_0_16px_-14px_rgba(0,0,0,1)] group-hover:bg-slate-800`}>
@@ -570,7 +569,7 @@ export default function SavantStatcastSection({ gamePk, allPlays = [], onOpenPla
                       <img
                         src={playerHeadshotUrl(row.batterId, { width: 80 })}
                         alt=""
-                        className={`h-6 w-6 flex-shrink-0 rounded-full border border-${THEME_COLOR}-500/40 bg-slate-800 object-cover`}
+                        className={`h-6 w-6 flex-shrink-0 rounded-full border border-accent-500/40 bg-slate-800 object-cover`}
                       />
                       <div className="text-[11px] font-bold text-slate-100 group-hover:text-white">
                         {playerShortName(row.batterName)}

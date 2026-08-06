@@ -1,19 +1,19 @@
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
-import { THEME_COLOR } from '../../theme/theme.js';
 
 const VARIANTS = {
   contained: {
     list: 'flex flex-wrap gap-1 bg-slate-900 border border-slate-700 rounded-2xl p-1',
     tab: 'px-3 sm:px-4 py-2 rounded-xl',
     active: 'bg-white text-slate-900 shadow-sm',
-    inactive: 'text-slate-400 hover:text-white',
+    inactive: 'text-slate-400 hover:text-slate-100',
     transition: 'transition-all',
   },
   page: {
     list: 'flex gap-1 border-b border-slate-700/60 overflow-x-auto  scrollbar-none',
     tab: 'px-4 sm:px-5 py-2.5 sm:rounded-t-xl',
-    active: `bg-slate-800 text-white border-b-2 border-${THEME_COLOR}-400`,
-    inactive: 'text-slate-400 hover:text-white hover:bg-slate-800/40',
+    // text-slate-100 (not text-white) so light-mode global overrides keep contrast
+    active: 'bg-slate-800 text-slate-100 border-b-2 border-accent-400',
+    inactive: 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40',
     transition: 'transition-colors',
   },
 };

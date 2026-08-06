@@ -1,5 +1,4 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_OPTIONS } from '../constants/leagueLevels.js';
 
 export function LeagueLevelPicker({
@@ -44,14 +43,14 @@ export function LeagueLevelPicker({
                   className={[
                     'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
                     focus ? 'bg-slate-800 text-white' : 'text-slate-300',
-                    selected ? `text-${THEME_COLOR}-300` : '',
+                    selected ? `text-accent-300` : '',
                   ].join(' ')}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <img src={option.logo} alt="" className="h-6 w-6 flex-shrink-0 object-contain" draggable={false} />
                     <span className="truncate font-bold">{option.label}</span>
                   </span>
-                  {selected && <i className={`fa-solid fa-check text-xs text-${THEME_COLOR}-300`} aria-hidden />}
+                  {selected && <i className={`fa-solid fa-check text-xs text-accent-300`} aria-hidden />}
                 </button>
               )}
             </MenuItem>

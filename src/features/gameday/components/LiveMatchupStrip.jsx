@@ -1,4 +1,3 @@
-import { THEME_COLOR } from '../../../theme/theme.js';
 import {
   pitcherActionShotUrl,
   playerActionShotUrl,
@@ -154,14 +153,14 @@ function formatPitcherStat(s) {
           <div className="text-[9px] text-slate-500 uppercase tracking-[0.22em] font-semibold">
             Final
           </div>
-          <div className={`mt-1 text-sm font-bold text-${THEME_COLOR}-300`}>
+          <div className={`mt-1 text-sm font-bold text-accent-300`}>
             {finalMessage}
           </div>
         </div>
       ) : showDueUpMatchup ? (
         <div>
           <div className="px-4 pt-3 text-center">
-            <div className={`text-[9px] text-${THEME_COLOR}-300 uppercase tracking-[0.22em] font-semibold`}>
+            <div className={`text-[9px] text-accent-300 uppercase tracking-[0.22em] font-semibold`}>
               Due Up
             </div>
             <div className="text-[10px] text-slate-500 mt-0.5">

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { compactPlayerName, mlbTeams, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, BottomSheetModal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
@@ -378,7 +377,7 @@ const calendarLabelClass = (type) => {
 
 const calendarGameSurfaceClass = (isHome) => (
   isHome
-    ? `bg-${THEME_COLOR}-500/40 hover:bg-${THEME_COLOR}-500/20 border border-${THEME_COLOR}-500/25`
+    ? `bg-accent-500/40 hover:bg-accent-500/20 border border-accent-500/25`
     : 'bg-slate-600/25 hover:bg-slate-600/40 border border-slate-500/35'
 );
 
@@ -523,7 +522,7 @@ function TeamLeaderCard({ label, statKey, dec, leaders, onNavigateAway }) {
     <div className="leader-card w-full min-w-[300px] max-w-[320px] bg-[#1b2a51] rounded-3xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-xl">
       <div className="p-0 flex items-start gap-3 border-b border-slate-700 min-h-[148px]">
         <div className="flex-1 p-3 min-w-0">
-          <div className={`uppercase text-${THEME_COLOR}-400 text-xs font-semibold tracking-widest mb-1`}>
+          <div className={`uppercase text-accent-400 text-xs font-semibold tracking-widest mb-1`}>
             {label}
           </div>
           <div className="font-bold text-white text-4xl leading-none tabular-nums">
@@ -802,7 +801,7 @@ function SortableTable({
             {cols.map((c) => (
               <th
                 key={c.key}
-                className={`${scrollStatHead(`font-medium cursor-pointer select-none ${sortCol === c.key ? `text-${THEME_COLOR}-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
+                className={`${scrollStatHead(`font-medium cursor-pointer select-none ${sortCol === c.key ? `text-accent-400` : 'text-slate-400 hover:text-slate-200'}`)}`}
                 onClick={() => handleSort(c.key)}
               >
                 {c.label}
@@ -823,7 +822,7 @@ function SortableTable({
                     <Link
                       to={`/player/${playerId}`}
                       onClick={onNavigateAway}
-                      className={`font-medium hover:text-${THEME_COLOR}-400 transition-colors text-xs sm:text-sm leading-tight block truncate`}
+                      className={`font-medium hover:text-accent-400 transition-colors text-xs sm:text-sm leading-tight block truncate`}
                     >
                       {teamStatsPlayerName(person, person?.[nameKey] ?? person?.fullName ?? '—')}
                     </Link>
@@ -833,7 +832,7 @@ function SortableTable({
                 {cols.map((c) => {
                   const raw = row.stat?.[c.key] ?? row[c.key];
                   return (
-                    <td key={c.key} className={scrollStatCell(sortCol === c.key ? `text-${THEME_COLOR}-300` : '')}>
+                    <td key={c.key} className={scrollStatCell(sortCol === c.key ? `text-accent-300` : '')}>
                       {c.dec === -1 ? (raw ?? '–') : fmt(raw, c.dec)}
                     </td>
                   );
@@ -1474,7 +1473,7 @@ function ScheduleTab({
                   key={`${monthStr}-${key}`}
                   className={`aspect-square sm:aspect-auto sm:min-h-[128px] border-b border-r border-slate-800/50 p-0.5 sm:p-1.5 flex flex-col overflow-hidden ${inMonth ? '' : 'opacity-35'} ${isToday ? 'bg-slate-800' : ''}`}
                 >
-                  <div className={`text-[9px] sm:text-[11px] font-mono leading-none mb-0.5 sm:mb-1 flex-shrink-0 ${isToday ? `text-${THEME_COLOR}-300 font text-[14px]` : 'text-slate-400'}`}>
+                  <div className={`text-[9px] sm:text-[11px] font-mono leading-none mb-0.5 sm:mb-1 flex-shrink-0 ${isToday ? `text-accent-300 font text-[14px]` : 'text-slate-400'}`}>
                     {inMonth ? d.getDate() : ''}
                   </div>
                   <div className="flex-1 flex flex-col gap-0.5 sm:gap-1 min-h-0 ">
@@ -1600,7 +1599,7 @@ function ScheduleTab({
               <div
                 key={g.gamePk}
                 ref={(el) => { if (el) gameRefs.current[g.gamePk] = el; }}
-                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? `bg-${THEME_COLOR}-500/[0.06] border-${THEME_COLOR}-500/20` : ''}`}
+                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? `bg-accent-500/[0.06] border-accent-500/20` : ''}`}
                 onClick={() => goToGame(g.gamePk)}
               >
                 <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">
@@ -2372,7 +2371,7 @@ function TeamTradeDetailModal({ txn, tradeBundle, tradeLoading, onClose, onNavig
         <div className="p-5 sm:p-6 space-y-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className={`text-lg sm:text-xl font-bold text-${THEME_COLOR}-300`}>Trade</div>
+              <div className={`text-lg sm:text-xl font-bold text-accent-300`}>Trade</div>
               <p className="text-sm text-slate-500 mt-1">{fmtDateWithYear(txn.date)}</p>
             </div>
             <button
@@ -2603,7 +2602,7 @@ function TradeAnalysisModal({ open, onClose, loading, error, analysis, progress,
               </div>
               <div className="h-3 overflow-hidden rounded-full border border-slate-700 bg-slate-950">
                 <div
-                  className={`h-full rounded-full bg-gradient-to-r from-${THEME_COLOR}-500 via-amber-300 to-red-400 transition-all duration-300`}
+                  className={`h-full rounded-full bg-gradient-to-r from-accent-500 via-amber-300 to-red-400 transition-all duration-300`}
                   style={{ width: progress.total ? `${Math.min(100, (progress.done / progress.total) * 100)}%` : '12%' }}
                 />
               </div>
@@ -2817,7 +2816,7 @@ function TransactionsTab({ teamId, onNavigateAway }) {
             <button
               type="button"
               onClick={runTradeAnalysis}
-              className={`rounded-2xl border border-${THEME_COLOR}-500/35 bg-${THEME_COLOR}-500/10 px-3 py-2 text-xs font-bold text-${THEME_COLOR}-200 transition-colors hover:bg-${THEME_COLOR}-500/20`}
+              className={`rounded-2xl border border-accent-500/35 bg-accent-500/10 px-3 py-2 text-xs font-bold text-accent-200 transition-colors hover:bg-accent-500/20`}
             >
               Analyze Trades
             </button>
@@ -2855,13 +2854,13 @@ function TransactionsTab({ teamId, onNavigateAway }) {
                   <Link
                     to={`/player/${t.person.id}`}
                     onClick={onNavigateAway}
-                    className={`hover:text-${THEME_COLOR}-400 transition-colors`}
+                    className={`hover:text-accent-400 transition-colors`}
                   >
                     {t.person?.fullName ?? '—'}
                   </Link>
                 ) : rowLabel}
               </div>
-              <div className={`mt-0.5 text-xs ${trade ? `text-${THEME_COLOR}-300` : 'text-slate-400'}`}>
+              <div className={`mt-0.5 text-xs ${trade ? `text-accent-300` : 'text-slate-400'}`}>
                 {t.typeDesc ?? t.description ?? '—'}
               </div>
               {txnMode === 'trades' && t.fromTeam?.name && t.toTeam?.name && (
@@ -3126,7 +3125,7 @@ function TeamPageContent({ teamId }) {
                 {teamInfo?.name ?? `Team #${teamId}`}
               </h1>
               {recordText && (
-                <div className={`text-${THEME_COLOR}-300 font-semibold text-sm sm:text-base`} style={HERO_TEXT_SHADOW}>
+                <div className={`text-accent-300 font-semibold text-sm sm:text-base`} style={HERO_TEXT_SHADOW}>
                   {recordText}
                   <span className="text-slate-400 font-normal text-xs sm:text-sm ml-2">{season} Regular Season</span>
                 </div>

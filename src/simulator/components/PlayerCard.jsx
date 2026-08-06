@@ -1,9 +1,8 @@
-import { THEME_COLOR } from '../../theme/theme.js';
 
 function ratingColor(value) {
   if (value >= 90) return 'text-amber-300';
   if (value >= 80) return 'text-emerald-400';
-  if (value >= 70) return `text-${THEME_COLOR}-400`;
+  if (value >= 70) return `text-accent-400`;
   if (value >= 50) return 'text-slate-200';
   if (value >= 40) return 'text-slate-400';
   return 'text-slate-500';

@@ -1,7 +1,6 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import LiveAtBatVisual from '../../components/LiveAtBatVisual';
 import { assetUrl } from '../../utils/baseUrl.js';
-import { THEME_COLOR } from '../../theme/theme.js';
 import { PITCH_RESULT_LABELS, PITCH_DEFS } from '../constants.js';
 import { AT_BAT_ANIMATION_MS } from '../../pitchfx/atBatPitchFx.js';
 import { simPitchesToPlayEvents } from '../pitchTheater.js';
@@ -143,7 +142,7 @@ export default function SimPitchStage({
           )}
           <div className="text-center">
             <div className="text-[9px] uppercase text-slate-500">Count</div>
-            <div className={`font-mono text-lg font-bold text-${THEME_COLOR}-400`}>{countLabel}</div>
+            <div className={`font-mono text-lg font-bold text-accent-400`}>{countLabel}</div>
           </div>
         </div>
       </div>
@@ -230,7 +229,7 @@ export default function SimPitchStage({
               title={PITCH_RESULT_LABELS[p.result] || p.result}
               className={[
                 'min-w-[1.5rem] h-6 px-1 rounded-md text-[10px] font-mono flex items-center justify-center border',
-                `bg-${THEME_COLOR}-500/20 border-${THEME_COLOR}-500/40 text-${THEME_COLOR}-300`,
+                `bg-accent-500/20 border-accent-500/40 text-accent-300`,
               ].join(' ')}
             >
               {p.num}:{p.result}
@@ -250,7 +249,7 @@ export default function SimPitchStage({
           disabled={!canThrow}
           className={`w-full py-3.5 rounded-xl text-sm font-semibold transition-all border flex flex-col items-center justify-center gap-0.5 shadow-lg shadow-black/20 ${
             canThrow
-              ? `bg-${THEME_COLOR}-600 hover:bg-${THEME_COLOR}-500 border-${THEME_COLOR}-500/40 text-white active:scale-[0.99]`
+              ? `bg-accent-600 hover:bg-accent-500 border-accent-500/40 text-white active:scale-[0.99]`
               : 'bg-slate-800 border-slate-700 text-slate-500 cursor-wait'
           }`}
         >

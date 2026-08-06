@@ -183,15 +183,28 @@ const TEAM_LOGO_OVERRIDES = {
   562: 'https://sultanes.com.mx/static/images/logo-left.webp',
 };
 
+function defaultPreferDarkLogo() {
+  if (typeof document === 'undefined') return true;
+  // Light theme uses cap-on-light marks for contrast on pale surfaces.
+  if (document.documentElement.dataset.theme === 'light') return false;
+  if (document.body?.classList?.contains('theme-light')) return false;
+  return true;
+}
+
 /**
  * Get MLB team logo URL
- * @param {number|string} teamId 
+ * @param {number|string} teamId
  * @param {object} options
- * @param {boolean} options.preferDark - true = try cap-on-dark first (default)
+ * @param {boolean} options.preferDark - true = cap-on-dark (default follows app theme)
  * @param {boolean} options.forceRegular - force regular logo (overrides preferDark)
  */
 export const teamLogoUrl = (teamId, options = {}) => {
-  const { preferDark = true, forceRegular = false, level, isMinors = false } = options;
+  const {
+    preferDark = defaultPreferDarkLogo(),
+    forceRegular = false,
+    level,
+    isMinors = false,
+  } = options;
   const id = String(teamId).trim();
 
   if (!id) return '';
@@ -204,25 +217,26 @@ export const teamLogoUrl = (teamId, options = {}) => {
     134, // Pittsburgh Pirates
     138, // St. Louis Cardinals
     141, // Toronto Blue Jays
-    // Add more teams here as you find them
   ]);
 
-  // MiLB team logos live at /team-logos/{id}.svg; the MLB cap-on-dark paths often 404.
+  // MiLB team logos live at /team-logos/{id}.svg; the MLB cap paths often 404.
   const numericId = Number(id);
-  const shouldUseRegular =
-    forceRegular ||
-    isMinors ||
-    level === 'minors' ||
-    !MLB_TEAM_ID_SET.has(numericId) ||
-    !preferDark ||
-    regularPreferredTeams.has(numericId);
+  const isMlbClub = MLB_TEAM_ID_SET.has(numericId);
+  const useMinorOrOverride =
+    forceRegular
+    || isMinors
+    || level === 'minors'
+    || !isMlbClub
+    || regularPreferredTeams.has(numericId);
 
-  if (shouldUseRegular) {
+  if (useMinorOrOverride) {
     return `${BASE_URL}/${id}.svg`;
   }
 
-  // Default: cap-on-dark
-  return `${BASE_URL}/team-cap-on-dark/${id}.svg`;
+  // Theme-aware cap logos (better contrast on light vs dark chrome)
+  return preferDark
+    ? `${BASE_URL}/team-cap-on-dark/${id}.svg`
+    : `${BASE_URL}/team-cap-on-light/${id}.svg`;
 };
   
 

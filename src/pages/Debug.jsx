@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import LiveAtBatVisual from '../components/LiveAtBatVisual';
-import { THEME_COLOR } from '../theme/theme.js';
 import { assetUrl } from '../utils/baseUrl.js';
 
 const STRIKE_ZONE_TOP = 3.23;
@@ -284,7 +283,7 @@ function SpinPreviewBall({ modelUrl, preview, onChange, onCaptureFace }) {
       </div>
       <div className="mt-3 text-sm font-bold text-slate-100">{preview.label}</div>
       <div className="mt-0.5 text-[11px] font-mono text-slate-500">{preview.typeCode}</div>
-      <div className={`mt-1 text-xs text-${THEME_COLOR}-300`}>{preview.spinLabel}</div>
+      <div className={`mt-1 text-xs text-accent-300`}>{preview.spinLabel}</div>
       <div className="mt-3 space-y-3 text-left">
         <label className="block">
           <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
@@ -572,7 +571,7 @@ export default function Debug() {
       <section className="rounded-2xl border border-slate-700/60 bg-slate-900 p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
-            <div className={`text-[10px] uppercase tracking-[0.24em] text-${THEME_COLOR}-400 font-semibold`}>
+            <div className={`text-[10px] uppercase tracking-[0.24em] text-accent-400 font-semibold`}>
               Debug
             </div>
             <h1 className="font-display text-2xl sm:text-3xl text-white mt-1">
@@ -598,7 +597,7 @@ export default function Debug() {
               key={preset.key}
               type="button"
               onClick={() => addPitch(preset)}
-              className={`rounded-xl border border-${THEME_COLOR}-500/30 bg-${THEME_COLOR}-500/10 px-3 py-2 text-sm font-semibold text-${THEME_COLOR}-200 hover:bg-${THEME_COLOR}-500/20 transition-colors`}
+              className={`rounded-xl border border-accent-500/30 bg-accent-500/10 px-3 py-2 text-sm font-semibold text-accent-200 hover:bg-accent-500/20 transition-colors`}
             >
               {preset.label}
             </button>
@@ -627,7 +626,7 @@ export default function Debug() {
       />
 
       <section className="rounded-2xl border border-slate-700/60 bg-slate-900 p-4 sm:p-5">
-        <div className={`text-[10px] uppercase tracking-[0.24em] text-${THEME_COLOR}-400 font-semibold`}>
+        <div className={`text-[10px] uppercase tracking-[0.24em] text-accent-400 font-semibold`}>
           GLB Spin Faces
         </div>
         <h2 className="font-display text-xl sm:text-2xl text-white mt-1">

@@ -13,7 +13,6 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { THEME_COLOR } from '../theme/theme.js';
 import { fetchStatsApiJson } from '../lib/mlb/client';
 import {
   FALLBACK_HEADSHOT,
@@ -276,7 +275,7 @@ function useDraftYearData(year) {
 function StatChip({ icon, label, value }) {
   return (
     <div className="flex items-center gap-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 px-3 py-2.5 min-w-0">
-      <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-300`}>
+      <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-accent-500/15 text-accent-300`}>
         {icon}
       </span>
       <div className="min-w-0">
@@ -295,12 +294,77 @@ function RoundBadge({ round }) {
       className={[
         'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em]',
         isFirst
-          ? `bg-${THEME_COLOR}-500/15 text-${THEME_COLOR}-200 ring-1 ring-${THEME_COLOR}-500/35`
+          ? `bg-accent-500/15 text-accent-200 ring-1 ring-accent-500/35`
           : 'bg-slate-800 text-slate-300 ring-1 ring-slate-700',
       ].join(' ')}
     >
       {label}
     </span>
+  );
+}
+
+/** Sticky top offset under main nav (matches .sticky-under-nav in index.css). */
+function getStickyNavOffsetPx() {
+  if (typeof document === 'undefined') return 56;
+  if (document.documentElement.dataset.hideTopBar === 'true') return 0;
+  return window.matchMedia('(min-width: 640px)').matches ? 64 : 56;
+}
+
+/**
+ * Round header: rounded when in-flow, squared when stuck under the nav.
+ * (overflow:hidden on a sticky ancestor would break viewport sticky pinning.)
+ */
+function StickyRoundHeader({ round, pickCount }) {
+  const sentinelRef = useRef(null);
+  const [isStuck, setIsStuck] = useState(false);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return undefined;
+
+    let observer;
+    const observe = () => {
+      observer?.disconnect();
+      const offset = getStickyNavOffsetPx();
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          // When the 1px sentinel scrolls above the sticky line, the header is stuck.
+          setIsStuck(!entry.isIntersecting);
+        },
+        {
+          // Negative top rootMargin = "stick threshold" matches sticky top offset
+          rootMargin: `-${offset + 1}px 0px 0px 0px`,
+          threshold: 0,
+        },
+      );
+      observer.observe(sentinel);
+    };
+
+    observe();
+    window.addEventListener('resize', observe);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', observe);
+    };
+  }, []);
+
+  return (
+    <>
+      {/* Sits just above the sticky header; used only for stuck detection */}
+      <div ref={sentinelRef} className="h-px w-full" aria-hidden />
+      <div
+        className={[
+          'sticky-under-nav sticky z-20 flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-3 py-2.5 sm:px-4',
+          // Rounded only while resting at the top of the card; square when pinned
+          isStuck ? 'rounded-none shadow-md shadow-black/20' : 'rounded-t-2xl',
+        ].join(' ')}
+      >
+        <RoundBadge round={round} />
+        <span className="text-[11px] font-semibold tabular-nums text-slate-500">
+          {pickCount} pick{pickCount === 1 ? '' : 's'}
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -351,7 +415,7 @@ function DraftPickRow({ pick, highlighted, rowRef }) {
   const className = [
     'group flex items-center gap-2.5 border-b border-slate-800/80 px-3 py-2.5 transition-colors sm:gap-3 sm:px-4',
     highlighted
-      ? `bg-${THEME_COLOR}-500/10 ring-1 ring-inset ring-${THEME_COLOR}-500/40`
+      ? `bg-accent-500/10 ring-1 ring-inset ring-accent-500/40`
       : 'hover:bg-slate-800/50',
     pick.personId ? 'cursor-pointer' : '',
   ].join(' ');
@@ -360,7 +424,7 @@ function DraftPickRow({ pick, highlighted, rowRef }) {
     <>
       <div className="flex w-10 flex-shrink-0 flex-col items-center justify-center sm:w-12">
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pk</span>
-        <span className={`text-base font-black tabular-nums sm:text-lg ${highlighted ? `text-${THEME_COLOR}-300` : 'text-slate-100'}`}>
+        <span className={`text-base font-black tabular-nums sm:text-lg ${highlighted ? `text-accent-300` : 'text-slate-100'}`}>
           {pick.overall ?? '—'}
         </span>
       </div>
@@ -375,7 +439,7 @@ function DraftPickRow({ pick, highlighted, rowRef }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={`truncate text-sm font-bold sm:text-[15px] ${pick.personId ? `group-hover:text-${THEME_COLOR}-200` : ''} text-slate-100`}>
+          <span className={`truncate text-sm font-bold sm:text-[15px] ${pick.personId ? `group-hover:text-accent-200` : ''} text-slate-100`}>
             {pick.name}
           </span>
           <PositionPill position={pick.position} />
@@ -582,7 +646,7 @@ export default function DraftTracker() {
       <header className="mb-5 sm:mb-7">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className={`mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-${THEME_COLOR}-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-${THEME_COLOR}-300 ring-1 ring-${THEME_COLOR}-500/25`}>
+            <div className={`mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-accent-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent-300 ring-1 ring-accent-500/25`}>
               <ClipboardList size={12} aria-hidden />
               Draft Tracker
             </div>
@@ -738,7 +802,7 @@ export default function DraftTracker() {
               </span>
             )}
             {highlightPlayerId && (
-              <span className={`inline-flex items-center gap-1.5 rounded-full bg-${THEME_COLOR}-500/15 px-2.5 py-1 text-[11px] font-semibold text-${THEME_COLOR}-200 ring-1 ring-${THEME_COLOR}-500/30`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full bg-accent-500/15 px-2.5 py-1 text-[11px] font-semibold text-accent-200 ring-1 ring-accent-500/30`}>
                 Highlighted player
                 <button
                   type="button"
@@ -802,13 +866,12 @@ export default function DraftTracker() {
               key={round}
               className="rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/10"
             >
-              {/* Sticky header is a sibling of the list (not inside overflow:hidden) so it pins under the main nav. */}
-              <div className="sticky top-14 z-20 flex items-center justify-between gap-2 rounded-t-2xl border-b border-slate-800 bg-slate-950 px-3 py-2.5 sm:top-16 sm:px-4">
-                <RoundBadge round={round} />
-                <span className="text-[11px] font-semibold tabular-nums text-slate-500">
-                  {picks.length} pick{picks.length === 1 ? '' : 's'}
-                </span>
-              </div>
+              {/*
+                Sticky header is NOT inside overflow:hidden — that would break
+                viewport sticky under the nav. Rounding when stuck is toggled via
+                IntersectionObserver on a 1px sentinel instead.
+              */}
+              <StickyRoundHeader round={round} pickCount={picks.length} />
               <div className="overflow-hidden rounded-b-2xl">
                 {picks.map((pick) => {
                   const highlighted = highlightPlayerId != null && Number(pick.personId) === highlightPlayerId;

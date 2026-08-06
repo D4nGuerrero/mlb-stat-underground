@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
-import { THEME_COLOR } from '../../theme/theme.js';
 import { SegmentedControl, BaseballSpinner, stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT } from '../../components/ui';
 import { TABLE_TEXT_CLASS } from '../../theme/tableTheme';
 import TeamAbbrCell from '../../components/TeamAbbrCell';
@@ -45,7 +44,7 @@ export function LineupBuilder({
             key={player.id}
             className={[
               'flex items-center gap-2 px-4 py-2.5 transition-colors',
-              selectedPlayerId === player.id ? `bg-${THEME_COLOR}-500/10` : 'hover:bg-slate-800/40',
+              selectedPlayerId === player.id ? `bg-accent-500/10` : 'hover:bg-slate-800/40',
             ].join(' ')}
           >
             <span className="text-slate-600 font-mono text-xs w-4 shrink-0">{idx + 1}</span>
@@ -59,7 +58,7 @@ export function LineupBuilder({
               {player.card ? (
                 <CardRatingsInline card={player.card} className="mt-0.5" />
               ) : player.slotABs >= 5 ? (
-                <span className={`text-[10px] text-${THEME_COLOR}-500/80 font-mono`}>
+                <span className={`text-[10px] text-accent-500/80 font-mono`}>
                   {player.slotABs} ABs batting {idx + 1}{ordSuffix(idx + 1)}
                 </span>
               ) : player.selectionReason ? (
@@ -90,7 +89,7 @@ export function LineupBuilder({
                 className={[
                   'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
                   selectedStarterId === pitcher.id
-                    ? `bg-${THEME_COLOR}-600 border-${THEME_COLOR}-500 text-white`
+                    ? `bg-accent-600 border-accent-500 text-white`
                     : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500',
                 ].join(' ')}
               >
@@ -200,7 +199,7 @@ export function AtBatCard({ play, index }) {
     HR: 'text-yellow-400', '3B': 'text-orange-400', '2B': 'text-blue-400',
     '1B': 'text-green-400', BB: 'text-cyan-400', IBB: 'text-cyan-300', HBP: 'text-purple-400',
     K: 'text-red-400', OUT: 'text-slate-500', DP: 'text-orange-300', E: 'text-amber-400',
-    SAC: 'text-slate-400', SF: 'text-slate-400', SB: `text-${THEME_COLOR}-400`, CS: 'text-red-300', WP: 'text-slate-500',
+    SAC: 'text-slate-400', SF: 'text-slate-400', SB: `text-accent-400`, CS: 'text-red-300', WP: 'text-slate-500',
   }[play.outcome] || 'text-slate-400';
   const hasPitches = play.pitches?.length > 0;
 
@@ -348,7 +347,7 @@ export function BoxScore({ players, teamAbbr, pitcherLines }) {
                     <span className="text-slate-300 font-medium truncate min-w-0">
                       {player.name.split(' ').pop()}
                     </span>
-                    <span className={`text-${THEME_COLOR}-600/80 text-[10px] font-mono shrink-0`}>{player.gamePos || player.pos}</span>
+                    <span className={`text-accent-600/80 text-[10px] font-mono shrink-0`}>{player.gamePos || player.pos}</span>
                   </div>
                 </td>
                 <td className={statCell('text-slate-400 px-1.5')}>{player.ab}</td>
@@ -417,7 +416,7 @@ function SimProgressBar({ current, total, label }) {
       </div>
       <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
         <div
-          className={`h-full bg-${THEME_COLOR}-500 transition-all duration-300`}
+          className={`h-full bg-accent-500 transition-all duration-300`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -615,7 +614,7 @@ export function SeasonResultsPanel({ result }) {
                   <td className={`px-3 py-2 text-center font-bold ${game.won ? 'text-green-400' : 'text-red-400'}`}>
                     {game.won ? 'W' : 'L'}
                   </td>
-                  <td className={`px-3 py-2 text-center text-[10px] ${game.simulated ? `text-${THEME_COLOR}-400` : 'text-slate-600'}`}>
+                  <td className={`px-3 py-2 text-center text-[10px] ${game.simulated ? `text-accent-400` : 'text-slate-600'}`}>
                     {game.simulated ? 'SIM' : 'ACT'}
                   </td>
                 </tr>
