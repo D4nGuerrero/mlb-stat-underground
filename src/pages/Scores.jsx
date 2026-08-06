@@ -1007,13 +1007,16 @@ export default function Scores() {
     const games = gamesMap[dateKey];
     const sortedGames = sortGames(games ?? []);
 
+    // Tall enough for day-swipe on sparse days only — not applied to full game lists.
+    const sparseDayClass = 'min-h-[min(55dvh,28rem)]';
+
     if (!hasLoaded) {
       if (!isActive && !isAdjacent) {
-        return <div className="min-h-full" aria-hidden />;
+        return <div className="min-h-[1px]" aria-hidden />;
       }
       if (hasLoadError) {
         return (
-          <div className="min-h-full flex flex-col justify-center border border-dashed border-red-500/40 rounded-3xl p-8 text-center">
+          <div className={`${sparseDayClass} flex flex-col justify-center border border-dashed border-red-500/40 rounded-3xl p-8 text-center`}>
             <div className="text-sm font-bold text-red-200">Could not refresh games.</div>
             <div className="mt-1 text-xs text-slate-500">Your connection may still be waking up. Try again in a second.</div>
             <button
@@ -1027,7 +1030,7 @@ export default function Scores() {
         );
       }
       return (
-        <div className="min-h-full flex items-center justify-center">
+        <div className={`${sparseDayClass} flex items-center justify-center`}>
           <LoadingSpinner size="lg" py="py-12" />
         </div>
       );
@@ -1035,7 +1038,7 @@ export default function Scores() {
 
     if (!games?.length) {
       return (
-        <div className="min-h-full flex items-center justify-center border border-dashed border-slate-700 rounded-3xl p-12 text-center text-slate-500">
+        <div className={`${sparseDayClass} flex items-center justify-center border border-dashed border-slate-700 rounded-3xl p-12 text-center text-slate-500`}>
           No games scheduled for this date.
         </div>
       );
@@ -1644,8 +1647,6 @@ export default function Scores() {
             onScrollIndexChange={handleCarouselScroll}
             hideUntilReady
             autoHeight
-            // Keep a full drag surface on light/empty days so left/right swipe still works
-            minHeight="fill"
             reinitDeps={`${viewMode}-${scoreboardLeague}`}
             scrollDuration={32}
             slideGap={20}
@@ -1659,10 +1660,10 @@ export default function Scores() {
               const isActive = nearest === 0;
               const isAdjacent = nearest === 1 || nearest === 2;
               return (
-                <div key={getDateStr(date)} className="w-full min-h-full">
+                <div key={getDateStr(date)} className="w-full">
                   {shouldRenderSlide(i)
                     ? renderGamesForDate(date, { isActive, isAdjacent })
-                    : <div className="min-h-full" aria-hidden />}
+                    : <div className="min-h-[1px]" aria-hidden />}
                 </div>
               );
             })}

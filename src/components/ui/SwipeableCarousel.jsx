@@ -14,13 +14,6 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     showDots = false,
     hideUntilReady = false,
     autoHeight = false,
-    /**
-     * Minimum drag area height when autoHeight is on.
-     * - number: px
-     * - 'fill': grow to remaining viewport under the carousel (keeps swipe working on empty days)
-     * - CSS string: e.g. '50vh'
-     */
-    minHeight = 0,
     reinitDeps,
     slideGap = 16,
     scrollDuration = 32,
@@ -41,46 +34,14 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     duration: scrollDuration,
   });
 
-  const resolveMinHeightPx = useCallback((viewport) => {
-    if (!minHeight) return 0;
-    if (typeof minHeight === 'number') return Math.max(0, minHeight);
-    if (minHeight === 'fill' && viewport) {
-      const top = viewport.getBoundingClientRect().top;
-      // Leave a little room for bottom padding / home indicator
-      return Math.max(0, Math.round(window.innerHeight - top - 12));
-    }
-    if (typeof minHeight === 'string' && minHeight.endsWith('vh')) {
-      const vh = Number.parseFloat(minHeight);
-      if (Number.isFinite(vh)) return Math.round((window.innerHeight * vh) / 100);
-    }
-    if (typeof minHeight === 'string' && minHeight.endsWith('px')) {
-      const px = Number.parseFloat(minHeight);
-      if (Number.isFinite(px)) return Math.round(px);
-    }
-    return 0;
-  }, [minHeight]);
-
   const syncAutoHeight = useCallback(() => {
     if (!autoHeight || !emblaApi) return;
     const container = emblaApi.containerNode();
-    const viewport = emblaApi.rootNode();
     const slide = emblaApi.slideNodes()[emblaApi.selectedScrollSnap()];
-    if (!container || !slide || !viewport) return;
-
-    const minH = resolveMinHeightPx(viewport);
-    const contentH = slide.scrollHeight || slide.offsetHeight;
-    const h = Math.max(contentH, minH);
-
-    container.style.height = `${h}px`;
-    viewport.style.minHeight = minH > 0 ? `${minH}px` : '';
-
-    // Stretch each slide so empty space is still part of the drag surface
-    if (minH > 0) {
-      emblaApi.slideNodes().forEach((node) => {
-        node.style.minHeight = `${minH}px`;
-      });
-    }
-  }, [autoHeight, emblaApi, resolveMinHeightPx]);
+    if (!container || !slide) return;
+    // Natural content height only — no viewport padding (avoids dead space on busy days).
+    container.style.height = `${slide.offsetHeight}px`;
+  }, [autoHeight, emblaApi]);
 
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
@@ -218,13 +179,11 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
     const observer = new ResizeObserver(measure);
     observer.observe(selectedSlide);
     observer.observe(container);
-    window.addEventListener('resize', measure);
     measure();
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener('resize', measure);
     };
   }, [autoHeight, emblaApi, selectedIndex, slideCount, syncAutoHeight]);
 
@@ -238,16 +197,14 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
         ref={emblaRef}
       >
         <div
-          className={`flex ml-[calc(var(--slide-spacing)*-1)] ${autoHeight ? 'items-stretch' : ''}`}
+          className={`flex ml-[calc(var(--slide-spacing)*-1)] ${autoHeight ? 'items-start' : ''}`}
         >
           {slides.map((slide, i) => (
             <div
               key={slide?.key ?? i}
-              className={`flex-[0_0_100%] min-w-0 pl-[var(--slide-spacing)] ${autoHeight ? 'h-auto' : ''} ${slideClassName}`}
+              className={`flex-[0_0_100%] min-w-0 pl-[var(--slide-spacing)] ${slideClassName}`}
             >
-              <div className={autoHeight && minHeight ? 'min-h-full h-full' : undefined}>
-                {slide}
-              </div>
+              {slide}
             </div>
           ))}
         </div>
@@ -290,7 +247,7 @@ const SwipeableCarousel = forwardRef(function SwipeableCarousel(
               className={({ checked }) =>
                 [
                   'w-2 h-2 rounded-full transition-all',
-                  checked ? `bg-accent-400 scale-125` : 'bg-slate-600 hover:bg-slate-500',
+                  checked ? 'bg-accent-400 scale-125' : 'bg-slate-600 hover:bg-slate-500',
                 ].join(' ')
               }
             />
