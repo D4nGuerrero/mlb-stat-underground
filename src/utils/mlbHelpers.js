@@ -87,7 +87,50 @@ export function playerHeroBackgroundClass(playerId) {
   return PLAYER_PROFILE_OVERRIDES[Number(playerId)]?.heroBgClass ?? 'bg-[right_-8rem_top_0rem]';
 }
 
-/** Resolve a 3-letter team abbreviation from a team object or team id. */
+/**
+ * Compact abbreviation for table cells when the API omits `abbreviation`
+ * (common on minor-league game-log opponents: only `{ id, name }`).
+ * Always prefer at least 3 letters (e.g. TOL, RIC, JAX) over long nicknames.
+ */
+function deriveCompactTeamAbbr(team) {
+  const lettersOnly = (value) => String(value ?? '').replace(/[^a-zA-Z]/g, '');
+  const toMin3 = (value) => {
+    const clean = lettersOnly(value).toUpperCase();
+    if (clean.length >= 3) return clean.slice(0, 3);
+    return clean.length ? clean : null;
+  };
+
+  const explicit = team?.abbreviation || (team?.teamCode ? String(team.teamCode).toUpperCase() : null);
+  if (explicit) {
+    const fromExplicit = toMin3(explicit);
+    // Official codes like "NYY" / "TOL" — use as-is when already ≥3 letters.
+    if (fromExplicit && fromExplicit.length >= 3) return fromExplicit;
+    // Rare 1–2 letter codes: pad from full name so OPP never shows "ST" alone.
+  }
+
+  // Prefer city/location first word, then pull more letters from the full name if needed.
+  const fullName = String(team?.name ?? '').trim();
+  const loc =
+    team?.locationName
+    || team?.shortName
+    || fullName.split(/\s+/)[0]
+    || '';
+
+  let source = lettersOnly(loc) + lettersOnly(fullName.slice(loc.length));
+  // "St. Louis…" etc. — first token is too short; use whole name.
+  if (lettersOnly(loc).length < 3) {
+    source = lettersOnly(fullName) || lettersOnly(team?.clubName) || lettersOnly(team?.teamName);
+  }
+
+  const compact = toMin3(source);
+  if (compact && compact.length >= 3) return compact;
+
+  // Last resort: official short code even if <3, or whatever letters we have.
+  if (explicit) return String(explicit).toUpperCase();
+  return compact;
+}
+
+/** Resolve a short team abbreviation from a team object or team id. */
 export function getTeamAbbr(teamOrId) {
   if (teamOrId == null) return '—';
   if (typeof teamOrId === 'number') return TEAM_ABBR_BY_ID[teamOrId] ?? '—';
@@ -95,8 +138,10 @@ export function getTeamAbbr(teamOrId) {
     return TEAM_ABBR_BY_ID[Number(teamOrId)] ?? '—';
   }
   const team = teamOrId;
-  if (!team?.id) return team?.abbreviation ?? '—';
-  return TEAM_ABBR_BY_ID[team.id] ?? team.abbreviation ?? team.name?.split(' ').pop() ?? '—';
+  if (team?.id != null && TEAM_ABBR_BY_ID[team.id]) {
+    return TEAM_ABBR_BY_ID[team.id];
+  }
+  return deriveCompactTeamAbbr(team) ?? '—';
 }
 
 export function compactPlayerName(personOrName, fallback = '—') {

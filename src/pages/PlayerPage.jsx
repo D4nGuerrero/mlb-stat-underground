@@ -1266,11 +1266,12 @@ function formatCell(value, format, row) {
     if (abbr === '—') return '—';
     const teamId = row.opponent?.id;
     const prefix = row.isHome ? 'vs' : '@';
+    const fullName = row.opponent?.name ?? row.opponent?.teamName ?? abbr;
     return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap">
-        <span className="text-slate-400">{prefix}</span>
-        <TeamLogoImg teamId={teamId} className="w-5 h-5 object-contain flex-shrink-0" alt={abbr} />
-        <span className="font-medium">{abbr}</span>
+      <span className="inline-flex items-center gap-0.5 whitespace-nowrap" title={`${prefix} ${fullName}`}>
+        <span className="text-slate-400 flex-shrink-0">{prefix}</span>
+        <TeamLogoImg teamId={teamId} className="w-4 h-4 object-contain flex-shrink-0" alt={abbr} />
+        <span className="font-medium text-[11px] tabular-nums flex-shrink-0 tracking-wide">{abbr}</span>
       </span>
     );
   }
@@ -2272,7 +2273,8 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
 
   const gameLogDateWidth = 'w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem]';
   const gameLogAfterDateLeft = 'left-[3.25rem]';
-  const gameLogOppWidth = 'w-[4.75rem] min-w-[4.75rem] max-w-[4.75rem]';
+  // Room for "@" + logo + 3–4 letter abbr (e.g. @ TEX) without ellipsis.
+  const gameLogOppWidth = 'w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem]';
   const dateStickyHead = scrollStickyDateHead('bg-[#121827]', {
     stickTop: true,
     widthClass: gameLogDateWidth,
