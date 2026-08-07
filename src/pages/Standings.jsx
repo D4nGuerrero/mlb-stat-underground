@@ -484,16 +484,16 @@ export default function Standings() {
     const active = sortCol === col;
     return (
       <th
-        className={`${statHead(`cursor-pointer select-none hover:text-slate-300 transition-colors ${active ? `text-accent-400` : ''}`)} ${className}`}
+        className={`${statHead(`cursor-pointer select-none hover:text-slate-300 transition-colors ${active ? 'text-accent-400' : 'text-slate-500'}`)} ${className}`}
         onClick={() => handleSort(col)}
       >
-        {label}{active ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+        {label}{active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
       </th>
     );
   };
 
   const renderTeamCell = (team) => (
-    <td className={stickyTeamCell('bg-slate-900')}>
+    <td className={stickyTeamCell('bg-slate-900', { shadow: false })}>
       <button
         type="button"
         className="text-left hover:opacity-90 transition-opacity"
@@ -504,12 +504,12 @@ export default function Standings() {
           teamId={team.teamId}
           teamName={team.teamName}
           hidePlaceholderAbbr={selectedLeague.value !== 'mlb'}
-          size="xxl"
-          abbrClassName="text-[10px] font-medium"
-          nameClassName="text-[20px] font-medium"
+          size="lg"
+          abbrClassName="text-[11px] font-semibold"
+          nameClassName="text-sm font-semibold"
         />
         {(team.clinched || team.divisionChamp) && (
-          <span className={`hidden sm:block text-[10px] text-accent-400 font-semibold mt-0.5`}>
+          <span className="hidden sm:block text-[10px] text-accent-400 font-semibold mt-0.5">
             {team.divisionChamp ? 'y – Division' : 'x – Postseason'}
           </span>
         )}
@@ -592,9 +592,9 @@ export default function Standings() {
     const columns = COLUMN_SETS[activeTab] ?? COLUMN_SETS.standings;
     const tableMinWidthClass = activeTab === 'expanded' ? 'min-w-[760px] sm:min-w-[980px]' : '';
     return (
-      <div key={title} className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden px-3">
-        <div className="px-5 sm:px-6 py-3 border-b border-slate-800">
-          <h2 className="font-semibold text-base sm:text-lg">
+      <div key={title} className="bg-slate-900 border border-slate-800/80 rounded-2xl overflow-hidden">
+        <div className="px-4 sm:px-5 py-2.5 border-b border-slate-800/80">
+          <h2 className="font-semibold text-sm sm:text-base text-slate-200">
             <LeagueTitle title={title} />
           </h2>
         </div>
@@ -607,8 +607,8 @@ export default function Standings() {
               ))}
             </colgroup>
             <thead>
-              <tr className="text-xs text-slate-500 border-b border-slate-800">
-                <th className={`${stickyTeamHead('bg-slate-900')} font-medium`}>
+              <tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800/80">
+                <th className={`${stickyTeamHead('bg-slate-900', { shadow: false })} font-semibold text-slate-500`}>
                   Team
                 </th>
                 {columns.map((col) => (
@@ -620,13 +620,16 @@ export default function Standings() {
               {teams.map((team, i) => (
                 <tr
                   key={team.teamId}
-                  className={`group border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors ${i === 0 && highlightLeader ? `bg-accent-500/[0.04]` : ''}`}
+                  className={[
+                    'group border-b border-slate-800/30 last:border-b-0 transition-colors hover:bg-slate-800/25',
+                    i === 0 && highlightLeader ? 'bg-accent-500/[0.05]' : '',
+                  ].join(' ')}
                 >
                   {renderTeamCell(team)}
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`${statCell()} ${col.className ?? ''}`}
+                      className={`${statCell('text-slate-300')} ${col.className ?? ''}`}
                     >
                       {renderCell(team, col)}
                     </td>
