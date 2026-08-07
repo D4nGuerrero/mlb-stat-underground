@@ -1310,16 +1310,35 @@ export default function StatsApp() {
   const impactBaseballPercent = Math.min(98, Math.max(2, impactProgressPercent));
   const isHotColdTeamView = isHotColdTeamScope(hotColdScope);
   const hotColdSelectedScope = HOT_COLD_SCOPE_OPTIONS.find((option) => option.value === hotColdScope);
+  const { isDark, isBottomNav, hideTopBar } = useTheme();
+  // When top chrome is gone (bottom tabs + hide top bar), add safe top padding on mobile.
+  const topBarHidden = isBottomNav && hideTopBar;
 
   return (
-    <div className="max-w-5xl mx-auto sm:px-6 py-0 sm:py-8">
-      <div className="mb-0 px-4 sm:px-0">
-        <div className={`text-accent-400 text-xs font-mono tracking-[3px] m-4 uppercase`}>Player Stats</div>
-        <h1 className="font-display py-3 text-4xl sm:text-5xl tracking-tighter">Stats Center</h1>
-      </div>
+    <div
+      className={[
+        'max-w-5xl mx-auto sm:px-6',
+        topBarHidden ? 'pt-4 sm:pt-8' : 'pt-3 sm:pt-8',
+        'pb-6 sm:pb-8',
+      ].join(' ')}
+    >
+      <header className="px-4 sm:px-0 mb-4 sm:mb-5">
+        <div className="text-accent-400 text-[10px] sm:text-xs font-mono tracking-[0.2em] uppercase mb-1">
+          Player Stats
+        </div>
+        <h1
+          className={[
+            'font-display text-3xl sm:text-5xl tracking-tighter leading-none',
+            isDark ? 'text-white' : 'text-slate-900',
+          ].join(' ')}
+        >
+          Stats Center
+        </h1>
+      </header>
 
       <TabBar
-        className="mb-4"
+        className="mb-4 sm:mb-5"
+        listClassName="px-4 sm:px-0"
         variant="page"
         tabClassName="font-semibold"
         tabs={[
@@ -1331,7 +1350,7 @@ export default function StatsApp() {
         onChange={handleTabChange}
       />
 
-      <div className="px-4 sm:px-0 pb-6 sm:pb-0">
+      <div className="px-4 sm:px-0">
       {/* PLAYER SEARCH TAB */}
       {activeTab === 'search' && (
         <div className="space-y-6">
