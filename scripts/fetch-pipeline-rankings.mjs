@@ -27,7 +27,13 @@ const QUERY = `
       playerEntity {
         eta
         position
+        heroImage: formattedThumbnail(aspectRatio: "16:9", width: 640)
         playerPhotoCustomUrl
+        signed
+        prospectBio {
+          contentTitle
+          contentText
+        }
         player {
           id
           fullName

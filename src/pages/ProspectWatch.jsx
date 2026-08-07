@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Ban,
   ChevronLeft,
@@ -33,6 +33,25 @@ const MINOR_SPORT_IDS = new Set([11, 12, 13, 14, 16]);
 // Same-origin Vite proxy (dev/preview). Direct data-graph.mlb.com is CORS-blocked in browsers.
 const DATA_GRAPH_PROXY_URL = '/mlb-data-graph';
 const PIPELINE_RANKINGS_SNAPSHOT_URL = `${import.meta.env.BASE_URL}data/pipeline-rankings.json`;
+const PROSPECT_PREVIEW_SEARCH_PARAM = 'prospect';
+const SIGNING_TYPE_CODES = new Set(['SFA', 'SGN']);
+const ORG_CITY_PREFIX_RE =
+  /^(Arizona|Atlanta|Baltimore|Boston|Chicago|Cincinnati|Cleveland|Colorado|Detroit|Houston|Kansas City|Los Angeles|Miami|Milwaukee|Minnesota|New York|Sacramento|Philadelphia|Pittsburgh|San Diego|San Francisco|Seattle|St\. Louis|Tampa Bay|Texas|Toronto|Washington)\s+/;
+const PROSPECT_HERO_GRAPH_KEY = 'formattedThumbnail({"aspectRatio":"16:9","width":640})';
+const HTML_ENTITIES = {
+  amp: '&',
+  apos: "'",
+  gt: '>',
+  hellip: '...',
+  laquo: '\u00ab',
+  lsquo: "'",
+  mdash: '-',
+  nbsp: ' ',
+  ndash: '-',
+  quot: '"',
+  raquo: '\u00bb',
+  rsquo: "'",
+};
 /** MLB Pipeline team nicknames used in ranking selection slugs (sel-pr-{year}-{slug}). */
 const PIPELINE_TEAM_SLUGS = {
   108: 'angels',
@@ -71,6 +90,12 @@ const PAGE_TABS = [
   { id: 'rankings', label: 'Rankings', icon: ListOrdered },
   { id: 'table', label: 'Table', icon: null },
   { id: 'favorites', label: 'Favorites', icon: Star },
+];
+const PROSPECT_PREVIEW_TABS = [
+  { id: 'bio', label: 'Bio' },
+  { id: 'stats', label: 'Stats' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'links', label: 'Links' },
 ];
 const LEVEL_ORDER = {
   11: 1,
@@ -160,6 +185,216 @@ function prettyDate(isoDate) {
   }).format(new Date(`${isoDate}T12:00:00`));
 }
 
+function formatMonthDayYear(isoDate, month = '2-digit') {
+  if (!isoDate) return '—';
+  const date = new Date(`${String(isoDate).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-US', {
+    month,
+    day: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}
+
+function formatWeight(value) {
+  if (value == null || value === '' || value === '—') return '—';
+  return String(value).includes('lb') ? String(value) : `${value}`;
+}
+
+function orgFromId(teamId) {
+  const id = Number(teamId);
+  if (!id) return null;
+  return mlbTeams.find((team) => Number(team.id) === id) ?? null;
+}
+
+function parentOrgForPlayer(player) {
+  return (
+    orgFromId(player?.affiliate?.parentOrgId) ??
+    orgFromId(player?.currentTeam?.parentOrgId) ??
+    orgFromId(player?.signingTransaction?.toTeam?.id)
+  );
+}
+
+function orgNickname(org) {
+  return String(org?.name ?? '')
+    .replace(ORG_CITY_PREFIX_RE, '')
+    || org?.name
+    || 'Org';
+}
+
+function shortCountryLabel(country) {
+  if (!country) return null;
+  const mapped = {
+    'Dominican Republic': 'DOM',
+    'Republic of Korea': 'ROK',
+    'United States': 'USA',
+  }[country];
+  return mapped ?? country;
+}
+
+function findSigningTransaction(transactions = []) {
+  return [...transactions]
+    .filter((txn) => (
+      SIGNING_TYPE_CODES.has(txn?.typeCode) ||
+      /signed/i.test(`${txn?.typeDesc ?? ''} ${txn?.description ?? ''}`)
+    ))
+    .sort((a, b) => String(a?.date ?? '').localeCompare(String(b?.date ?? '')))[0] ?? null;
+}
+
+function formatSigningLabel(player) {
+  if (player?.signed) return player.signed;
+  const signing = player?.signingTransaction ?? findSigningTransaction(player?.transactions);
+  if (!signing) return player?.signed ?? '—';
+  const org = orgFromId(signing.toTeam?.id) ?? parentOrgForPlayer(player);
+  const date = formatMonthDayYear(signing.date, 'long');
+  return [date, org?.abbr].filter((part) => part && part !== '—').join(' - ') || '—';
+}
+
+function prospectNameSlug(name, id) {
+  const slugName = String(name || 'player')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slugName}-${id}`;
+}
+
+function officialPipelinePlayerUrl(player) {
+  const org = parentOrgForPlayer(player);
+  const slug = pipelineSlugForOrg(org?.id);
+  const nameSlug = player?.nameSlug ?? prospectNameSlug(player?.name, player?.id);
+  return slug && player?.id
+    ? `https://www.mlb.com/milb/prospects/${slug}/${nameSlug}`
+    : officialPipelineUrl(org?.id);
+}
+
+function isGenericProspectPhoto(url = '') {
+  return /generic:headshot|headshot\/silo|\/silo\//i.test(String(url));
+}
+
+function prospectHeroImageUrl(player) {
+  if (player?.heroImageUrl && !isGenericProspectPhoto(player.heroImageUrl)) return player.heroImageUrl;
+  if (player?.photoUrl && !isGenericProspectPhoto(player.photoUrl)) return player.photoUrl;
+  return player?.photoUrl || prospectHeadshotUrl(player?.id);
+}
+
+function attachProspectHeroFallback(event, player) {
+  const img = event.currentTarget;
+  if (!img.dataset.fallbackStage) {
+    img.dataset.fallbackStage = 'headshot';
+    img.src = prospectHeadshotUrl(player?.id);
+    return;
+  }
+  attachHeadshotFallback(event, player?.id);
+}
+
+function hasStatData(stat = {}) {
+  return Object.values(stat ?? {}).some((value) => value != null && value !== '' && value !== '—');
+}
+
+function decodeHtmlEntities(text = '') {
+  return String(text).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity) => {
+    const normalized = entity.toLowerCase();
+    if (normalized.startsWith('#x')) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    if (normalized.startsWith('#')) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    return HTML_ENTITIES[normalized] ?? match;
+  });
+}
+
+function htmlToPlainText(html = '') {
+  return decodeHtmlEntities(
+    String(html)
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<[^>]+>/g, ''),
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function prospectBioParagraphs(contentText = '') {
+  const html = String(contentText ?? '');
+  const matches = [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)];
+  const chunks = matches.length ? matches.map((match) => match[1]) : [html];
+  return chunks
+    .map(htmlToPlainText)
+    .filter((text) => text && !/^Video scouting report/i.test(text));
+}
+
+function parseProspectBioEntry(entry) {
+  const grades = [];
+  const story = [];
+
+  prospectBioParagraphs(entry?.contentText).forEach((paragraph) => {
+    const scoutingMatch = paragraph.match(/^Scouting grades:\s*(.+)$/i);
+    if (scoutingMatch) {
+      grades.push(scoutingMatch[1].trim());
+      return;
+    }
+    story.push(paragraph);
+  });
+
+  return {
+    year: entry?.contentTitle ?? null,
+    grades,
+    story,
+  };
+}
+
+function currentProspectBio(prospectBio = []) {
+  const source = Array.isArray(prospectBio) ? prospectBio : [];
+  const entries = source
+    .map(parseProspectBioEntry)
+    .filter((entry) => entry.grades.length || entry.story.length);
+
+  if (!entries.length) return { year: null, grades: [], story: [] };
+
+  return (
+    entries.find((entry) => String(entry.year) === String(CURRENT_SEASON)) ??
+    [...entries].sort((a, b) => {
+      const ay = Number(a.year);
+      const by = Number(b.year);
+      return (Number.isFinite(by) ? by : -Infinity) - (Number.isFinite(ay) ? ay : -Infinity);
+    })[0] ??
+    entries[entries.length - 1]
+  );
+}
+
+function mergeProspectPlayer(base, enriched) {
+  if (!base) return enriched;
+  if (!enriched) return base;
+  const baseHasStat = hasStatData(base.stat);
+  const baseHasSeason = hasStatData(base.season);
+  const useBasePerformance = baseHasStat || baseHasSeason;
+  const mergedTags = useBasePerformance && enriched.kind && enriched.kind !== base.kind
+    ? base.tags ?? []
+    : [...new Set([...(base.tags ?? []), ...(enriched.tags ?? [])])];
+  return {
+    ...base,
+    ...enriched,
+    affiliate: base.affiliate ?? enriched.affiliate,
+    kind: useBasePerformance ? base.kind : enriched.kind ?? base.kind,
+    mode: useBasePerformance ? base.mode : enriched.mode ?? base.mode,
+    stat: baseHasStat ? base.stat : enriched.stat,
+    season: baseHasSeason ? base.season : enriched.season,
+    summary: base.summary && base.summary !== 'No stat line for this lens'
+      ? base.summary
+      : enriched.summary,
+    heroImageUrl: enriched.heroImageUrl ?? base.heroImageUrl,
+    signed: enriched.signed ?? base.signed,
+    prospectBio: enriched.prospectBio?.length ? enriched.prospectBio : base.prospectBio,
+    rankingType: enriched.rankingType ?? base.rankingType,
+    score: base.score ?? enriched.score,
+    tags: mergedTags,
+  };
+}
+
 function initialOrgId() {
   try {
     const favoriteTeams = JSON.parse(localStorage.getItem('mlbFavoriteTeams') ?? '[]');
@@ -190,6 +425,24 @@ function watchedEntryFromPlayer(player) {
     id: player.id,
     name: player.name,
     boxscoreName: player.boxscoreName ?? player.name,
+    rank: player.rank ?? null,
+    overallRank: player.overallRank ?? null,
+    position: player.position,
+    eta: player.eta,
+    age: player.age,
+    birthDate: player.birthDate,
+    birthCountry: player.birthCountry,
+    height: player.height,
+    weight: player.weight,
+    bats: player.bats,
+    throws: player.throws,
+    photoUrl: player.photoUrl,
+    heroImageUrl: player.heroImageUrl,
+    nameSlug: player.nameSlug,
+    signed: player.signed,
+    signingTransaction: player.signingTransaction,
+    prospectBio: player.prospectBio,
+    rankingType: player.rankingType,
     affiliate: {
       id: player.affiliate?.id,
       name: player.affiliate?.name,
@@ -584,7 +837,13 @@ async function fetchPipelineRankingsFromGraph(selectionSlug, limit = 30) {
         playerEntity {
           eta
           position
+          heroImage: formattedThumbnail(aspectRatio: "16:9", width: 640)
           playerPhotoCustomUrl
+          signed
+          prospectBio {
+            contentTitle
+            contentText
+          }
           player {
             id
             fullName
@@ -653,7 +912,7 @@ async function enrichRankedPeople(rankedRows) {
   }
 
   const peopleRes = await fetch(
-    `https://statsapi.mlb.com/api/v1/people?personIds=${ids.join(',')}&hydrate=currentTeam`,
+    `https://statsapi.mlb.com/api/v1/people?personIds=${ids.join(',')}&hydrate=currentTeam,transactions`,
   );
   const peopleData = await peopleRes.json();
   const peopleById = new Map(
@@ -695,7 +954,7 @@ async function enrichRankedPeople(rankedRows) {
   return { peopleById, teamSportById };
 }
 
-function mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById) {
+function mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById, rankingType = 'team') {
   const entity = row?.playerEntity ?? {};
   const graphPlayer = entity.player ?? {};
   const id = Number(graphPlayer.id);
@@ -714,16 +973,25 @@ function mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById) 
     id,
     rank: Number(row.rank) || null,
     overallRank: overallRankById.get(id) ?? null,
+    rankingType,
     name: person?.fullName ?? graphPlayer.fullName ?? 'Unknown',
     boxscoreName: person?.boxscoreName ?? graphPlayer.fullName,
     position,
     eta: entity.eta ?? '—',
     age: person?.currentAge ?? graphPlayer.currentAge ?? '—',
+    birthDate: person?.birthDate ?? graphPlayer.birthDate ?? null,
+    birthCountry: person?.birthCountry ?? null,
     height: person?.height ?? graphPlayer.height ?? '—',
     weight: person?.weight ?? graphPlayer.weight ?? '—',
     bats: person?.batSide?.code ?? '—',
     throws: person?.pitchHand?.code ?? '—',
     photoUrl: entity.playerPhotoCustomUrl || prospectHeadshotUrl(id),
+    heroImageUrl: entity.heroImage ?? entity[PROSPECT_HERO_GRAPH_KEY] ?? null,
+    nameSlug: person?.nameSlug ?? prospectNameSlug(person?.fullName ?? graphPlayer.fullName, id),
+    primaryNumber: person?.primaryNumber ?? null,
+    signed: entity.signed ?? null,
+    signingTransaction: findSigningTransaction(person?.transactions),
+    prospectBio: entity.prospectBio ?? [],
     kind: isPitcher ? 'pitching' : 'batting',
     mode: 'ranking',
     summary: entity.eta ? `ETA ${entity.eta}` : 'Pipeline ranking',
@@ -761,7 +1029,7 @@ async function loadOfficialOrgRankings(orgId) {
     );
     const { peopleById, teamSportById } = await enrichRankedPeople(top100Rows);
     return top100Rows.map((row) =>
-      mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById),
+      mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById, 'top100'),
     );
   }
 
@@ -782,7 +1050,7 @@ async function loadOfficialOrgRankings(orgId) {
   );
 
   const { peopleById, teamSportById } = await enrichRankedPeople(teamRows);
-  return teamRows.map((row) => mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById));
+  return teamRows.map((row) => mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById, 'team'));
 }
 
 function AffiliateLogo({ team, className = 'w-16 h-16' }) {
@@ -1428,90 +1696,307 @@ function recentLabel(player) {
   return player.summary || statLabel(player);
 }
 
+function prospectPreviewLevel(player) {
+  const sportId = player?.affiliate?.sport?.id ?? player?.affiliate?.sportId;
+  return LEVEL_SHORT[sportId] ?? playerAffiliationLabel(player) ?? 'MiLB';
+}
+
+function prospectPreviewSubtitle(player) {
+  return [
+    player?.position,
+    player?.affiliate?.name,
+    shortCountryLabel(player?.birthCountry),
+  ].filter(Boolean).join(', ');
+}
+
+function prospectRankContext(player) {
+  const org = parentOrgForPlayer(player);
+  if (player?.rankingType === 'top100' || (!player?.rank && player?.overallRank)) {
+    return 'MLB Top 100';
+  }
+  if (player?.rank) {
+    return org ? `${orgNickname(org)} Top 30` : 'Team Top 30';
+  }
+  if (org?.abbr) return `${org.abbr} Org`;
+  return player?.affiliate?.name ?? null;
+}
+
+function prospectDisplayRank(player) {
+  if (player?.rankingType === 'top100') return player.overallRank ?? player.rank;
+  return player?.rank ?? player?.overallRank ?? null;
+}
+
+function prospectStatTiles(player) {
+  const stat = player?.season ?? player?.stat ?? {};
+  if (player?.kind === 'pitching') {
+    return [
+      { label: 'IP', value: cleanNumber(stat.inningsPitched) },
+      { label: 'ERA', value: cleanNumber(stat.era) },
+      { label: 'WHIP', value: cleanNumber(stat.whip) },
+      { label: 'K', value: cleanNumber(stat.strikeOuts, 0) },
+      { label: 'BB', value: cleanNumber(stat.baseOnBalls, 0) },
+      { label: 'K/9', value: cleanNumber(stat.strikeoutsPer9Inn) },
+    ];
+  }
+
+  return [
+    { label: 'PA', value: cleanNumber(hitterPlateAppearances(stat), 0) },
+    { label: 'AVG', value: formatSlashRate(stat.avg) },
+    { label: 'OBP', value: formatSlashRate(stat.obp) },
+    { label: 'SLG', value: formatSlashRate(stat.slg) },
+    { label: 'OPS', value: formatSlashRate(stat.ops) },
+    { label: 'HR', value: cleanNumber(stat.homeRuns, 0) },
+  ];
+}
+
+function ProspectBioPanel({ player }) {
+  const profileBio = currentProspectBio(player.prospectBio);
+  const bioRows = [
+    { label: 'AGE', value: player.age ?? '—' },
+    { label: 'BATS', value: player.bats ?? '—' },
+    { label: 'DOB', value: formatMonthDayYear(player.birthDate) },
+    { label: 'THROWS', value: player.throws ?? '—' },
+    { label: 'HT', value: player.height ?? '—' },
+    { label: 'SIGNED', value: formatSigningLabel(player) },
+    { label: 'WT', value: formatWeight(player.weight) },
+    { label: 'ETA', value: player.eta ?? '—' },
+  ];
+  const rankNumber = prospectDisplayRank(player);
+  const snapshot = [
+    rankNumber ? `#${rankNumber} ${prospectRankContext(player)}` : null,
+    player.eta ? `ETA ${player.eta}` : null,
+    player.affiliate?.name ?? prospectPreviewLevel(player),
+  ].filter(Boolean).join(' | ');
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+        {bioRows.map((row) => (
+          <div key={row.label} className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase text-zinc-500">{row.label}</div>
+            <div className="mt-0.5 text-base font-semibold leading-snug text-zinc-100 [overflow-wrap:anywhere] sm:text-lg">
+              {row.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {profileBio.grades.length || profileBio.story.length ? (
+        <div className="mt-6 space-y-4 text-[15px] leading-7 text-zinc-100 [overflow-wrap:anywhere]">
+          {profileBio.grades.map((grade, index) => (
+            <p key={`grade-${index}`}>
+              <span className="font-black">Scouting grades:</span> {grade}
+            </p>
+          ))}
+          {profileBio.story.map((paragraph, index) => (
+            <p key={`story-${index}`}>{paragraph}</p>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-6 space-y-2 border-t border-zinc-700 pt-4 text-sm leading-6 text-zinc-300">
+        <p>
+          <span className="font-black text-zinc-100">Pipeline snapshot:</span>{' '}
+          {snapshot || recentLabel(player) || 'Profile data unavailable.'}
+        </p>
+        <p>
+          <span className="font-black text-zinc-100">Season line:</span>{' '}
+          {seasonStatSnippet(player) || statLabel(player)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ProspectStatsPanel({ player }) {
+  const tiles = prospectStatTiles(player);
+  const latestLine = player.summary || '—';
+  const seasonLine = seasonStatSnippet(player) || statLabel(player);
+
+  return (
+    <div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-zinc-700 bg-[#171717] p-3">
+          <div className="text-[11px] font-semibold uppercase text-zinc-500">Latest Line</div>
+          <div className="mt-1 text-base font-bold text-white">{latestLine}</div>
+        </div>
+        <div className="rounded-lg border border-zinc-700 bg-[#171717] p-3">
+          <div className="text-[11px] font-semibold uppercase text-zinc-500">Season</div>
+          <div className="mt-1 text-base font-bold text-white">{seasonLine}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {tiles.map((tile) => (
+          <div key={tile.label} className="rounded-lg border border-zinc-700 bg-[#171717] px-3 py-3 text-center">
+            <div className="text-[11px] font-semibold text-zinc-500">{tile.label}</div>
+            <div className="mt-1 text-lg font-black tabular-nums text-white">{tile.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {player.tags?.length ? (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {player.tags.map((tag) => <TagPill key={`${player.id}-${tag}`} tag={tag} />)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProspectNotesPanel({ note, onNoteChange }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase text-zinc-500">
+        <StickyNote size={13} />
+        Notes
+      </div>
+      <textarea
+        value={note}
+        onChange={(event) => onNoteChange?.(event.target.value)}
+        placeholder="Add your own note about this prospect..."
+        className="mt-3 w-full min-h-44 rounded-lg border border-zinc-700 bg-[#171717] px-3 py-3 text-base text-zinc-100 outline-none resize-y focus:border-sky-500/70"
+      />
+    </div>
+  );
+}
+
+function ProspectLinksPanel({ player }) {
+  return (
+    <div className="grid gap-3">
+      <Link
+        to={`/player/${player.id}`}
+        className="inline-flex items-center justify-center rounded-lg border border-sky-500/55 bg-sky-500 px-4 py-3 text-sm font-black text-white hover:bg-sky-400"
+      >
+        View Full Player Page
+      </Link>
+      <a
+        href={officialPipelinePlayerUrl(player)}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-600 bg-[#171717] px-4 py-3 text-sm font-black text-zinc-100 hover:border-sky-500/70 hover:text-sky-300"
+      >
+        Open MLB Pipeline
+        <ExternalLink size={15} />
+      </a>
+    </div>
+  );
+}
+
 function ProspectPreviewModal({ player, open, onClose, isWatched, onToggleWatch, note, onNoteChange }) {
+  const [activeTab, setActiveTab] = useState('bio');
+
   if (!player) return null;
   const watched = isWatched(player.id);
+  const heroImage = prospectHeroImageUrl(player);
+  const parentOrg = parentOrgForPlayer(player);
+  const rankNumber = prospectDisplayRank(player);
+  const subtitle = prospectPreviewSubtitle(player) || recentLabel(player);
+  const rankContext = prospectRankContext(player);
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      backDismiss
-      historyKey="prospectPreview"
       size="lg"
       align="bottom"
-      panelClassName="bg-[#0d1520] border-slate-700/70 max-h-[88vh] overflow-y-auto"
+      panelClassName="bg-[#202020] border-zinc-700 max-h-[92vh] overflow-y-auto sm:max-h-[88vh]"
     >
-      <div className="sm:hidden flex justify-center pt-3 pb-1 sticky top-0 bg-[#0d1520] z-10">
-        <div className="w-10 h-1 rounded-full bg-slate-600" />
-      </div>
-
-      <div className="relative overflow-hidden p-5 sm:p-6">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.15),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(251,146,60,0.12),transparent_36%)] pointer-events-none" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-4 top-4 z-10 rounded-full border border-slate-700 bg-slate-900/80 p-2 text-slate-400 hover:text-white"
-          aria-label="Close"
-        >
-          <X size={16} />
-        </button>
-
-        <div className="relative flex items-start gap-4 pr-10">
+      <div className="bg-[#202020] text-white">
+        <section className="relative h-[340px] overflow-hidden bg-zinc-900 sm:h-[390px]">
           <img
-            src={prospectHeadshotUrl(player.id)}
+            src={heroImage}
             alt=""
-            className="w-20 h-20 rounded-3xl object-cover bg-slate-800 border border-white/10 shadow-xl"
-            onError={(e) => attachHeadshotFallback(e, player.id)}
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={(event) => attachProspectHeroFallback(event, player)}
           />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-300">
-                {LEVEL_SHORT[player.affiliate?.sport?.id ?? player.affiliate?.sportId] ?? 'MiLB'}
-              </span>
-              <span className="text-xs text-slate-500">{player.affiliate?.name}</span>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/10 to-black/90" />
+          <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#202020] to-transparent" />
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-black/40 transition-colors hover:bg-black/25"
+            aria-label="Close"
+          >
+            <X size={27} strokeWidth={2.5} />
+          </button>
+
+          {rankNumber ? (
+            <div className="absolute right-5 top-4 z-10 text-6xl font-black leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)]">
+              {rankNumber}
             </div>
-            <h2 className="mt-2 text-2xl sm:text-3xl font-display tracking-tight text-white">{player.name}</h2>
-            <p className="mt-1 text-sm text-slate-400">{recentLabel(player)}</p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {player.tags?.map((tag) => <TagPill key={`${player.id}-${tag}`} tag={tag} />)}
+          ) : null}
+
+          <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-4 px-5 pb-6 sm:px-6">
+            <div className="min-w-0 max-w-[72%]">
+              <div className="mb-2 inline-flex rounded-full bg-black/45 px-3 py-1 text-[11px] font-black uppercase text-white backdrop-blur-sm">
+                {prospectPreviewLevel(player)}
+              </div>
+              <h2 className="text-4xl font-black leading-none text-white [overflow-wrap:anywhere] sm:text-5xl">
+                {player.name}
+              </h2>
+              <p className="mt-3 text-lg font-black leading-tight text-white [overflow-wrap:anywhere]">
+                {subtitle}
+              </p>
+            </div>
+
+            <div className="flex w-24 flex-shrink-0 flex-col items-center text-center">
+              {parentOrg?.id ? (
+                <img
+                  src={teamLogoUrl(parentOrg.id)}
+                  alt=""
+                  className="h-16 w-16 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                />
+              ) : null}
+              {rankContext ? (
+                <div className="mt-1 text-sm font-black leading-tight text-sky-400">
+                  {rankContext}
+                </div>
+              ) : null}
             </div>
           </div>
+        </section>
+
+        <nav className="grid grid-cols-4 border-b border-zinc-700" role="tablist" aria-label="Prospect preview sections">
+          {PROSPECT_PREVIEW_TABS.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(tab.id)}
+                className={[
+                  'border-r border-sky-500/60 px-2 py-4 text-center text-sm font-medium transition-colors last:border-r-0',
+                  active
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-[#202020] text-sky-400 hover:bg-[#252525] hover:text-sky-300',
+                ].join(' ')}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="px-5 pb-24 pt-5 sm:px-6">
+          {activeTab === 'bio' && <ProspectBioPanel player={player} />}
+          {activeTab === 'stats' && <ProspectStatsPanel player={player} />}
+          {activeTab === 'notes' && <ProspectNotesPanel note={note} onNoteChange={onNoteChange} />}
+          {activeTab === 'links' && <ProspectLinksPanel player={player} />}
         </div>
 
-        <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-700/70 bg-slate-950/55 p-3">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Latest Line</div>
-            <div className="mt-1 text-sm font-bold text-white">{player.summary || '—'}</div>
-          </div>
-          <div className="rounded-2xl border border-slate-700/70 bg-slate-950/55 p-3 sm:col-span-2">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Season</div>
-            <div className="mt-1 text-sm font-bold text-slate-200">{statLabel(player)}</div>
-          </div>
-        </div>
-
-        <div className="relative mt-5 rounded-2xl border border-slate-700/70 bg-slate-950/55 p-3">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500">
-            <StickyNote size={12} />
-            Notes
-          </div>
-          <textarea
-            value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
-            placeholder="Add your own note about this prospect..."
-            className="mt-2 w-full min-h-28 rounded-2xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 outline-none focus:border-emerald-500/40 resize-y"
-          />
-        </div>
-
-        <div className="relative mt-5 flex flex-col sm:flex-row gap-3">
+        <div className="sticky bottom-0 grid gap-2 border-t border-zinc-700 bg-[#202020]/95 p-3 backdrop-blur sm:grid-cols-2">
           <button
             type="button"
             onClick={() => onToggleWatch(player)}
             className={[
-              'inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition-colors',
+              'inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-black transition-colors',
               watched
-                ? 'border-yellow-400/40 bg-yellow-400/15 text-yellow-300 hover:bg-yellow-400/20'
-                : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-yellow-400/40 hover:text-yellow-300',
+                ? 'border-yellow-400/60 bg-yellow-400/20 text-yellow-200 hover:bg-yellow-400/25'
+                : 'border-zinc-600 bg-[#171717] text-zinc-100 hover:border-yellow-400/60 hover:text-yellow-200',
             ].join(' ')}
           >
             <Star size={16} fill={watched ? 'currentColor' : 'none'} />
@@ -1519,7 +2004,7 @@ function ProspectPreviewModal({ player, open, onClose, isWatched, onToggleWatch,
           </button>
           <Link
             to={`/player/${player.id}`}
-            className="inline-flex items-center justify-center rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/15"
+            className="inline-flex items-center justify-center rounded-lg border border-sky-500/55 bg-sky-500/15 px-4 py-3 text-sm font-black text-sky-300 hover:bg-sky-500/20"
           >
             View Full Player Page
           </Link>
@@ -1797,6 +2282,8 @@ function RankingsPage({
 }
 
 export default function ProspectWatch() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [orgId, setOrgId] = useState(initialOrgId);
   const [date, setDate] = useState(todayIso);
   const [levelFilter, setLevelFilter] = useState('all');
@@ -1820,6 +2307,10 @@ export default function ProspectWatch() {
   const selectedOrgLogo = allMlbSelected
     ? MLB_LEAGUE_LOGO
     : teamLogoUrl(selectedOrg?.id);
+  const previewPlayerId = useMemo(() => {
+    const id = Number(new URLSearchParams(location.search).get(PROSPECT_PREVIEW_SEARCH_PARAM));
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }, [location.search]);
 
   useEffect(() => {
     localStorage.setItem(PROSPECT_WATCHLIST_KEY, JSON.stringify(watchlist));
@@ -1830,12 +2321,12 @@ export default function ProspectWatch() {
   }, [notes]);
 
   useEffect(() => {
-    if (pageTab !== 'rankings') return undefined;
     let cancelled = false;
 
     async function loadRankings() {
       setRankingsLoading(true);
       setRankingsError(null);
+      setRankings([]);
       try {
         const rows = await loadOfficialOrgRankings(orgId);
         if (!cancelled) setRankings(rows);
@@ -1853,7 +2344,7 @@ export default function ProspectWatch() {
     return () => {
       cancelled = true;
     };
-  }, [orgId, pageTab]);
+  }, [orgId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1960,7 +2451,8 @@ export default function ProspectWatch() {
     const map = new Map();
     const register = (player) => {
       if (!player?.id) return;
-      map.set(Number(player.id), player);
+      const id = Number(player.id);
+      map.set(id, mergeProspectPlayer(map.get(id), player));
     };
 
     cards.forEach((card) => {
@@ -1972,9 +2464,56 @@ export default function ProspectWatch() {
         bucket.pitchers.forEach(register);
       });
     });
+    rankings.forEach(register);
 
     return map;
-  }, [cards]);
+  }, [cards, rankings]);
+
+  const selectProspectPlayer = (player) => {
+    const id = Number(player?.id);
+    if (!id) return;
+    setSelectedPlayer(mergeProspectPlayer(player, playerDirectory.get(id)));
+
+    const params = new URLSearchParams(location.search);
+    params.set(PROSPECT_PREVIEW_SEARCH_PARAM, String(id));
+    const nextSearch = params.toString();
+    const currentSearch = location.search.startsWith('?') ? location.search.slice(1) : location.search;
+    if (nextSearch !== currentSearch) {
+      navigate(
+        { pathname: location.pathname, search: `?${nextSearch}` },
+        { state: { prospectPreview: true } },
+      );
+    }
+  };
+
+  const closeProspectPreview = () => {
+    const params = new URLSearchParams(location.search);
+    if (params.has(PROSPECT_PREVIEW_SEARCH_PARAM)) {
+      if (location.state?.prospectPreview) {
+        navigate(-1);
+        return;
+      }
+
+      params.delete(PROSPECT_PREVIEW_SEARCH_PARAM);
+      const nextSearch = params.toString();
+      navigate(
+        { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : '' },
+        { replace: true },
+      );
+      return;
+    }
+
+    setSelectedPlayer(null);
+  };
+  const previewPlayer = useMemo(() => {
+    if (!previewPlayerId) return null;
+    const clickedPlayer = Number(selectedPlayer?.id) === previewPlayerId ? selectedPlayer : null;
+    const directoryPlayer = playerDirectory.get(previewPlayerId);
+    return mergeProspectPlayer(
+      clickedPlayer ?? directoryPlayer,
+      directoryPlayer,
+    );
+  }, [playerDirectory, previewPlayerId, selectedPlayer]);
 
   /** Always today's box-score standouts (not tied to form-mode filter). */
   const todayTopPerformances = useMemo(() => {
@@ -2059,7 +2598,7 @@ export default function ProspectWatch() {
     });
   };
 
-  const selectedNote = selectedPlayer ? notes[selectedPlayer.id] ?? '' : '';
+  const selectedNote = previewPlayer ? notes[previewPlayer.id] ?? '' : '';
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -2197,7 +2736,7 @@ export default function ProspectWatch() {
                     <PlayerChip
                       key={`today-${player.kind}-${player.id}`}
                       player={player}
-                      onSelect={setSelectedPlayer}
+                      onSelect={selectProspectPlayer}
                       isWatched={isWatched(player.id)}
                       onToggleWatch={toggleWatch}
                       showAffiliation
@@ -2226,7 +2765,7 @@ export default function ProspectWatch() {
                     <PlayerChip
                       key={`radar-${player.kind}-${player.id}`}
                       player={player}
-                      onSelect={setSelectedPlayer}
+                      onSelect={selectProspectPlayer}
                       isWatched={isWatched(player.id)}
                       onToggleWatch={toggleWatch}
                       showAffiliation
@@ -2252,7 +2791,7 @@ export default function ProspectWatch() {
                   <AffiliateCard
                     key={affiliate.id}
                     affiliate={affiliate}
-                    onSelectPlayer={setSelectedPlayer}
+                    onSelectPlayer={selectProspectPlayer}
                     isWatched={isWatched}
                     onToggleWatch={toggleWatch}
                   />
@@ -2275,7 +2814,7 @@ export default function ProspectWatch() {
             rankings={rankings}
             isLoading={rankingsLoading}
             error={rankingsError}
-            onSelectPlayer={setSelectedPlayer}
+            onSelectPlayer={selectProspectPlayer}
             isWatched={isWatched}
             onToggleWatch={toggleWatch}
           />
@@ -2308,7 +2847,7 @@ export default function ProspectWatch() {
                     modeLabel="Season"
                     sort={prospectTableSort}
                     onSort={setProspectTableSort}
-                    onSelectPlayer={setSelectedPlayer}
+                    onSelectPlayer={selectProspectPlayer}
                     isWatched={isWatched}
                     onToggleWatch={toggleWatch}
                   />
@@ -2322,24 +2861,25 @@ export default function ProspectWatch() {
           <FavoritesPage
             players={watchlistPlayers}
             notes={notes}
-            onSelectPlayer={setSelectedPlayer}
+            onSelectPlayer={selectProspectPlayer}
             onToggleWatch={toggleWatch}
           />
         )}
       </div>
 
       <ProspectPreviewModal
-        player={selectedPlayer}
-        open={Boolean(selectedPlayer)}
-        onClose={() => setSelectedPlayer(null)}
+        key={previewPlayer?.id ?? 'empty'}
+        player={previewPlayer}
+        open={Boolean(previewPlayer)}
+        onClose={closeProspectPreview}
         isWatched={isWatched}
         onToggleWatch={toggleWatch}
         note={selectedNote}
         onNoteChange={(value) => {
-          if (!selectedPlayer) return;
+          if (!previewPlayer) return;
           setNotes((current) => ({
             ...current,
-            [selectedPlayer.id]: value,
+            [previewPlayer.id]: value,
           }));
         }}
       />
