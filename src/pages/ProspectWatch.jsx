@@ -4,8 +4,10 @@ import {
   Ban,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   Flame,
   Gamepad2,
+  ListOrdered,
   Search,
   Star,
   StickyNote,
@@ -22,15 +24,53 @@ import {
 import { Select, BaseballSpinner, Modal } from '../components/ui';
 
 const DEFAULT_ORG_ID = 140;
+const ALL_MLB_ORG = 'all';
+const MLB_LEAGUE_LOGO = 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg';
 const PROSPECT_WATCHLIST_KEY = 'mlbProspectWatchlist';
 const PROSPECT_NOTES_KEY = 'mlbProspectNotes';
 const CURRENT_SEASON = 2026;
 const MINOR_SPORT_IDS = new Set([11, 12, 13, 14, 16]);
-const FORM_MODES = [
-  { value: 'today', label: 'Today' },
-  { value: 'last7', label: 'Last 7' },
-  { value: 'last14', label: 'Last 14' },
-  { value: 'season', label: 'Season' },
+// Same-origin Vite proxy (dev/preview). Direct data-graph.mlb.com is CORS-blocked in browsers.
+const DATA_GRAPH_PROXY_URL = '/mlb-data-graph';
+const PIPELINE_RANKINGS_SNAPSHOT_URL = `${import.meta.env.BASE_URL}data/pipeline-rankings.json`;
+/** MLB Pipeline team nicknames used in ranking selection slugs (sel-pr-{year}-{slug}). */
+const PIPELINE_TEAM_SLUGS = {
+  108: 'angels',
+  109: 'dbacks',
+  110: 'orioles',
+  111: 'redsox',
+  112: 'cubs',
+  113: 'reds',
+  114: 'guardians',
+  115: 'rockies',
+  116: 'tigers',
+  117: 'astros',
+  118: 'royals',
+  119: 'dodgers',
+  120: 'nationals',
+  121: 'mets',
+  133: 'athletics',
+  134: 'pirates',
+  135: 'padres',
+  136: 'mariners',
+  137: 'giants',
+  138: 'cardinals',
+  139: 'rays',
+  140: 'rangers',
+  141: 'bluejays',
+  142: 'twins',
+  143: 'phillies',
+  144: 'braves',
+  145: 'whitesox',
+  146: 'marlins',
+  147: 'yankees',
+  158: 'brewers',
+};
+const PAGE_TABS = [
+  { id: 'overview', label: 'Overview', icon: Search },
+  { id: 'rankings', label: 'Rankings', icon: ListOrdered },
+  { id: 'table', label: 'Table', icon: null },
+  { id: 'favorites', label: 'Favorites', icon: Star },
 ];
 const LEVEL_ORDER = {
   11: 1,
@@ -52,12 +92,46 @@ const LEVEL_FILTERS = [
   { value: '12', label: 'AA' },
   { value: '13', label: 'A+' },
   { value: '14', label: 'A' },
-  { value: '16', label: 'Rookie' },
+  { value: '16', label: 'Rk' },
 ];
-const TEAM_OPTIONS = mlbTeams.map((team) => ({
-  value: team.id,
-  label: `${team.name} (${team.abbr})`,
-}));
+
+function LevelFilterBar({ value, onChange }) {
+  return (
+    <div className="flex w-full items-center gap-1">
+      {LEVEL_FILTERS.map((filter) => (
+        <button
+          key={filter.value}
+          type="button"
+          onClick={() => onChange(filter.value)}
+          className={[
+            'min-w-0 flex-1 rounded-xl border px-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors sm:px-2.5 sm:text-[11px]',
+            value === filter.value
+              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+              : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-slate-200',
+          ].join(' ')}
+        >
+          {filter.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+const TEAM_OPTIONS = [
+  {
+    value: ALL_MLB_ORG,
+    label: 'All MLB',
+    icon: MLB_LEAGUE_LOGO,
+  },
+  ...mlbTeams.map((team) => ({
+    value: team.id,
+    label: `${team.name} (${team.abbr})`,
+    icon: teamLogoUrl(team.id),
+  })),
+];
+
+function isAllMlbOrg(orgId) {
+  return orgId === ALL_MLB_ORG || orgId === 'all';
+}
 
 const miniStatCell = 'px-1.5 py-1 text-right tabular-nums';
 
@@ -228,12 +302,73 @@ function playerAffiliationLabel(player) {
   return LEVEL_SHORT[sportId] ?? player.affiliate?.name ?? null;
 }
 
+function formatSlashRate(value) {
+  const raw = cleanNumber(value, '');
+  if (!raw) return '—';
+  // Keep API style (.266) but pad bare decimals if needed
+  if (raw.startsWith('.')) return raw;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return raw;
+  return n.toFixed(3).replace(/^0/, '');
+}
+
+/** Compact season line: .266/.402/.448 (.850) 146 AB */
 function seasonStatSnippet(player) {
   if (!player?.season) return '';
   if (player.kind === 'batting') {
-    return `AVG ${cleanNumber(player.season.avg)} · OBP ${cleanNumber(player.season.obp)} · OPS ${cleanNumber(player.season.ops)}`;
+    const s = player.season;
+    const avg = formatSlashRate(s.avg);
+    const obp = formatSlashRate(s.obp);
+    const slg = formatSlashRate(s.slg);
+    const ops = formatSlashRate(s.ops);
+    const ab = cleanNumber(s.atBats ?? s.ab, null);
+    const slash = `${avg}/${obp}/${slg} (${ops})`;
+    return ab != null ? `${slash} ${ab} AB` : slash;
   }
-  return `ERA ${cleanNumber(player.season.era)} · WHIP ${cleanNumber(player.season.whip)}`;
+  // Pitchers: keep short ERA/WHIP (no slash line)
+  const s = player.season;
+  const ip = cleanNumber(s.inningsPitched, null);
+  const base = `ERA ${cleanNumber(s.era)} · WHIP ${cleanNumber(s.whip)} · K/9 ${cleanNumber(s.strikeoutsPer9Inn)}`;
+  return ip != null ? `${base} · ${ip} IP` : base;
+}
+
+/**
+ * Season-long “should I get excited?” score for Prospect Radar.
+ * Favors strong rates with a sample, and a mild boost for lower minors.
+ */
+function prospectExcitementScore(player) {
+  const season = player?.season ?? player?.stat ?? {};
+  const sportId = player.affiliate?.sport?.id ?? player.affiliate?.sportId;
+  const levelBoost = { 16: 1.18, 14: 1.12, 13: 1.08, 12: 1.04, 11: 1.0 }[sportId] ?? 1;
+
+  if (player.kind === 'batting') {
+    const ab = Number(season.atBats ?? season.ab) || 0;
+    if (ab < 40) return 0;
+    const ops = Number(season.ops) || 0;
+    const obp = Number(season.obp) || 0;
+    const slg = Number(season.slg) || 0;
+    const avg = Number(season.avg) || 0;
+    const hr = Number(season.homeRuns) || 0;
+    const sb = Number(season.stolenBases) || 0;
+    const bb = Number(season.baseOnBalls) || 0;
+    const k = Number(season.strikeOuts) || 0;
+    const bbK = k > 0 ? bb / k : bb > 0 ? 1 : 0;
+    const sample = Math.min(1.25, 0.7 + ab / 250);
+    return (
+      (ops * 110 + obp * 45 + slg * 35 + avg * 25 + hr * 2.2 + sb * 1.6 + bbK * 12) * sample * levelBoost
+    );
+  }
+
+  const ip = parseInnings(season.inningsPitched);
+  if (ip < 15) return 0;
+  const era = Number(season.era);
+  const whip = Number(season.whip);
+  const k9 = Number(season.strikeoutsPer9Inn) || 0;
+  const bb9 = Number(season.walksPer9Inn ?? season.baseOnBallsPer9) || 0;
+  const eraScore = Number.isFinite(era) ? Math.max(0, 5.5 - era) * 14 : 0;
+  const whipScore = Number.isFinite(whip) ? Math.max(0, 1.55 - whip) * 28 : 0;
+  const sample = Math.min(1.2, 0.75 + ip / 80);
+  return (eraScore + whipScore + k9 * 4.2 - bb9 * 1.5 + ip * 0.35) * sample * levelBoost;
 }
 
 function buildDiscoveryTags(player) {
@@ -377,28 +512,16 @@ function scoreForSide(game, side) {
   return game?.teams?.[side]?.score ?? game?.linescore?.teams?.[side]?.runs ?? 0;
 }
 
-function rangeStartDate(endDate, days) {
-  return shiftDate(endDate, -(days - 1));
-}
-
-async function fetchStatGroup(team, group, mode, endDate) {
+async function fetchSeasonStatGroup(team, group) {
   const params = new URLSearchParams({
     group,
     teamId: String(team.id),
     sportIds: String(team.sport.id),
     playerPool: 'all',
     limit: '200',
+    stats: 'season',
+    season: String(CURRENT_SEASON),
   });
-
-  if (mode === 'season') {
-    params.set('stats', 'season');
-    params.set('season', String(CURRENT_SEASON));
-  } else {
-    const days = mode === 'last7' ? 7 : 14;
-    params.set('stats', 'byDateRange');
-    params.set('startDate', rangeStartDate(endDate, days));
-    params.set('endDate', endDate);
-  }
 
   const response = await fetch(`https://statsapi.mlb.com/api/v1/stats?${params.toString()}`);
   const data = await response.json();
@@ -424,6 +547,242 @@ async function fetchAffiliateActiveRoster(team) {
       .filter((entry) => entry.person?.id)
       .map((entry) => mapRosterPlayer(entry, team)),
   };
+}
+
+function pipelineSlugForOrg(orgId) {
+  return PIPELINE_TEAM_SLUGS[Number(orgId)] ?? null;
+}
+
+function officialPipelineUrl(orgId) {
+  if (isAllMlbOrg(orgId)) return 'https://www.mlb.com/milb/prospects';
+  const slug = pipelineSlugForOrg(orgId);
+  return slug ? `https://www.mlb.com/milb/prospects/${slug}/` : 'https://www.mlb.com/milb/prospects';
+}
+
+let pipelineSnapshotPromise = null;
+
+function loadPipelineSnapshot() {
+  if (!pipelineSnapshotPromise) {
+    pipelineSnapshotPromise = fetch(PIPELINE_RANKINGS_SNAPSHOT_URL)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Rankings snapshot missing (${response.status})`);
+        return response.json();
+      })
+      .catch((err) => {
+        pipelineSnapshotPromise = null;
+        throw err;
+      });
+  }
+  return pipelineSnapshotPromise;
+}
+
+async function fetchPipelineRankingsFromGraph(selectionSlug, limit = 30) {
+  const query = `
+    query GetPlayerRankings($slug: String!, $limit: Int) {
+      getPlayerRankingsFromSelection(slug: $slug, limit: $limit) {
+        rank
+        playerEntity {
+          eta
+          position
+          playerPhotoCustomUrl
+          player {
+            id
+            fullName
+            birthDate
+            currentAge
+            height
+            weight
+            primaryPosition { abbreviation name }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(DATA_GRAPH_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      variables: { slug: selectionSlug, limit },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Pipeline rankings failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  if (payload.errors?.length) {
+    throw new Error(payload.errors[0]?.message ?? 'Pipeline rankings error');
+  }
+
+  return payload.data?.getPlayerRankingsFromSelection ?? [];
+}
+
+async function fetchPipelineRankingsFromSnapshot(selectionSlug, limit = 30) {
+  const snapshot = await loadPipelineSnapshot();
+  const rows = snapshot?.selections?.[selectionSlug];
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new Error(`No snapshot rankings for ${selectionSlug}`);
+  }
+  return rows.slice(0, limit);
+}
+
+/** Live via same-origin proxy when available; fall back to build-time snapshot (CORS-safe). */
+async function fetchPipelineRankings(selectionSlug, limit = 30) {
+  try {
+    return await fetchPipelineRankingsFromGraph(selectionSlug, limit);
+  } catch (liveError) {
+    try {
+      return await fetchPipelineRankingsFromSnapshot(selectionSlug, limit);
+    } catch {
+      throw liveError instanceof Error
+        ? liveError
+        : new Error('Failed to fetch Pipeline rankings');
+    }
+  }
+}
+
+async function enrichRankedPeople(rankedRows) {
+  const ids = rankedRows
+    .map((row) => Number(row?.playerEntity?.player?.id))
+    .filter(Boolean);
+  if (!ids.length) {
+    return { peopleById: new Map(), teamSportById: new Map() };
+  }
+
+  const peopleRes = await fetch(
+    `https://statsapi.mlb.com/api/v1/people?personIds=${ids.join(',')}&hydrate=currentTeam`,
+  );
+  const peopleData = await peopleRes.json();
+  const peopleById = new Map(
+    (peopleData.people ?? []).map((person) => [Number(person.id), person]),
+  );
+
+  const teamIds = [
+    ...new Set(
+      [...peopleById.values()]
+        .map((person) => Number(person.currentTeam?.id))
+        .filter(Boolean),
+    ),
+  ];
+
+  const teamSportById = new Map();
+  if (teamIds.length) {
+    await Promise.all(
+      teamIds.map(async (teamId) => {
+        try {
+          const teamRes = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}`);
+          const teamData = await teamRes.json();
+          const team = teamData.teams?.[0];
+          if (team?.id) {
+            teamSportById.set(Number(team.id), {
+              id: team.id,
+              name: team.name,
+              sportId: team.sport?.id,
+              sportName: team.sport?.name,
+              parentOrgId: team.parentOrgId,
+            });
+          }
+        } catch {
+          /* ignore single-team failures */
+        }
+      }),
+    );
+  }
+
+  return { peopleById, teamSportById };
+}
+
+function mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById) {
+  const entity = row?.playerEntity ?? {};
+  const graphPlayer = entity.player ?? {};
+  const id = Number(graphPlayer.id);
+  const person = peopleById.get(id);
+  const teamMeta = person?.currentTeam?.id
+    ? teamSportById.get(Number(person.currentTeam.id))
+    : null;
+  const position =
+    entity.position ||
+    person?.primaryPosition?.abbreviation ||
+    graphPlayer.primaryPosition?.abbreviation ||
+    '—';
+  const isPitcher = /HP|P$|^P\b|RHP|LHP/i.test(String(position)) || position === 'P';
+
+  return {
+    id,
+    rank: Number(row.rank) || null,
+    overallRank: overallRankById.get(id) ?? null,
+    name: person?.fullName ?? graphPlayer.fullName ?? 'Unknown',
+    boxscoreName: person?.boxscoreName ?? graphPlayer.fullName,
+    position,
+    eta: entity.eta ?? '—',
+    age: person?.currentAge ?? graphPlayer.currentAge ?? '—',
+    height: person?.height ?? graphPlayer.height ?? '—',
+    weight: person?.weight ?? graphPlayer.weight ?? '—',
+    bats: person?.batSide?.code ?? '—',
+    throws: person?.pitchHand?.code ?? '—',
+    photoUrl: entity.playerPhotoCustomUrl || prospectHeadshotUrl(id),
+    kind: isPitcher ? 'pitching' : 'batting',
+    mode: 'ranking',
+    summary: entity.eta ? `ETA ${entity.eta}` : 'Pipeline ranking',
+    season: {},
+    stat: {},
+    score: null,
+    tags: [],
+    affiliate: teamMeta
+      ? {
+          id: teamMeta.id,
+          name: teamMeta.name,
+          sport: { id: teamMeta.sportId, name: teamMeta.sportName },
+          sportId: teamMeta.sportId,
+          parentOrgId: teamMeta.parentOrgId,
+        }
+      : person?.currentTeam
+        ? {
+            id: person.currentTeam.id,
+            name: person.currentTeam.name,
+            parentOrgId: person.currentTeam.parentOrgId,
+          }
+        : null,
+  };
+}
+
+async function loadOfficialOrgRankings(orgId) {
+  const top100Selection = `sel-pr-${CURRENT_SEASON}-top100`;
+
+  if (isAllMlbOrg(orgId)) {
+    const top100Rows = await fetchPipelineRankings(top100Selection, 100);
+    const overallRankById = new Map(
+      top100Rows
+        .map((row) => [Number(row?.playerEntity?.player?.id), Number(row.rank)])
+        .filter(([id, rank]) => id && rank),
+    );
+    const { peopleById, teamSportById } = await enrichRankedPeople(top100Rows);
+    return top100Rows.map((row) =>
+      mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById),
+    );
+  }
+
+  const teamSlug = pipelineSlugForOrg(orgId);
+  if (!teamSlug) return [];
+
+  const teamSelection = `sel-pr-${CURRENT_SEASON}-${teamSlug}`;
+
+  const [teamRows, top100Rows] = await Promise.all([
+    fetchPipelineRankings(teamSelection, 30),
+    fetchPipelineRankings(top100Selection, 100).catch(() => []),
+  ]);
+
+  const overallRankById = new Map(
+    top100Rows
+      .map((row) => [Number(row?.playerEntity?.player?.id), Number(row.rank)])
+      .filter(([id, rank]) => id && rank),
+  );
+
+  const { peopleById, teamSportById } = await enrichRankedPeople(teamRows);
+  return teamRows.map((row) => mapPipelineRankingRow(row, peopleById, teamSportById, overallRankById));
 }
 
 function AffiliateLogo({ team, className = 'w-16 h-16' }) {
@@ -459,9 +818,16 @@ function PlayerChip({
   onToggleWatch,
   showAffiliation = false,
   showSeasonStats = false,
+  /** 'today' = recent line + optional season; 'season' = slash line only (Prospect Radar) */
+  lineMode = 'today',
+  accentHover = 'group-hover:text-emerald-300',
 }) {
   const affiliation = showAffiliation ? playerAffiliationLabel(player) : null;
-  const seasonStats = showSeasonStats ? seasonStatSnippet(player) : '';
+  const seasonStats = seasonStatSnippet(player);
+  const primaryLine = lineMode === 'season'
+    ? (seasonStats || player.summary || 'Season line')
+    : (player.summary || 'Box score line');
+  const secondarySeason = lineMode === 'today' && showSeasonStats ? seasonStats : '';
 
   return (
     <button
@@ -476,18 +842,25 @@ function PlayerChip({
         onError={(e) => attachHeadshotFallback(e, player.id)}
       />
       <div className="min-w-0">
-        <div className="text-sm font-bold text-white truncate group-hover:text-emerald-300">
+        <div className={`text-sm font-bold text-white truncate ${accentHover}`}>
           {affiliation ? `${player.name} (${affiliation})` : player.name}
         </div>
         <div className="text-[11px] text-slate-400 truncate">
-          {player.summary || 'Box score line'}
-          {seasonStats ? (
+          {primaryLine}
+          {secondarySeason ? (
             <>
               <span className="text-slate-600"> · </span>
-              <span className="text-slate-500">{seasonStats}</span>
+              <span className="text-slate-500">{secondarySeason}</span>
             </>
           ) : null}
         </div>
+        {lineMode === 'season' && player.tags?.length ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {player.tags.slice(0, 2).map((tag) => (
+              <TagPill key={tag} tag={tag} />
+            ))}
+          </div>
+        ) : null}
       </div>
       <span
         role="button"
@@ -620,16 +993,6 @@ function BoxScoreTable({ rows, kind, onSelectPlayer, isWatched, onToggleWatch })
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function LeaderboardTile({ label, player, value, accent = 'text-emerald-300' }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
-      <div className="text-[10px] uppercase tracking-widest text-slate-500">{label}</div>
-      <div className="mt-1 text-sm font-bold text-white truncate">{player?.name ?? '—'}</div>
-      <div className={`text-sm font-black ${accent}`}>{value ?? '—'}</div>
     </div>
   );
 }
@@ -939,36 +1302,6 @@ function ProspectOrgTable({
   );
 }
 
-function FormPlayerBoard({ title, players, onSelectPlayer, isWatched, onToggleWatch }) {
-  return (
-    <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
-      <div className="text-[10px] uppercase tracking-widest text-slate-500">{title}</div>
-      <div className="mt-3 grid gap-2">
-        {players.length ? (
-          players.map((player) => (
-            <div key={`${player.mode}-${player.kind}-${player.id}`} className="rounded-2xl border border-slate-800 bg-slate-950/45 p-2.5">
-              <PlayerChip
-                player={player}
-                onSelect={onSelectPlayer}
-                isWatched={isWatched(player.id)}
-                onToggleWatch={onToggleWatch}
-              />
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {player.tags?.map((tag) => <TagPill key={`${player.id}-${tag}`} tag={tag} />)}
-              </div>
-              <div className="mt-2 text-[11px] text-slate-500">
-                {player.summary}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="text-sm text-slate-500">No players surfaced for this split yet.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function AffiliateCard({ affiliate, onSelectPlayer, isWatched, onToggleWatch }) {
   const game = affiliate.game;
   const side = affiliate.side;
@@ -1196,39 +1529,270 @@ function ProspectPreviewModal({ player, open, onClose, isWatched, onToggleWatch,
   );
 }
 
-function FavoritesModal({ open, onClose, players, onSelectPlayer, onToggleWatch }) {
+function FavoritesPage({ players, notes, onSelectPlayer, onToggleWatch }) {
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      backDismiss
-      historyKey="prospectFavorites"
-      size="lg"
-      align="bottom"
-      panelClassName="bg-[#0d1520] border-slate-700/70 max-h-[88vh] overflow-y-auto"
-      title="My Prospects"
-    >
-      <div className="p-5 sm:p-6">
-        {players.length ? (
-          <div className="grid gap-2">
-            {players.map((player) => (
-              <PlayerChip
-                key={`favorite-${player.id}`}
-                player={player}
-                onSelect={(selected) => {
-                  onClose();
-                  onSelectPlayer(selected);
-                }}
-                isWatched
-                onToggleWatch={onToggleWatch}
-              />
-            ))}
+    <section className="mt-5">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-yellow-300">
+            <Star size={13} fill="currentColor" />
+            My Prospects
           </div>
-        ) : (
-          <div className="text-sm text-slate-500">Star players from box scores or leaderboards to build your list.</div>
-        )}
+          <p className="mt-0.5 text-sm text-slate-500">
+            {players.length
+              ? `${players.length} starred · tap a row for notes & profile`
+              : 'Star prospects anywhere to save them here'}
+          </p>
+        </div>
       </div>
-    </Modal>
+
+      {players.length ? (
+        <div className="divide-y divide-slate-800/90 border-y border-slate-800">
+          {players.map((player) => {
+            const note = notes?.[player.id];
+            const level = playerAffiliationLabel(player);
+            const seasonLine = seasonStatSnippet(player);
+            const line = seasonLine || player.summary || player.affiliate?.name || '—';
+
+            return (
+              <div
+                key={`favorite-${player.id}`}
+                className="flex items-stretch gap-2 hover:bg-slate-900/50 transition-colors"
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectPlayer?.(player)}
+                  className="flex min-w-0 flex-1 items-center gap-3 px-1 py-3 text-left sm:px-2"
+                >
+                  <img
+                    src={prospectHeadshotUrl(player.id)}
+                    alt=""
+                    className="h-11 w-11 flex-shrink-0 rounded-lg bg-slate-800 object-cover"
+                    onError={(e) => attachHeadshotFallback(e, player.id)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-bold text-white hover:text-yellow-200">
+                        {player.name}
+                      </span>
+                      {level ? (
+                        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-400/90">
+                          {level}
+                        </span>
+                      ) : null}
+                      {player.position && player.position !== '—' ? (
+                        <span className="flex-shrink-0 text-[10px] font-semibold text-slate-500">
+                          {player.position}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-400">
+                      {line}
+                    </div>
+                    {note ? (
+                      <div className="mt-1 flex min-w-0 items-center gap-1 text-[11px] text-slate-500">
+                        <StickyNote size={11} className="flex-shrink-0 text-yellow-400/70" />
+                        <span className="truncate">{note}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleWatch?.(player)}
+                  className="flex flex-shrink-0 items-center px-3 text-yellow-300 hover:bg-yellow-400/5"
+                  aria-label="Remove from prospect watchlist"
+                >
+                  <Star size={16} fill="currentColor" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="border-y border-dashed border-slate-800 py-12 text-center text-sm text-slate-500">
+          No favorites yet. Use the star on any prospect to save them here.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RankingsPage({
+  org,
+  rankings,
+  isLoading,
+  error,
+  onSelectPlayer,
+  isWatched,
+  onToggleWatch,
+}) {
+  const isAllMlb = isAllMlbOrg(org?.id);
+  const pipelineUrl = officialPipelineUrl(org?.id);
+  const title = isAllMlb ? 'MLB Top 100' : `${org?.name ?? 'Org'} Top 30`;
+  const subtitle = isAllMlb
+    ? `Official Pipeline Top 100 for ${CURRENT_SEASON} — rank, ETA, level, and tools snapshot.`
+    : `Official Pipeline order for ${CURRENT_SEASON} — rank, ETA, level, and tools snapshot.`;
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-[2rem] border border-sky-500/20 bg-slate-900/85 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-3 border-b border-slate-800 bg-slate-950/55 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-sky-300">
+            <ListOrdered size={14} />
+            MLB Pipeline Rankings
+          </div>
+          <h2 className="mt-1 font-display text-xl text-white sm:text-2xl">
+            {title}
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            {subtitle}
+          </p>
+        </div>
+        <a
+          href={pipelineUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 self-start rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-bold text-sky-300 hover:bg-sky-500/15"
+        >
+          Open on MLB.com
+          <ExternalLink size={14} />
+        </a>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <BaseballSpinner size="xl" label="Loading Pipeline rankings…" />
+        </div>
+      ) : error ? (
+        <div className="px-4 py-12 text-center text-sm text-rose-300 sm:px-6">
+          {error}
+        </div>
+      ) : (
+        <div className="max-h-[75vh] overflow-auto app-scrollbar">
+          <table className="min-w-[860px] w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-950 text-slate-400 shadow-[0_1px_0_rgba(30,41,59,1)]">
+              <tr>
+                <th className="px-3 py-2.5 text-left font-black uppercase tracking-wider">Rk</th>
+                <th className="px-3 py-2.5 text-left font-black uppercase tracking-wider min-w-52">Player</th>
+                <th className="px-3 py-2.5 text-left font-black uppercase tracking-wider">Pos</th>
+                <th className="px-3 py-2.5 text-left font-black uppercase tracking-wider">Level</th>
+                <th className="px-3 py-2.5 text-left font-black uppercase tracking-wider">ETA</th>
+                <th className="px-3 py-2.5 text-right font-black uppercase tracking-wider">Age</th>
+                <th className="px-3 py-2.5 text-right font-black uppercase tracking-wider">Ht / Wt</th>
+                <th className="px-3 py-2.5 text-right font-black uppercase tracking-wider">B</th>
+                <th className="px-3 py-2.5 text-right font-black uppercase tracking-wider">T</th>
+                {!isAllMlb ? (
+                  <th className="px-3 py-2.5 text-right font-black uppercase tracking-wider">MLB</th>
+                ) : (
+                  <th className="px-3 py-2.5 text-left font-black uppercase tracking-wider">Org</th>
+                )}
+                <th className="px-3 py-2.5 text-right font-black uppercase tracking-wider" aria-label="Watch" />
+              </tr>
+            </thead>
+            <tbody>
+              {rankings.length ? rankings.map((player) => {
+                const level = playerAffiliationLabel(player);
+                const parentOrgId = player.affiliate?.parentOrgId;
+                const parentOrg = parentOrgId
+                  ? mlbTeams.find((team) => team.id === Number(parentOrgId))
+                  : null;
+                return (
+                  <tr
+                    key={`rank-${player.rank}-${player.id}`}
+                    className="border-b border-slate-900/90 odd:bg-slate-950/35 even:bg-slate-900/35 hover:bg-sky-500/10"
+                  >
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500/15 text-sm font-black text-sky-300">
+                        {player.rank}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <button
+                        type="button"
+                        onClick={() => onSelectPlayer?.(player)}
+                        className="flex min-w-0 items-center gap-2.5 text-left"
+                      >
+                        <img
+                          src={player.photoUrl || prospectHeadshotUrl(player.id)}
+                          alt=""
+                          className="h-10 w-10 rounded-xl bg-slate-800 object-cover"
+                          onError={(e) => attachHeadshotFallback(e, player.id)}
+                        />
+                        <div className="min-w-0">
+                          <div className="truncate font-black text-slate-100 hover:text-sky-300">
+                            {player.name}
+                          </div>
+                          <div className="truncate text-[10px] text-slate-500">
+                            {player.affiliate?.name ?? '—'}
+                          </div>
+                        </div>
+                      </button>
+                    </td>
+                    <td className="px-3 py-2.5 font-bold text-slate-300">{player.position || '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-0.5 font-bold text-emerald-300">
+                        {level ?? '—'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-black text-white">{player.eta || '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{player.age ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-400">
+                      {player.height || '—'}
+                      {player.weight ? ` / ${player.weight}` : ''}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-bold text-slate-300">{player.bats || '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-bold text-slate-300">{player.throws || '—'}</td>
+                    {!isAllMlb ? (
+                      <td className="px-3 py-2.5 text-right">
+                        {player.overallRank ? (
+                          <span className="rounded-full border border-orange-400/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-black text-orange-300">
+                            #{player.overallRank}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
+                      </td>
+                    ) : (
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          {parentOrg ? (
+                            <img
+                              src={teamLogoUrl(parentOrg.id)}
+                              alt=""
+                              className="h-5 w-5 object-contain"
+                            />
+                          ) : null}
+                          <span className="font-bold text-slate-300">
+                            {parentOrg?.abbr ?? '—'}
+                          </span>
+                        </div>
+                      </td>
+                    )}
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onToggleWatch?.(player)}
+                        className={`rounded-full p-1.5 ${isWatched?.(player.id) ? 'text-yellow-300' : 'text-slate-600 hover:text-yellow-300'}`}
+                        aria-label={isWatched?.(player.id) ? 'Remove from prospect watchlist' : 'Add to prospect watchlist'}
+                      >
+                        <Star size={14} fill={isWatched?.(player.id) ? 'currentColor' : 'none'} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-slate-500">
+                    No Pipeline rankings available for this organization.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1236,18 +1800,26 @@ export default function ProspectWatch() {
   const [orgId, setOrgId] = useState(initialOrgId);
   const [date, setDate] = useState(todayIso);
   const [levelFilter, setLevelFilter] = useState('all');
-  const [formMode, setFormMode] = useState('today');
+  const [pageTab, setPageTab] = useState('overview');
   const [cards, setCards] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [showFavorites, setShowFavorites] = useState(false);
-  const [showProspectTable, setShowProspectTable] = useState(false);
   const [prospectTableSort, setProspectTableSort] = useState({ key: 'score', direction: 'desc' });
   const [watchlist, setWatchlist] = useState(loadProspectWatchlist);
   const [notes, setNotes] = useState(loadProspectNotes);
-  const selectedOrg =
-    mlbTeams.find((team) => team.id === Number(orgId)) ??
-    mlbTeams.find((team) => team.id === DEFAULT_ORG_ID);
+  const [rankings, setRankings] = useState([]);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsError, setRankingsError] = useState(null);
+  const allMlbSelected = isAllMlbOrg(orgId);
+  const selectedOrg = allMlbSelected
+    ? { id: ALL_MLB_ORG, name: 'All MLB', abbr: 'MLB' }
+    : (
+      mlbTeams.find((team) => team.id === Number(orgId)) ??
+      mlbTeams.find((team) => team.id === DEFAULT_ORG_ID)
+    );
+  const selectedOrgLogo = allMlbSelected
+    ? MLB_LEAGUE_LOGO
+    : teamLogoUrl(selectedOrg?.id);
 
   useEffect(() => {
     localStorage.setItem(PROSPECT_WATCHLIST_KEY, JSON.stringify(watchlist));
@@ -1258,11 +1830,42 @@ export default function ProspectWatch() {
   }, [notes]);
 
   useEffect(() => {
+    if (pageTab !== 'rankings') return undefined;
+    let cancelled = false;
+
+    async function loadRankings() {
+      setRankingsLoading(true);
+      setRankingsError(null);
+      try {
+        const rows = await loadOfficialOrgRankings(orgId);
+        if (!cancelled) setRankings(rows);
+      } catch (err) {
+        if (!cancelled) {
+          setRankings([]);
+          setRankingsError(err?.message || 'Could not load Pipeline rankings.');
+        }
+      } finally {
+        if (!cancelled) setRankingsLoading(false);
+      }
+    }
+
+    loadRankings();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, pageTab]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadProspects() {
       setIsLoading(true);
       setCards([]);
+
+      if (isAllMlbOrg(orgId)) {
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
 
       try {
         const affiliateRes = await fetch(`https://statsapi.mlb.com/api/v1/teams/${orgId}/affiliates`);
@@ -1271,28 +1874,20 @@ export default function ProspectWatch() {
 
         const loadedCards = await Promise.all(
           activeAffiliates.map(async (affiliate) => {
-            const emptyForm = { season: { hitters: [], pitchers: [] }, last7: { hitters: [], pitchers: [] }, last14: { hitters: [], pitchers: [] } };
+            const emptyForm = { season: { hitters: [], pitchers: [] } };
             try {
               const [
                 scheduleRes,
                 activeRosterIds,
                 seasonHitters,
                 seasonPitchers,
-                last7Hitters,
-                last7Pitchers,
-                last14Hitters,
-                last14Pitchers,
               ] = await Promise.all([
                 fetch(
                   `https://statsapi.mlb.com/api/v1/schedule?teamId=${affiliate.id}&sportId=${affiliate.sport.id}&date=${date}&hydrate=team,linescore`,
                 ),
                 fetchAffiliateActiveRoster(affiliate),
-                fetchStatGroup(affiliate, 'hitting', 'season', date),
-                fetchStatGroup(affiliate, 'pitching', 'season', date),
-                fetchStatGroup(affiliate, 'hitting', 'last7', date),
-                fetchStatGroup(affiliate, 'pitching', 'last7', date),
-                fetchStatGroup(affiliate, 'hitting', 'last14', date),
-                fetchStatGroup(affiliate, 'pitching', 'last14', date),
+                fetchSeasonStatGroup(affiliate, 'hitting'),
+                fetchSeasonStatGroup(affiliate, 'pitching'),
               ]);
 
               const scheduleData = await scheduleRes.json();
@@ -1328,22 +1923,6 @@ export default function ProspectWatch() {
                       .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
                       .map((split) => mapStatSplitPlayer(split, 'pitching', affiliate, 'season')),
                   },
-                  last7: {
-                    hitters: last7Hitters
-                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
-                      .map((split) => mapStatSplitPlayer(split, 'batting', affiliate, 'last7')),
-                    pitchers: last7Pitchers
-                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
-                      .map((split) => mapStatSplitPlayer(split, 'pitching', affiliate, 'last7')),
-                  },
-                  last14: {
-                    hitters: last14Hitters
-                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
-                      .map((split) => mapStatSplitPlayer(split, 'batting', affiliate, 'last14')),
-                    pitchers: last14Pitchers
-                      .filter((split) => activeRosterIds.ids.has(Number(split?.player?.id)))
-                      .map((split) => mapStatSplitPlayer(split, 'pitching', affiliate, 'last14')),
-                  },
                 },
               };
             } catch {
@@ -1377,26 +1956,6 @@ export default function ProspectWatch() {
     [cards, levelFilter],
   );
 
-  const insightPlayers = useMemo(() => {
-    const hitters = [];
-    const pitchers = [];
-
-    visibleCards.forEach((card) => {
-      if (formMode === 'today') {
-        hitters.push(...card.hitters.map((player) => ({ ...player, orderIndex: player.orderIndex ?? 0 })));
-        pitchers.push(...card.pitchers.map((player) => ({ ...player, orderIndex: player.orderIndex ?? 0 })));
-        return;
-      }
-      hitters.push(...(card.forms?.[formMode]?.hitters ?? []));
-      pitchers.push(...(card.forms?.[formMode]?.pitchers ?? []));
-    });
-
-    return {
-      hitters: hitters.sort((a, b) => b.score - a.score),
-      pitchers: pitchers.sort((a, b) => b.score - a.score),
-    };
-  }, [visibleCards, formMode]);
-
   const playerDirectory = useMemo(() => {
     const map = new Map();
     const register = (player) => {
@@ -1417,10 +1976,38 @@ export default function ProspectWatch() {
     return map;
   }, [cards]);
 
-  const radar = useMemo(
-    () => [...insightPlayers.hitters, ...insightPlayers.pitchers].sort((a, b) => b.score - a.score).slice(0, 6),
-    [insightPlayers],
-  );
+  /** Always today's box-score standouts (not tied to form-mode filter). */
+  const todayTopPerformances = useMemo(() => {
+    const rows = [];
+    visibleCards.forEach((card) => {
+      (card.hitters ?? []).forEach((player) => rows.push(player));
+      (card.pitchers ?? []).forEach((player) => rows.push(player));
+    });
+    return [...rows].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 6);
+  }, [visibleCards]);
+
+  /**
+   * Season-based names to get excited about for future MLB impact —
+   * rates + tools, mild boost for lower levels, min sample required.
+   */
+  const prospectRadar = useMemo(() => {
+    const rows = [];
+    const seen = new Set();
+    visibleCards.forEach((card) => {
+      const add = (player) => {
+        if (!player?.id) return;
+        const key = `${player.kind}-${Number(player.id)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const excitement = prospectExcitementScore(player);
+        if (excitement <= 0) return;
+        rows.push({ ...player, excitement });
+      };
+      (card.forms?.season?.hitters ?? []).forEach(add);
+      (card.forms?.season?.pitchers ?? []).forEach(add);
+    });
+    return rows.sort((a, b) => b.excitement - a.excitement).slice(0, 6);
+  }, [visibleCards]);
 
   const prospectTablePlayers = useMemo(() => {
     const rows = [];
@@ -1472,36 +2059,7 @@ export default function ProspectWatch() {
     });
   };
 
-  const leaderboards = useMemo(() => {
-    const hitters = insightPlayers.hitters;
-    const pitchers = insightPlayers.pitchers;
-    const bestBy = (items, selector, direction = 'desc') => {
-      const filtered = items.filter((item) => Number(selector(item)) || selector(item) === 0);
-      if (!filtered.length) return null;
-      return [...filtered].sort((a, b) => {
-        const av = Number(selector(a)) || 0;
-        const bv = Number(selector(b)) || 0;
-        return direction === 'asc' ? av - bv : bv - av;
-      })[0];
-    };
-
-    return {
-      ops: bestBy(hitters, (player) => player.stat.ops),
-      hr: bestBy(hitters, (player) => player.stat.homeRuns),
-      sb: bestBy(hitters, (player) => player.stat.stolenBases),
-      era: bestBy(pitchers, (player) => player.stat.era, 'asc'),
-      k9: bestBy(pitchers, (player) => player.stat.strikeoutsPer9Inn),
-      whip: bestBy(pitchers, (player) => player.stat.whip, 'asc'),
-    };
-  }, [insightPlayers]);
-
-  const gamesCount = visibleCards.filter((card) => card.game).length;
-
   const selectedNote = selectedPlayer ? notes[selectedPlayer.id] ?? '' : '';
-
-  const favoritesLabel = watchlistPlayers.length
-    ? `Favorites ${watchlistPlayers.length}`
-    : 'Favorites';
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -1510,7 +2068,7 @@ export default function ProspectWatch() {
           <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <img
-                src={teamLogoUrl(selectedOrg?.id)}
+                src={selectedOrgLogo}
                 alt=""
                 className="h-11 w-11 flex-shrink-0 object-contain"
               />
@@ -1520,11 +2078,11 @@ export default function ProspectWatch() {
                   Prospect Watch
                 </div>
                 <h1 className="truncate font-display text-xl tracking-tight text-white sm:text-2xl">
-                  {selectedOrg?.name} Pipeline
+                  {allMlbSelected ? 'All MLB Prospects' : `${selectedOrg?.name} Pipeline`}
                 </h1>
               </div>
             </div>
-            <div className="sm:w-64">
+            <div className="sm:w-72">
               <Select
                 value={orgId}
                 onChange={setOrgId}
@@ -1535,223 +2093,240 @@ export default function ProspectWatch() {
           </div>
         </section>
 
-        <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {LEVEL_FILTERS.map((filter) => (
+        <nav
+          className="mt-4 flex gap-0 overflow-x-auto border-b border-slate-800 app-scrollbar"
+          aria-label="Prospect Watch sections"
+          role="tablist"
+        >
+          {PAGE_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = pageTab === tab.id;
+            return (
               <button
-                key={filter.value}
+                key={tab.id}
                 type="button"
-                onClick={() => setLevelFilter(filter.value)}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setPageTab(tab.id)}
                 className={[
-                  'rounded-2xl border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap',
-                  levelFilter === filter.value
-                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-slate-200',
+                  'relative inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold tracking-wide transition-colors whitespace-nowrap sm:px-5',
+                  isActive
+                    ? 'text-white after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-emerald-400'
+                    : 'text-slate-500 hover:text-slate-200',
                 ].join(' ')}
               >
-                {filter.label}
+                {Icon ? (
+                  <Icon
+                    size={14}
+                    className={isActive ? 'opacity-90' : 'opacity-70'}
+                    fill={tab.id === 'favorites' && isActive ? 'currentColor' : 'none'}
+                  />
+                ) : null}
+                {tab.label}
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </nav>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {FORM_MODES.map((mode) => (
-              <button
-                key={mode.value}
-                type="button"
-                onClick={() => {
-                  setFormMode(mode.value);
-                  if (mode.value === 'today') setDate(todayIso());
-                }}
-                className={[
-                  'rounded-2xl border px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap',
-                  formMode === mode.value
-                    ? 'border-orange-400/40 bg-orange-500/12 text-orange-300'
-                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-slate-200',
-                ].join(' ')}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDate((value) => shiftDate(value, -1))}
-              className="rounded-2xl border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:text-white hover:border-slate-600"
-              aria-label="Previous day"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setDate(todayIso())}
-              className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-200 hover:border-emerald-500/35 hover:text-emerald-300"
-            >
-              {prettyDate(date)}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDate((value) => shiftDate(value, 1))}
-              className="rounded-2xl border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:text-white hover:border-slate-600"
-              aria-label="Next day"
-            >
-              <ChevronRight size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowFavorites(true)}
-              className="rounded-2xl border border-yellow-400/30 bg-yellow-400/10 px-4 py-2 text-sm font-bold text-yellow-300 hover:bg-yellow-400/15"
-            >
-              {favoritesLabel}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowProspectTable((value) => !value)}
-              className={[
-                'inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-bold transition-colors',
-                showProspectTable
-                  ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
-                  : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-emerald-500/35 hover:text-emerald-300',
-              ].join(' ')}
-            >
-              <Table2 size={16} />
-              Prospect Table
-            </button>
-          </div>
-        </div>
-
-        <section className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr_1fr]">
-       
-
-          <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
-            <div className="flex items-center gap-2 text-orange-300 font-black uppercase tracking-widest text-[10px]">
-              <Flame size={14} />
-              Prospect Radar
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-              {radar.length ? radar.map((player) => (
-                <PlayerChip
-                  key={`${player.mode}-${player.kind}-${player.id}`}
-                  player={player}
-                  onSelect={setSelectedPlayer}
-                  isWatched={isWatched(player.id)}
-                  onToggleWatch={toggleWatch}
-                  showAffiliation
-                  showSeasonStats
-                />
-              )) : (
-                <div className="text-sm text-slate-500">Top performers appear once affiliate stats load.</div>
-              )}
-            </div>
-          </div>
-
-          {formMode !== 'today' && (
-            <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
-              <div className="flex items-center gap-2 text-emerald-300 font-black uppercase tracking-widest text-[10px]">
-                <TrendingUp size={14} />
-                Org Leaders
+        {pageTab === 'overview' && (
+          <>
+            {allMlbSelected ? (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-8 text-center">
+                <img src={MLB_LEAGUE_LOGO} alt="" className="mx-auto mb-3 h-12 w-12 object-contain" />
+                <p className="text-sm font-semibold text-slate-200">
+                  All MLB is best on the Rankings tab (Pipeline Top 100).
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Pick a team above for farm-system overview, radar, and affiliate box scores.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPageTab('rankings')}
+                  className="mt-4 rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-bold text-sky-300 hover:bg-sky-500/15"
+                >
+                  Open Rankings
+                </button>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                <LeaderboardTile
-                  label="OPS"
-                  player={leaderboards.ops}
-                  value={cleanNumber(leaderboards.ops?.stat?.ops)}
-                />
-                <LeaderboardTile
-                  label="HR"
-                  player={leaderboards.hr}
-                  value={cleanNumber(leaderboards.hr?.stat?.homeRuns, 0)}
-                />
-                <LeaderboardTile
-                  label="SB"
-                  player={leaderboards.sb}
-                  value={cleanNumber(leaderboards.sb?.stat?.stolenBases, 0)}
-                />
-                <LeaderboardTile
-                  label="ERA"
-                  player={leaderboards.era}
-                  value={cleanNumber(leaderboards.era?.stat?.era)}
-                  accent="text-orange-300"
-                />
-                <LeaderboardTile
-                  label="K/9"
-                  player={leaderboards.k9}
-                  value={cleanNumber(leaderboards.k9?.stat?.strikeoutsPer9Inn)}
-                  accent="text-orange-300"
-                />
-                <LeaderboardTile
-                  label="WHIP"
-                  player={leaderboards.whip}
-                  value={cleanNumber(leaderboards.whip?.stat?.whip)}
-                  accent="text-orange-300"
-                />
+            ) : null}
+
+            {!allMlbSelected && (
+            <>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDate((value) => shiftDate(value, -1))}
+                  className="rounded-2xl border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:text-white hover:border-slate-600"
+                  aria-label="Previous day"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDate(todayIso())}
+                  className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-200 hover:border-emerald-500/35 hover:text-emerald-300"
+                >
+                  {prettyDate(date)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDate((value) => shiftDate(value, 1))}
+                  className="rounded-2xl border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:text-white hover:border-slate-600"
+                  aria-label="Next day"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+
+              <div className="min-w-0 w-full sm:max-w-md sm:ml-auto">
+                <LevelFilterBar value={levelFilter} onChange={setLevelFilter} />
               </div>
             </div>
-          )}
-        </section>
 
-        {showProspectTable && (
-          <ProspectOrgTable
-            players={prospectTablePlayers}
-            modeLabel="Season"
-            sort={prospectTableSort}
-            onSort={setProspectTableSort}
+            <section className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-orange-300 font-black uppercase tracking-widest text-[10px]">
+                  <Flame size={14} />
+                  Today&apos;s Top Performances
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Biggest box-score days across the pipeline right now.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                  {todayTopPerformances.length ? todayTopPerformances.map((player) => (
+                    <PlayerChip
+                      key={`today-${player.kind}-${player.id}`}
+                      player={player}
+                      onSelect={setSelectedPlayer}
+                      isWatched={isWatched(player.id)}
+                      onToggleWatch={toggleWatch}
+                      showAffiliation
+                      showSeasonStats
+                      lineMode="today"
+                      accentHover="group-hover:text-orange-300"
+                    />
+                  )) : (
+                    <div className="text-sm text-slate-500">
+                      No big days yet — check back after games start or flip the date.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-emerald-500/20 bg-slate-900/80 p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-emerald-300 font-black uppercase tracking-widest text-[10px]">
+                  <TrendingUp size={14} />
+                  Prospect Radar
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Season lines that jump off the page — future big-leaguers worth tracking now.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                  {prospectRadar.length ? prospectRadar.map((player) => (
+                    <PlayerChip
+                      key={`radar-${player.kind}-${player.id}`}
+                      player={player}
+                      onSelect={setSelectedPlayer}
+                      isWatched={isWatched(player.id)}
+                      onToggleWatch={toggleWatch}
+                      showAffiliation
+                      lineMode="season"
+                      accentHover="group-hover:text-emerald-300"
+                    />
+                  )) : (
+                    <div className="text-sm text-slate-500">
+                      Season leaders load once affiliate stats finish syncing.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {isLoading ? (
+              <div className="py-20 flex justify-center">
+                <BaseballSpinner size="xl" label="Loading affiliate games and prospect signals…" />
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-5">
+                {visibleCards.map((affiliate) => (
+                  <AffiliateCard
+                    key={affiliate.id}
+                    affiliate={affiliate}
+                    onSelectPlayer={setSelectedPlayer}
+                    isWatched={isWatched}
+                    onToggleWatch={toggleWatch}
+                  />
+                ))}
+                {!visibleCards.length && (
+                  <div className="rounded-[2rem] border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center text-slate-500">
+                    No affiliates match this filter.
+                  </div>
+                )}
+              </div>
+            )}
+            </>
+            )}
+          </>
+        )}
+
+        {pageTab === 'rankings' && (
+          <RankingsPage
+            org={selectedOrg}
+            rankings={rankings}
+            isLoading={rankingsLoading}
+            error={rankingsError}
             onSelectPlayer={setSelectedPlayer}
             isWatched={isWatched}
             onToggleWatch={toggleWatch}
           />
         )}
 
-        {isLoading ? (
-          <div className="py-20 flex justify-center">
-            <BaseballSpinner size="xl" label="Loading affiliate games and prospect signals…" />
-          </div>
-        ) : formMode !== 'today' ? (
-          <div className="mt-6 grid gap-5 xl:grid-cols-2">
-            <FormPlayerBoard
-              title={`${FORM_MODES.find((mode) => mode.value === formMode)?.label} Hitters`}
-              players={insightPlayers.hitters.slice(0, 18)}
-              onSelectPlayer={setSelectedPlayer}
-              isWatched={isWatched}
-              onToggleWatch={toggleWatch}
-            />
-            <FormPlayerBoard
-              title={`${FORM_MODES.find((mode) => mode.value === formMode)?.label} Pitchers`}
-              players={insightPlayers.pitchers.slice(0, 18)}
-              onSelectPlayer={setSelectedPlayer}
-              isWatched={isWatched}
-              onToggleWatch={toggleWatch}
-            />
-          </div>
-        ) : (
-          <div className="mt-6 grid gap-5">
-            {visibleCards.map((affiliate) => (
-              <AffiliateCard
-                key={affiliate.id}
-                affiliate={affiliate}
-                onSelectPlayer={setSelectedPlayer}
-                isWatched={isWatched}
-                onToggleWatch={toggleWatch}
-              />
-            ))}
-            {!visibleCards.length && (
-              <div className="rounded-[2rem] border border-dashed border-slate-700 bg-slate-900/60 p-10 text-center text-slate-500">
-                No affiliates match this filter.
+        {pageTab === 'table' && (
+          <>
+            {allMlbSelected ? (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-8 text-center">
+                <img src={MLB_LEAGUE_LOGO} alt="" className="mx-auto mb-3 h-12 w-12 object-contain" />
+                <p className="text-sm font-semibold text-slate-200">
+                  Season tables are org-specific.
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Select a team for the full prospect table, or open Rankings for the MLB Top 100.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="mt-5 min-w-0 w-full">
+                  <LevelFilterBar value={levelFilter} onChange={setLevelFilter} />
+                </div>
+                {isLoading ? (
+                  <div className="py-20 flex justify-center">
+                    <BaseballSpinner size="xl" label="Loading org prospect table…" />
+                  </div>
+                ) : (
+                  <ProspectOrgTable
+                    players={prospectTablePlayers}
+                    modeLabel="Season"
+                    sort={prospectTableSort}
+                    onSort={setProspectTableSort}
+                    onSelectPlayer={setSelectedPlayer}
+                    isWatched={isWatched}
+                    onToggleWatch={toggleWatch}
+                  />
+                )}
+              </>
             )}
-          </div>
+          </>
+        )}
+
+        {pageTab === 'favorites' && (
+          <FavoritesPage
+            players={watchlistPlayers}
+            notes={notes}
+            onSelectPlayer={setSelectedPlayer}
+            onToggleWatch={toggleWatch}
+          />
         )}
       </div>
-
-      <FavoritesModal
-        open={showFavorites}
-        onClose={() => setShowFavorites(false)}
-        players={watchlistPlayers}
-        onSelectPlayer={setSelectedPlayer}
-        onToggleWatch={toggleWatch}
-      />
 
       <ProspectPreviewModal
         player={selectedPlayer}

@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "prebuild": "node scripts/fetch-pipeline-rankings.mjs",
     "lint": "eslint .",
     "generate:historical-trades": "python scripts/generate_historical_trades.py",
+    "generate:pipeline-rankings": "node scripts/fetch-pipeline-rankings.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

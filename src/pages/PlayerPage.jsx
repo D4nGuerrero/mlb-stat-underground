@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { useParams, useNavigate, useLocation, useNavigationType, Link } from 'react-router-dom';
-import { playerHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackgroundClass, getTeamAbbr, spotracPlayerUrl, retiredPlayerTeamOverride, mlbTeams } from '../utils/mlbHelpers';
+import { playerHeadshotUrl, playerGenericHeadshotUrl, teamLogoUrl, playerHeroShotUrl, playerHeroBackgroundClass, getTeamAbbr, spotracPlayerUrl, retiredPlayerTeamOverride, mlbTeams } from '../utils/mlbHelpers';
 import TeamAbbrCell from '../components/TeamAbbrCell';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { buildSeasonHonors, getActiveHonorBadges } from '../utils/seasonHonors';
@@ -4024,11 +4024,17 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   />
  )}
 
-  {/* PLAYER IMG */}
+  {/* PLAYER IMG — falls back to official MLB generic headshot when no photo exists */}
   <img
     src={playerHeadshotUrl(playerId, playerImageOptions)}
     className="relative z-10 w-32 h-32 sm:w-40 sm:h-40  object-cover shadow-lg"
     alt={playerInfo.fullName}
+    onError={(e) => {
+      const img = e.currentTarget;
+      if (img.dataset.headshotFallback === 'generic') return;
+      img.dataset.headshotFallback = 'generic';
+      img.src = playerGenericHeadshotUrl(playerId, 213);
+    }}
   />
 
  

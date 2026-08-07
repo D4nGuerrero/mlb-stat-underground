@@ -240,10 +240,13 @@ export const teamLogoUrl = (teamId, options = {}) => {
 };
   
 
-// export const playerHeadshotUrl = (playerId) =>
-// `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`
-
-
+/**
+ * Official MLB headshot with Cloudinary default image.
+ * Shows the player's photo when one exists; otherwise the generic silhouette
+ * (e.g. prospects like Seong-Jun Kim with no uploaded headshot).
+ */
+export const playerGenericHeadshotUrl = (playerId, width = 213) =>
+  `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_${width},q_auto:best/v1/people/${playerId}/headshot/67/current`;
 
 function normalizePlayerImageOptions(typeOrOptions = 1) {
   if (typeof typeOrOptions === 'object' && typeOrOptions !== null) {
@@ -265,20 +268,22 @@ export const playerHeadshotUrl = (playerId, typeOrOptions = 1) => {
   const { type, level, isMinors, width = 180 } = normalizePlayerImageOptions(typeOrOptions);
 
   if (isMinors || level === 'minors') {
-    return `https://img.mlbstatic.com/mlb-photos/image/upload/c_fill,g_auto/w_${width}/v1/people/${playerId}/headshot/milb/current`;
+    // Prefer MiLB archive when present; Cloudinary `d_` supplies official generic if missing.
+    return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_${width},q_auto:best/v1/people/${playerId}/headshot/milb/current`;
   }
 
-  if(type == 1) {
-    return `https://midfield.mlbstatic.com/v1/people/${playerId}/silo/240`
+  if (type == 1) {
+    return `https://midfield.mlbstatic.com/v1/people/${playerId}/silo/240`;
   }
 
   // https://midfield.mlbstatic.com/v1/people/624413/spots/120
 
-  if(type == 2) {
-    return `https://midfield.mlbstatic.com/v1/people/${playerId}/spots/120`
+  if (type == 2) {
+    return `https://midfield.mlbstatic.com/v1/people/${playerId}/spots/120`;
   }
 
-}
+  return playerGenericHeadshotUrl(playerId, width);
+};
 
 /** Spotrac player slug from MLB nameSlug or full name (e.g. "Corey Seager" → "corey-seager"). */
 export function spotracPlayerSlug({ nameSlug, fullName, firstName, lastName } = {}) {

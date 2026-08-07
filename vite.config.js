@@ -4,6 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 const base = '/mlb-stat-underground/'
 
+// Same-origin proxy so the browser can reach data-graph.mlb.com (no CORS).
+const mlbDataGraphProxy = {
+  '/mlb-data-graph': {
+    target: 'https://data-graph.mlb.com',
+    changeOrigin: true,
+    secure: true,
+    rewrite: () => '/graphql',
+  },
+}
+
 export default defineConfig({
   base,
   plugins: [
@@ -48,6 +58,22 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
         navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // Never offline-cache the rankings proxy or snapshot — always network.
+        runtimeCaching: [
+          {
+            urlPattern: /\/mlb-data-graph(?:\?|$)/,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /\/data\/pipeline-rankings\.json$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pipeline-rankings',
+              networkTimeoutSeconds: 8,
+              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 },
+            },
+          },
+        ],
       },
       devOptions: {
         enabled: true,
@@ -55,4 +81,10 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: mlbDataGraphProxy,
+  },
+  preview: {
+    proxy: mlbDataGraphProxy,
+  },
 })
