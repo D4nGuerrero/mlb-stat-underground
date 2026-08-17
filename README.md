@@ -17,6 +17,7 @@ MLB Live is a full-featured, production-ready web app that turns the official ML
 - **Real-time scores** with live WebSocket updates
 - **Deep player & team profiles** with advanced metrics
 - **Stat leaders & standings** that update on the fly
+- **Postseason brackets** for every October since 1903 — pick a series, then open any game in Gameday
 - **Interactive baseball simulator** for what-if scenarios and chaos
 - **Built-in API explorer** so you know exactly where the numbers come from
 
@@ -33,6 +34,7 @@ Private repo. Public ambition.
 | **Stats**       | `/stats`               | Advanced query engine (date ranges, filters, splits) |
 | **Leaders**     | `/leaders`             | Top performers across every meaningful category   |
 | **Standings**   | `/standings`           | Division + Wild Card races with magic numbers     |
+| **Postseason**  | `/postseason/:year`    | Historical October brackets, series, and Gameday  |
 | **Simulator**   | `/simulator`           | Full baseball sim — games, seasons, roster tinkering |
 | **API Docs**    | `/docs`                | Exhaustive MLB Stats API reference + examples     |
 | **Player**      | `/player/:playerId`    | Bio, career splits, xStats, recent form, charts   |

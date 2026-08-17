@@ -5,6 +5,7 @@ import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, BottomSheetMod
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
 import { TABLE_TEXT_CLASS, TABLE_MIN_W } from '../theme/tableTheme';
 import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { fetchStatsApiJson } from '../lib/mlb/client';
 import { countryFlagUrl } from '../utils/countryFlags';
 import { getHistoricalTradeBundle, getHistoricalTradesForTeam, isHistoricalTrade } from '../utils/historicalTrades';
@@ -1221,7 +1222,12 @@ function ScheduleTab({
 
   const goToGame = (gamePk) => {
     onNavigateAway?.({ scheduleMonth: selectedMonth });
-    navigate(`/game/${gamePk}`);
+    navigate(`/game/${gamePk}`, {
+      state: {
+        returnTo: `/team/${teamId}`,
+        returnLabel: 'Team',
+      },
+    });
   };
 
   useEffect(() => {
@@ -2955,6 +2961,7 @@ function TeamPageContent({ teamId }) {
   const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
   const isFavorite = isFavoriteTeam(teamId);
   const teamSportId = Number(teamInfo?.sport?.id) || MLB_SPORT_ID;
+  useDocumentTitle(teamInfo?.name || teamInfo?.teamName || 'Team');
 
   useEffect(() => {
     restoreTeamPageScroll(teamId);

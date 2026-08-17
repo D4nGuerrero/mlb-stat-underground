@@ -2601,8 +2601,8 @@ export default function ProspectWatch() {
   const selectedNote = previewPlayer ? notes[previewPlayer.id] ?? '' : '';
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+    <div className="overflow-x-clip">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/75 px-3 py-3 sm:px-4">
           <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">

@@ -214,6 +214,10 @@ html[data-theme="light"][data-theme-color="default"] .hover\:bg-accent-600:hover
   --text-primary: #e2e8f0;
 }
 
+html {
+  overflow-x: clip;
+}
+
 html[data-theme="light"],
 body.theme-light {
   --surface-page: #f1f5f9;

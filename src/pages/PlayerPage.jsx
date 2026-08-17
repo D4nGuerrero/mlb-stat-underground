@@ -8,6 +8,7 @@ import { fetchPlayerSplitSections, SPLIT_DISPLAY_COLS, PITCHING_SPLIT_DISPLAY_CO
 import { computeCareerTotalsRow, computeSeasonTotalsRow } from '../utils/careerTotals';
 import SeasonYearLabel from '../components/SeasonYearLabel';
 import { useWatchlist } from '../hooks/useWatchlist';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { fetchStatsApiJson } from '../lib/mlb/client';
 import { countryFlagUrl } from '../utils/countryFlags';
 import { getHistoricalTradeBundle, getHistoricalTradesForPlayer, isHistoricalTrade } from '../utils/historicalTrades';
@@ -2263,6 +2264,7 @@ function GameLogGlossary({ items }) {
 
 function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs available' }) {
   const navigate = useNavigate();
+  const { playerId } = useParams();
   const monthSections = useMemo(() => buildGameLogMonthSections(rows, logGroup), [rows, logGroup]);
   const glossary = logGroup === 'pitching' ? GAME_LOG_PITCH_GLOSSARY : GAME_LOG_HIT_GLOSSARY;
 
@@ -2334,12 +2336,16 @@ function GameLogTable({ cols, rows, logGroup, emptyMessage = 'No game logs avail
                     key={row.id ?? `${section.key}-${i}`}
                     tabIndex={row.gamePk ? 0 : undefined}
                     role={row.gamePk ? 'button' : undefined}
-                    onClick={row.gamePk ? () => navigate(`/game/${row.gamePk}`) : undefined}
+                    onClick={row.gamePk ? () => navigate(`/game/${row.gamePk}`, {
+                      state: { returnTo: `/player/${playerId}`, returnLabel: 'Player' },
+                    }) : undefined}
                     onKeyDown={row.gamePk
                       ? (event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            navigate(`/game/${row.gamePk}`);
+                            navigate(`/game/${row.gamePk}`, {
+                              state: { returnTo: `/player/${playerId}`, returnLabel: 'Player' },
+                            });
                           }
                         }
                       : undefined}
@@ -3721,6 +3727,7 @@ function PlayerPageContent({ playerId, locationKey, initialViewState, restoredFr
   const [watchAnimating, setWatchAnimating] = useState(false);
 
   const isPitcher = isPitcherPosition(playerInfo?.primaryPosition?.abbreviation);
+  useDocumentTitle(playerInfo?.fullName || 'Player');
 
   const handleCareerLevelChange = useCallback((nextLevel) => {
     setCareerLevel(nextLevel);

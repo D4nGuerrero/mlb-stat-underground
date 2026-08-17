@@ -26,7 +26,7 @@ export default defineConfig({
         id: base,
         name: 'MLB Stat Underground',
         short_name: 'MLB Live',
-        description: 'Live MLB scores, stats, standings, and player data.',
+        description: 'Live MLB scores, postseason brackets, stats, standings, and player data.',
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
@@ -55,7 +55,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,woff2,webmanifest}'],
         navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Never offline-cache the rankings proxy or snapshot — always network.

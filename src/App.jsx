@@ -11,11 +11,13 @@ import {
   FileText,
   Settings as SettingsIcon,
   MoreHorizontal,
+  Trophy,
 } from 'lucide-react';
 import { assetUrl } from './utils/baseUrl.js';
 import { LoadingSpinner } from './components/ui';
 import PwaUpdateToast from './components/PwaUpdateToast.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
+import { useDocumentTitle } from './hooks/useDocumentTitle.js';
 
 const Scores = lazy(() => import('./pages/Scores.jsx'));
 const GameDay = lazy(() => import('./pages/GameDay.jsx'));
@@ -30,6 +32,7 @@ const Debug = lazy(() => import('./pages/Debug.jsx'));
 const ProspectWatch = lazy(() => import('./pages/ProspectWatch.jsx'));
 const DraftTracker = lazy(() => import('./pages/DraftTracker.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
+const Postseason = lazy(() => import('./pages/Postseason.jsx'));
 
 function StandingsFlagIcon({ className = 'w-4 h-4' }) {
   return (
@@ -52,10 +55,28 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { to: '/postseason', icon: Trophy, label: 'Postseason', description: 'Brackets from every October' },
   { to: '/simulator', icon: Cpu, label: 'Simulator', description: 'Play out games & seasons' },
   { to: '/draft', icon: ClipboardList, label: 'Draft Tracker', description: 'Browse draft classes' },
   { to: '/docs', icon: FileText, label: 'API Docs', description: 'Stats API reference' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings', description: 'Theme & mobile nav' },
+];
+
+const ROUTE_TITLES = [
+  { test: (path) => path === '/', title: 'Scores' },
+  { test: (path) => path.startsWith('/postseason'), title: 'Postseason' },
+  { test: (path) => path.startsWith('/stats'), title: 'Stats' },
+  { test: (path) => path.startsWith('/leaders'), title: 'Leaders' },
+  { test: (path) => path.startsWith('/standings'), title: 'Standings' },
+  { test: (path) => path.startsWith('/prospects'), title: 'Prospects' },
+  { test: (path) => path.startsWith('/simulator'), title: 'Simulator' },
+  { test: (path) => path.startsWith('/draft'), title: 'Draft Tracker' },
+  { test: (path) => path.startsWith('/docs'), title: 'API Docs' },
+  { test: (path) => path.startsWith('/settings'), title: 'Settings' },
+  { test: (path) => path.startsWith('/debug'), title: 'Debug' },
+  { test: (path) => path.startsWith('/game/'), title: 'Gameday' },
+  { test: (path) => path.startsWith('/player/'), title: 'Player' },
+  { test: (path) => path.startsWith('/team/'), title: 'Team' },
 ];
 
 const MORE_PATHS = new Set(MORE_NAV.map((item) => item.to));
@@ -271,6 +292,12 @@ function App() {
     return [...MORE_PATHS].some((base) => base !== '/' && path.startsWith(`${base}/`));
   }, [location.pathname]);
 
+  const routeTitle = useMemo(() => {
+    const path = location.pathname;
+    return ROUTE_TITLES.find((entry) => entry.test(path))?.title ?? null;
+  }, [location.pathname]);
+  useDocumentTitle(routeTitle);
+
   useEffect(() => {
     document.documentElement.dataset.navChrome = useBottomChrome ? 'bottom' : 'top';
     document.documentElement.dataset.hideTopBar = showTopBar ? 'false' : 'true';
@@ -281,6 +308,7 @@ function App() {
       className={[
         'min-h-screen transition-colors',
         isDark ? 'bg-slate-950 text-slate-200' : 'bg-slate-100 text-slate-900',
+        'overflow-x-clip',
         useBottomChrome
           ? 'has-bottom-nav pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))]'
           : '',
@@ -305,6 +333,9 @@ function App() {
           <Route path="/prospects" element={<ProspectWatch />} />
           <Route path="/draft" element={<DraftTracker />} />
           <Route path="/draft/:year" element={<DraftTracker />} />
+          <Route path="/postseason" element={<Postseason />} />
+          <Route path="/postseason/:year" element={<Postseason />} />
+          <Route path="/postseason/:year/:seriesId" element={<Postseason />} />
           <Route path="/docs" element={<APIDocs />} />
           <Route path="/debug" element={<Debug />} />
           <Route path="/settings" element={<Settings />} />

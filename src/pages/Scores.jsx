@@ -15,7 +15,6 @@ import NationalBroadcastIcons from '../components/NationalBroadcastIcons';
 import { SegmentedControl, SwipeableCarousel, LoadingSpinner } from '../components/ui';
 import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
-
 const MIN_DATE = new Date('2024-03-01');
 const WINDOW_PAST = 60;
 const FUTURE_DAYS = 180;

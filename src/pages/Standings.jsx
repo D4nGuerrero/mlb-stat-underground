@@ -5,6 +5,7 @@ import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stic
 import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
 import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
+import { fetchStatsApiJson } from '../lib/mlb/client';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2003 + 1 }, (_, i) => {
@@ -82,6 +83,13 @@ const DEFAULT_SORT = {
   wildcard: 'wcGb',
 };
 
+const CLINCH_LABELS = {
+  z: 'Clinched best record in league',
+  y: 'Clinched Division',
+  x: 'Clinched Postseason',
+  w: 'Clinched Wild Card',
+};
+
 const EXPANDED_GLOSSARY = [
   { key: '1-RUN', text: 'One-run games' },
   { key: 'XTRA', text: 'Extra-inning games' },
@@ -143,6 +151,14 @@ function parseGamesBack(value) {
   }
   const n = parseFloat(s);
   return Number.isNaN(n) ? 0 : n;
+}
+
+function resolveClinchIndicator(tr) {
+  const raw = String(tr?.clinchIndicator ?? '').trim().toLowerCase();
+  if (raw && CLINCH_LABELS[raw]) return raw;
+  if (tr?.divisionChamp) return 'y';
+  if (tr?.clinched) return 'x';
+  return null;
 }
 
 function formatGamesBack(value) {
@@ -211,35 +227,45 @@ export default function Standings() {
   const standingsType = STANDINGS_TYPE_BY_TAB[activeTab] ?? 'regularSeason';
   const selectedLeague = LEAGUE_LEVEL_BY_VALUE[standingsLeague] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
 
-  const fetchStandings = async () => {
+  useEffect(() => {
     const key = `${standingsLeague}:${season}:${standingsType}`;
     if (cache.current[key]) {
       setStandingsData(cache.current[key]);
       setIsLoading(false);
       setError(null);
-      return;
+      return undefined;
     }
+
+    const controller = new AbortController();
     setIsLoading(true);
     setError(null);
-    try {
-      const res = await fetch(
-        `https://statsapi.mlb.com/api/v1/standings?${selectedLeague.standingsQuery}&season=${season}&standingsTypes=${standingsType}&hydrate=team(division,league),records(divisionRecords,splitRecords,leagueRecords)`,
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      cache.current[key] = data;
-      setStandingsData(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    fetchStandings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season, standingsType, standingsLeague]);
+    const leagueParams = Object.fromEntries(new URLSearchParams(selectedLeague.standingsQuery));
+
+    fetchStatsApiJson('/api/v1/standings', {
+      query: {
+        ...leagueParams,
+        season,
+        standingsTypes: standingsType,
+        hydrate: 'team(division,league),records(divisionRecords,splitRecords,leagueRecords)',
+      },
+      ttl: 60_000,
+      retries: 1,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        cache.current[key] = data;
+        setStandingsData(data);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        setError(err.message);
+        setIsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [season, standingsType, standingsLeague, selectedLeague.standingsQuery]);
 
   useEffect(() => {
     localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, standingsLeague);
@@ -302,6 +328,7 @@ export default function Standings() {
       gamesPlayed: tr.gamesPlayed ?? 0,
       divisionChamp: tr.divisionChamp ?? false,
       clinched: tr.clinched ?? false,
+      clinchIndicator: resolveClinchIndicator(tr),
       wildCard: tr.wildCard ?? false,
       leagueId: ownLeagueId,
       divId: ownDivisionId,
@@ -499,20 +526,25 @@ export default function Standings() {
         className="text-left hover:opacity-90 transition-opacity"
         onClick={() => navigate(`/team/${team.teamId}`)}
       >
-        <TeamAbbrCell
-          team={team.team}
-          teamId={team.teamId}
-          teamName={team.teamName}
-          hidePlaceholderAbbr={selectedLeague.value !== 'mlb'}
-          size="lg"
-          abbrClassName="text-[11px] font-semibold"
-          nameClassName="text-sm font-semibold"
-        />
-        {(team.clinched || team.divisionChamp) && (
-          <span className="hidden sm:block text-[10px] text-accent-400 font-semibold mt-0.5">
-            {team.divisionChamp ? 'y – Division' : 'x – Postseason'}
-          </span>
-        )}
+        <span className="inline-flex items-center gap-0.5 min-w-0">
+          {team.clinchIndicator && (
+            <span
+              className="flex-shrink-0 text-[11px] font-bold text-accent-400 sm:text-xs"
+              title={CLINCH_LABELS[team.clinchIndicator] ?? 'Clinched'}
+            >
+              {team.clinchIndicator}-
+            </span>
+          )}
+          <TeamAbbrCell
+            team={team.team}
+            teamId={team.teamId}
+            teamName={team.teamName}
+            hidePlaceholderAbbr={selectedLeague.value !== 'mlb'}
+            size="lg"
+            abbrClassName="text-[11px] font-semibold"
+            nameClassName="text-sm font-semibold"
+          />
+        </span>
       </button>
     </td>
   );
@@ -737,8 +769,10 @@ export default function Standings() {
 
       <div className="mt-8 space-y-3">
         <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-          <span><span className={`text-accent-400 font-semibold`}>x</span> – Clinched Postseason</span>
-          <span><span className={`text-accent-400 font-semibold`}>y</span> – Clinched Division</span>
+          <span><span className="font-semibold text-accent-400">z</span> – Clinched best record in league</span>
+          <span><span className="font-semibold text-accent-400">y</span> – Clinched Division</span>
+          <span><span className="font-semibold text-accent-400">x</span> – Clinched Postseason</span>
+          <span><span className="font-semibold text-accent-400">w</span> – Clinched Wild Card</span>
           <span><span className={`text-accent-400`}>W3</span> – Win streak</span>
           <span><span className="text-red-400">L2</span> – Loss streak</span>
           <span className="text-slate-600 italic">Click column headers to sort</span>

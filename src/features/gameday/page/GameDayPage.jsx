@@ -54,6 +54,7 @@ import { useLiveRecentPlays } from '../hooks/useLiveRecentPlays';
 import { usePreviewLineups } from '../hooks/usePreviewLineups';
 import { useVsStats } from '../hooks/useVsStats';
 import { useLocalStorageState } from '../../../hooks/useStorageState';
+import { useDocumentTitle } from '../../../hooks/useDocumentTitle';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,25 @@ const MILB_SPORT_IDS = new Set([11, 12, 13, 14, 16]);
 const LMB_FIELD_BACKGROUND_URL = 'https://lmb.com.mx/_next/image?url=%2Fimages%2Ffield.webp&w=1200&q=75';
 const milbStadiumTopUrl = (timeOfDay = 'day') =>
   `https://prod-gameday.mlbstatic.com/responsive-gameday-assets/1.3.0/images/stadiums/${timeOfDay}/default-milb@2x.jpg`;
+
+function gamedayReturnTarget(location) {
+  const state = location.state ?? {};
+  return {
+    to: state.returnTo || '/',
+    label: state.returnLabel || 'Scores',
+    state: state.returnDate ? { returnDate: state.returnDate } : undefined,
+  };
+}
+
+function nextGameNavState(location) {
+  const state = location.state ?? {};
+  return {
+    returnDate: state.returnDate,
+    returnTo: state.returnTo,
+    returnLabel: state.returnLabel,
+    activeTab: state.activeTab,
+  };
+}
 
 const MLB_TEAM_SUBREDDITS = {
   108: 'angelsbaseball',
@@ -2691,6 +2711,8 @@ function DesktopGameStrip({
   onDateShift,
   dateValue,
   dateLabel,
+  backLabel,
+  onBack,
 }) {
   const gamesScrollerRef = useRef(null);
 
@@ -2715,7 +2737,19 @@ function DesktopGameStrip({
   }, [games.length, loading]);
 
   return (
-    <div className="hidden xl:grid xl:grid-cols-[7.25rem_minmax(0,1fr)] xl:gap-2 xl:min-h-[5.25rem] xl:max-h-[5.25rem]">
+    <div className="hidden xl:grid xl:grid-cols-[auto_7.25rem_minmax(0,1fr)] xl:gap-2 xl:min-h-[5.25rem] xl:max-h-[5.25rem]">
+      {onBack ? (
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex min-w-[5.5rem] items-center justify-center gap-2 rounded-xl border border-slate-700/60 bg-[#121827] px-3 text-sm text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white"
+        >
+          <i className="fa-solid fa-arrow-left text-xs" aria-hidden />
+          <span>{backLabel || 'Back'}</span>
+        </button>
+      ) : (
+        <span className="hidden" />
+      )}
       <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-stretch rounded-xl border border-slate-700/60 bg-[#121827] overflow-hidden">
         <button
           type="button"
@@ -2812,6 +2846,11 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [previewTab, setPreviewTab] = useState('preview');
   const [stripDate, setStripDate] = useState(null);
   const officialDate = feed?.gameData?.datetime?.officialDate;
+  const titleAway = feed?.gameData?.teams?.away?.abbreviation;
+  const titleHome = feed?.gameData?.teams?.home?.abbreviation;
+  useDocumentTitle(
+    titleAway && titleHome ? `${titleAway} @ ${titleHome}` : 'Gameday',
+  );
   const gameSportId = feed?.gameData?.teams?.home?.sport?.id
     ?? feed?.gameData?.teams?.away?.sport?.id
     ?? 1;
@@ -3219,12 +3258,13 @@ function GamePageContent({ gamePk, navigate, location }) {
           </button>
           <button
             type="button"
-            onClick={() =>
-              navigate('/', { state: { returnDate: location.state?.returnDate } })
-            }
+            onClick={() => {
+              const target = gamedayReturnTarget(location);
+              navigate(target.to, { state: target.state });
+            }}
             className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl text-sm transition-all"
           >
-            ← Back to Game Day
+            ← Back to {gamedayReturnTarget(location).label}
           </button>
         </div>
       </div>
@@ -3924,20 +3964,21 @@ function GamePageContent({ gamePk, navigate, location }) {
       {/* Mobile compact sticky header — shows instead of nav */}
       <div className="sm:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur border-b border-slate-800/60 grid grid-cols-[1fr_auto_1fr] items-center px-4 py-3">
         <button
-          onClick={() =>
-            navigate('/', { state: { returnDate: location.state?.returnDate } })
-          }
+          onClick={() => {
+            const target = gamedayReturnTarget(location);
+            navigate(target.to, { state: target.state });
+          }}
           className="flex items-center gap-2 text-sm text-slate-300 active:text-white justify-self-start"
         >
           <i className="fa-solid fa-arrow-left text-xs" />
-          <span>Scores</span>
+          <span>{gamedayReturnTarget(location).label}</span>
         </button>
         <GamedayGamePicker
           games={daySchedule}
           currentGamePk={gamePk}
           loading={dayScheduleLoading}
           onOpen={() => refreshDaySchedule()}
-          onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
+          onSelect={(pk) => navigate(`/game/${pk}`, { state: nextGameNavState(location) })}
         />
         <div className="justify-self-end flex items-center justify-end gap-2 min-w-[4.5rem]">
          
@@ -3952,13 +3993,14 @@ function GamePageContent({ gamePk, navigate, location }) {
       {/* Desktop: back + ws status */}
       <div className={`hidden sm:flex items-center justify-between mb-4 px-0 ${(isLive && currentTab === 'live') || isFinal ? 'xl:hidden' : ''}`}>
         <button
-          onClick={() =>
-            navigate('/', { state: { returnDate: location.state?.returnDate } })
-          }
+          onClick={() => {
+            const target = gamedayReturnTarget(location);
+            navigate(target.to, { state: target.state });
+          }}
           className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
         >
           <i className="fa-solid fa-arrow-left text-xs" />
-          <span>Scores</span>
+          <span>{gamedayReturnTarget(location).label}</span>
         </button>
         <div className="flex items-center gap-2">
           {isLive && (
@@ -4000,7 +4042,12 @@ function GamePageContent({ gamePk, navigate, location }) {
               dateLabel={formatDesktopStripDate(activeStripDate)}
               onDateSelect={setGameStripDate}
               onDateShift={shiftGameStripDate}
-              onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
+              onSelect={(pk) => navigate(`/game/${pk}`, { state: nextGameNavState(location) })}
+              backLabel={gamedayReturnTarget(location).label}
+              onBack={() => {
+                const target = gamedayReturnTarget(location);
+                navigate(target.to, { state: target.state });
+              }}
             />
           </div>
         )}
@@ -4231,7 +4278,12 @@ function GamePageContent({ gamePk, navigate, location }) {
               dateLabel={formatDesktopStripDate(activeStripDate)}
               onDateSelect={setGameStripDate}
               onDateShift={shiftGameStripDate}
-              onSelect={(pk) => navigate(`/game/${pk}`, { state: { returnDate: location.state?.returnDate } })}
+              onSelect={(pk) => navigate(`/game/${pk}`, { state: nextGameNavState(location) })}
+              backLabel={gamedayReturnTarget(location).label}
+              onBack={() => {
+                const target = gamedayReturnTarget(location);
+                navigate(target.to, { state: target.state });
+              }}
             />
 
             <div className="xl:min-h-0 xl:flex-1 xl:grid xl:grid-cols-[280px_minmax(500px,1fr)_minmax(560px,1.15fr)] 2xl:grid-cols-[320px_minmax(620px,1fr)_minmax(760px,1.35fr)] xl:items-stretch xl:gap-4 xl:overflow-hidden">
