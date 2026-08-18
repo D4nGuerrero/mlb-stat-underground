@@ -520,7 +520,7 @@ function TeamLeaderCard({ label, statKey, dec, leaders, onNavigateAway }) {
   const leave = onNavigateAway ?? (() => {});
 
   return (
-    <div className="leader-card w-full min-w-[300px] max-w-[320px] bg-[#1b2a51] rounded-3xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-xl">
+    <div className="theme-on-dark leader-card w-full min-w-[300px] max-w-[320px] bg-[#1b2a51] rounded-3xl overflow-hidden hover:-translate-y-1 transition-all duration-300 shadow-xl">
       <div className="p-0 flex items-start gap-3 border-b border-slate-700 min-h-[148px]">
         <div className="flex-1 p-3 min-w-0">
           <div className={`uppercase text-accent-400 text-xs font-semibold tracking-widest mb-1`}>
@@ -3081,7 +3081,7 @@ function TeamPageContent({ teamId }) {
       
 
       <div className="bg-[#121827] border border-slate-700/60 sm:rounded-2xl overflow-hidden">
-        <div className="relative h-[180px] sm:h-[240px] overflow-hidden px-5 sm:px-8 py-5 sm:py-6 flex flex-col">
+        <div className="theme-on-dark player-hero-on-photo relative h-[180px] sm:h-[240px] overflow-hidden px-5 sm:px-8 py-5 sm:py-6 flex flex-col">
           {/* TEAM BANNER */}
           <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-[#121827]" />
           <img

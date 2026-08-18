@@ -6,6 +6,7 @@ import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
 import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
 import { fetchStatsApiJson } from '../lib/mlb/client';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2003 + 1 }, (_, i) => {
@@ -21,8 +22,14 @@ const STANDINGS_TABS = [
 ];
 
 const LEAGUE_LOGOS = {
-  AL: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg',
-  NL: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg',
+  AL: {
+    dark: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg',
+    light: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/159.svg',
+  },
+  NL: {
+    dark: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg',
+    light: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/160.svg',
+  },
 };
 
 function leagueKeyFromName(name) {
@@ -32,13 +39,15 @@ function leagueKeyFromName(name) {
 }
 
 function LeagueTitle({ title, className = '' }) {
+  const { isDark } = useTheme();
   const leagueKey = leagueKeyFromName(title);
+  const logos = leagueKey ? LEAGUE_LOGOS[leagueKey] : null;
 
   return (
     <span className={`inline-flex items-center gap-2 pl-2 ${className}`}>
-      {leagueKey && (
+      {logos && (
         <img
-          src={LEAGUE_LOGOS[leagueKey]}
+          src={isDark ? logos.dark : logos.light}
           alt=""
           className="w-5 h-5 object-contain flex-shrink-0"
           onError={(e) => (e.target.style.display = 'none')}

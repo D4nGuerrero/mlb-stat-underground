@@ -388,6 +388,134 @@ body.theme-light .hover\:bg-red-500\/20:hover {
   background-color: rgb(239 68 68 / 0.2) !important;
 }
 
+/* Soft dark chips / table stripes used on Prospects and similar pages */
+body.theme-light .bg-slate-950\/35,
+body.theme-light .bg-slate-950\/45,
+body.theme-light .bg-slate-950\/55,
+body.theme-light .bg-slate-950\/70,
+body.theme-light .odd\:bg-slate-950\/35:nth-child(odd),
+body.theme-light .even\:bg-slate-900\/35:nth-child(even) {
+  background-color: rgb(241 245 249 / 0.92);
+}
+
+body.theme-light .text-zinc-100,
+body.theme-light .text-zinc-200 {
+  color: #0f172a;
+}
+
+body.theme-light .text-zinc-300 {
+  color: #1e293b;
+}
+
+body.theme-light .text-zinc-400,
+body.theme-light .text-zinc-500 {
+  color: #64748b;
+}
+
+body.theme-light .border-zinc-600,
+body.theme-light .border-zinc-700 {
+  border-color: #cbd5e1;
+}
+
+body.theme-light .bg-zinc-900,
+body.theme-light .bg-\[\#171717\],
+body.theme-light .bg-\[\#202020\],
+body.theme-light .bg-\[\#252525\] {
+  background-color: #f1f5f9;
+}
+
+body.theme-light .bg-\[\#202020\]\/95 {
+  background-color: rgb(241 245 249 / 0.95);
+}
+
+/* Pastel status colors are too faint on white */
+body.theme-light .text-emerald-200,
+body.theme-light .text-emerald-300 {
+  color: #047857;
+}
+
+body.theme-light .text-sky-300,
+body.theme-light .text-sky-400 {
+  color: #0369a1;
+}
+
+body.theme-light .text-amber-200,
+body.theme-light .text-amber-100 {
+  color: #b45309;
+}
+
+/* Photo heroes, trophy cards, and other surfaces that stay dark */
+body.theme-light .theme-on-dark {
+  background-color: #202020;
+  color: #f8fafc !important;
+}
+
+body.theme-light .theme-on-dark.bg-slate-900,
+body.theme-light .theme-on-dark.bg-slate-950,
+body.theme-light .theme-on-dark.bg-\[\#202020\],
+body.theme-light .theme-on-dark.bg-\[\#171717\],
+body.theme-light .theme-on-dark.bg-\[\#1b2a51\] {
+  background-color: #202020 !important;
+}
+
+body.theme-light .theme-on-dark.bg-\[\#1b2a51\] {
+  background-color: #1b2a51 !important;
+}
+
+body.theme-light .theme-on-dark .text-white,
+body.theme-light .player-hero-on-photo.theme-on-dark .text-white {
+  color: #f8fafc !important;
+}
+
+body.theme-light .theme-on-dark .text-slate-100,
+body.theme-light .theme-on-dark .text-slate-200,
+body.theme-light .theme-on-dark .text-zinc-100,
+body.theme-light .theme-on-dark .text-zinc-200 {
+  color: #e2e8f0 !important;
+}
+
+body.theme-light .theme-on-dark .text-slate-300,
+body.theme-light .theme-on-dark .text-zinc-300 {
+  color: #cbd5e1 !important;
+}
+
+body.theme-light .theme-on-dark .text-slate-400,
+body.theme-light .theme-on-dark .text-zinc-400,
+body.theme-light .theme-on-dark .text-zinc-500 {
+  color: #94a3b8 !important;
+}
+
+body.theme-light .theme-on-dark .text-amber-100,
+body.theme-light .theme-on-dark .text-amber-200 {
+  color: #fde68a !important;
+}
+
+body.theme-light .theme-on-dark .text-emerald-200,
+body.theme-light .theme-on-dark .text-emerald-300 {
+  color: #6ee7b7 !important;
+}
+
+body.theme-light .theme-on-dark .text-sky-300,
+body.theme-light .theme-on-dark .text-sky-400 {
+  color: #7dd3fc !important;
+}
+
+body.theme-light .theme-on-dark .bg-\[\#171717\],
+body.theme-light .theme-on-dark .bg-\[\#202020\],
+body.theme-light .theme-on-dark .bg-\[\#252525\],
+body.theme-light .theme-on-dark .bg-zinc-900 {
+  background-color: #202020 !important;
+}
+
+body.theme-light .theme-on-dark .bg-\[\#202020\]\/95 {
+  background-color: rgb(32 32 32 / 0.95) !important;
+}
+
+body.theme-light .theme-on-dark .border-zinc-600,
+body.theme-light .theme-on-dark .border-zinc-700 {
+  border-color: #3f3f46 !important;
+}
+
 .font-display {
   font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
   font-weight: 600;
@@ -1878,6 +2006,26 @@ html:not(.dark) [class~="bg-slate-950\/50"] {
 }
 html:not(.dark) [class~="bg-slate-950\/40"] {
   background-color: rgba(248, 250, 252, 0.4);
+}
+html:not(.dark) [class~="bg-slate-950\/70"] {
+  background-color: rgba(248, 250, 252, 0.92);
+}
+html:not(.dark) [class~="bg-slate-950\/55"] {
+  background-color: rgba(241, 245, 249, 0.95);
+}
+html:not(.dark) [class~="bg-slate-950\/45"] {
+  background-color: rgba(241, 245, 249, 0.92);
+}
+html:not(.dark) [class~="bg-slate-950\/35"] {
+  background-color: rgba(241, 245, 249, 0.85);
+}
+html:not(.dark) [class~="bg-slate-900\/35"] {
+  background-color: rgba(255, 255, 255, 0.7);
+}
+html:not(.dark) [class~="from-slate-800\/40"] {
+  --tw-gradient-from: rgba(251, 191, 36, 0.2) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(251 191 36 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
 /* ── Borders ── */

@@ -6,12 +6,12 @@ import {
   BarChart3,
   Binoculars,
   TrendingUp,
-  Cpu,
   ClipboardList,
   FileText,
   Settings as SettingsIcon,
   MoreHorizontal,
   Trophy,
+  Gamepad2,
 } from 'lucide-react';
 import { assetUrl } from './utils/baseUrl.js';
 import { LoadingSpinner } from './components/ui';
@@ -33,6 +33,7 @@ const ProspectWatch = lazy(() => import('./pages/ProspectWatch.jsx'));
 const DraftTracker = lazy(() => import('./pages/DraftTracker.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const Postseason = lazy(() => import('./pages/Postseason.jsx'));
+const Games = lazy(() => import('./pages/Games.jsx'));
 
 function StandingsFlagIcon({ className = 'w-4 h-4' }) {
   return (
@@ -55,8 +56,8 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { to: '/games', icon: Gamepad2, label: 'Games', description: 'Puzzles, trivia, and the sim' },
   { to: '/postseason', icon: Trophy, label: 'Postseason', description: 'Brackets from every October' },
-  { to: '/simulator', icon: Cpu, label: 'Simulator', description: 'Play out games & seasons' },
   { to: '/draft', icon: ClipboardList, label: 'Draft Tracker', description: 'Browse draft classes' },
   { to: '/docs', icon: FileText, label: 'API Docs', description: 'Stats API reference' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings', description: 'Theme & mobile nav' },
@@ -69,6 +70,7 @@ const ROUTE_TITLES = [
   { test: (path) => path.startsWith('/leaders'), title: 'Leaders' },
   { test: (path) => path.startsWith('/standings'), title: 'Standings' },
   { test: (path) => path.startsWith('/prospects'), title: 'Prospects' },
+  { test: (path) => path.startsWith('/games'), title: 'Games' },
   { test: (path) => path.startsWith('/simulator'), title: 'Simulator' },
   { test: (path) => path.startsWith('/draft'), title: 'Draft Tracker' },
   { test: (path) => path.startsWith('/docs'), title: 'API Docs' },
@@ -79,7 +81,7 @@ const ROUTE_TITLES = [
   { test: (path) => path.startsWith('/team/'), title: 'Team' },
 ];
 
-const MORE_PATHS = new Set(MORE_NAV.map((item) => item.to));
+const MORE_PATHS = new Set([...MORE_NAV.map((item) => item.to), '/simulator']);
 
 function useIsMobileLayout() {
   const [isMobile, setIsMobile] = useState(() =>
@@ -330,6 +332,7 @@ function App() {
           <Route path="/leaders" element={<StatLeaders />} />
           <Route path="/standings" element={<Standings />} />
           <Route path="/simulator" element={<BaseballSimulator />} />
+          <Route path="/games" element={<Games />} />
           <Route path="/prospects" element={<ProspectWatch />} />
           <Route path="/draft" element={<DraftTracker />} />
           <Route path="/draft/:year" element={<DraftTracker />} />

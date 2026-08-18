@@ -1900,9 +1900,9 @@ function ProspectPreviewModal({ player, open, onClose, isWatched, onToggleWatch,
       onClose={onClose}
       size="lg"
       align="bottom"
-      panelClassName="bg-[#202020] border-zinc-700 max-h-[92vh] overflow-y-auto sm:max-h-[88vh]"
+      panelClassName="theme-on-dark bg-[#202020] border-zinc-700 max-h-[92vh] overflow-y-auto sm:max-h-[88vh]"
     >
-      <div className="bg-[#202020] text-white">
+      <div className="theme-on-dark bg-[#202020] text-white">
         <section className="relative h-[340px] overflow-hidden bg-zinc-900 sm:h-[390px]">
           <img
             src={heroImage}

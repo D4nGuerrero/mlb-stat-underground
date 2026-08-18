@@ -22,20 +22,28 @@ export const LEAGUE_META = {
     label: 'American League',
     short: 'AL',
     logo: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg',
+    logoLight: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/159.svg',
   },
   NL: {
     key: 'NL',
     label: 'National League',
     short: 'NL',
     logo: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg',
+    logoLight: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/160.svg',
   },
   WS: {
     key: 'WS',
     label: 'World Series',
     short: 'WS',
     logo: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg',
+    logoLight: 'https://www.mlbstatic.com/team-logos/league-on-light/1.svg',
   },
 };
+
+export function leagueLogoSrc(meta, isDark = true) {
+  if (!meta) return '';
+  return isDark ? meta.logo : (meta.logoLight ?? meta.logo);
+}
 
 const STRIKE_YEARS = new Set([1994]);
 

@@ -26,6 +26,7 @@ import {
   LEAGUE_LEVEL_VALUES,
 } from '../constants/leagueLevels.js';
 import { countryFlagUrl, displayCountryName, normalizeCountryName } from '../utils/countryFlags';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -89,9 +90,21 @@ const POSITION_OPTIONS = [
 const ALL_COUNTRIES_OPTION = { value: 'all', label: 'All Countries' };
 
 const LEAGUE_LOGOS = {
-  all: { src: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg', alt: 'MLB' },
-  AL: { src: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg', alt: 'AL' },
-  NL: { src: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg', alt: 'NL' },
+  all: {
+    dark: 'https://www.mlbstatic.com/team-logos/league-on-dark/1.svg',
+    light: 'https://www.mlbstatic.com/team-logos/league-on-light/1.svg',
+    alt: 'MLB',
+  },
+  AL: {
+    dark: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg',
+    light: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/159.svg',
+    alt: 'AL',
+  },
+  NL: {
+    dark: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg',
+    light: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/160.svg',
+    alt: 'NL',
+  },
 };
 
 const HITTING_CATS = [
@@ -659,11 +672,12 @@ function PlayerIdentity({ player, team, onPlayerClick, onTeamClick }) {
 }
 
 function LeagueLogo({ filter }) {
+  const { isDark } = useTheme();
   const logo = LEAGUE_LOGOS[filter] ?? LEAGUE_LOGOS.all;
   return (
     <img
-      key={filter}
-      src={logo.src}
+      key={`${filter}-${isDark ? 'dark' : 'light'}`}
+      src={isDark ? logo.dark : logo.light}
       alt={logo.alt}
       className="w-8 h-8 object-contain flex-shrink-0"
     />
@@ -1603,7 +1617,7 @@ const rankedCompletePlayers = useMemo(
             <div
               key={leader.person?.id ?? i}
               className={`flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 border-b border-slate-800/40 hover:bg-slate-800/25 transition-colors ${
-                isTop3 ? 'bg-gradient-to-r from-slate-800/40 to-transparent' : ''
+                isTop3 ? 'bg-gradient-to-r from-amber-400/20 via-amber-400/8 to-transparent' : ''
               }`}
             >
               <div className="w-8 sm:w-10 text-center flex-shrink-0">

@@ -20,6 +20,7 @@ import { assetUrl } from '../utils/baseUrl.js';
 import {
   CURRENT_CALENDAR_YEAR,
   LEAGUE_META,
+  leagueLogoSrc,
   MIN_POSTSEASON_YEAR,
   clampPostseasonYear,
   defaultPostseasonYear,
@@ -128,7 +129,7 @@ function ChampionBanner({ series, year, isDark }) {
     <Link
       to={`/postseason/${year}/${encodeURIComponent(series.id)}`}
       className={cn(
-        'group relative block overflow-hidden rounded-3xl border',
+        'theme-on-dark group relative block overflow-hidden rounded-3xl border',
         isDark ? 'border-amber-400/30' : 'border-amber-300/80',
       )}
       style={{
@@ -195,7 +196,7 @@ function LeagueHeading({ league, isDark }) {
   return (
     <div className="flex items-center gap-2.5 px-0.5 pb-0.5">
       <img
-        src={meta.logo}
+        src={leagueLogoSrc(meta, isDark)}
         alt=""
         className="h-8 w-8 object-contain sm:h-9 sm:w-9"
       />
@@ -243,7 +244,7 @@ function SeriesCard({ series, year, isDark, favoriteTeamIds }) {
         <div className="flex min-w-0 items-center gap-1.5">
           {series.league !== 'WS' && LEAGUE_META[series.league]?.logo && (
             <img
-              src={LEAGUE_META[series.league].logo}
+              src={leagueLogoSrc(LEAGUE_META[series.league], isDark)}
               alt=""
               className="h-4 w-4 object-contain opacity-80"
             />
@@ -525,7 +526,7 @@ function SeriesDetail({ series, year, isDark, favoriteTeamIds, onOpenGame }) {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {series.league !== 'WS' && LEAGUE_META[series.league]?.logo && (
-              <img src={LEAGUE_META[series.league].logo} alt="" className="h-5 w-5 object-contain" />
+              <img src={leagueLogoSrc(LEAGUE_META[series.league], isDark)} alt="" className="h-5 w-5 object-contain" />
             )}
             {series.gameType === 'W' && <Trophy size={16} className="text-amber-300" />}
             <div>
