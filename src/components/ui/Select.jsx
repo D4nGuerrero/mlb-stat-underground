@@ -1,5 +1,5 @@
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, Trophy } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext.jsx';
 
 export default function Select({
@@ -8,8 +8,10 @@ export default function Select({
   options,
   className = '',
   buttonClassName = '',
+  optionsClassName = '',
   size = 'md',
   placeholder = 'Select…',
+  showChevron = true,
 }) {
   const { isDark } = useTheme();
   const selected = options.find((o) => o.value === value);
@@ -42,8 +44,16 @@ export default function Select({
               />
             )}
             <span className="truncate">{selected?.label ?? placeholder}</span>
+            {selected?.suffix && (
+              <span className="flex-shrink-0 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                {selected.suffix}
+              </span>
+            )}
+            {selected?.trophy && (
+              <Trophy size={12} className="flex-shrink-0 text-amber-300" aria-label="World Series champion" />
+            )}
           </span>
-          <ChevronDown size={14} className="text-slate-500 flex-shrink-0" aria-hidden />
+          {showChevron && <ChevronDown size={14} className="text-slate-500 flex-shrink-0" aria-hidden />}
         </ListboxButton>
 
         <ListboxOptions
@@ -54,6 +64,7 @@ export default function Select({
             'focus:outline-none',
             'transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0',
             'w-[var(--button-width)]',
+            optionsClassName,
             isDark
               ? 'bg-slate-900 border-slate-700'
               : 'bg-white border-slate-200 shadow-slate-300/40',
@@ -77,7 +88,7 @@ export default function Select({
             >
               {({ selected: isSelected }) => (
                 <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 min-w-0">
+                  <span className="flex min-w-0 items-center gap-2">
                     {opt.icon && (
                       <img
                         src={opt.icon}
@@ -88,7 +99,17 @@ export default function Select({
                     )}
                     <span className="truncate">{opt.label}</span>
                   </span>
-                  {isSelected && <Check size={14} className="text-accent-400 flex-shrink-0" />}
+                  <span className="flex flex-shrink-0 items-center gap-1.5">
+                    {opt.suffix && (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        {opt.suffix}
+                      </span>
+                    )}
+                    {opt.trophy && (
+                      <Trophy size={12} className="text-amber-300" aria-label="World Series champion" />
+                    )}
+                    {isSelected && <Check size={14} className="text-accent-400" />}
+                  </span>
                 </div>
               )}
             </ListboxOption>

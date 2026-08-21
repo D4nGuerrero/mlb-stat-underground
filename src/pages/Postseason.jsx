@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Crown,
@@ -8,18 +9,26 @@ import {
   Star,
   Trophy,
 } from 'lucide-react';
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react';
 import { Select, LoadingSpinner, SegmentedControl } from '../components/ui';
 import TeamLogoImg from '../components/TeamLogoImg';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { usePostseasonBracket } from '../hooks/usePostseasonBracket';
+import { usePostseasonEventLogo } from '../hooks/usePostseasonEventLogo';
+import { usePostseasonFacts } from '../hooks/usePostseasonFacts';
+import { useTeamPostseasonYears } from '../hooks/useTeamPostseasonYears';
+import { useLocalStorageState } from '../hooks/useStorageState';
+import PostseasonBracketView from './PostseasonBracketView';
+import PostseasonFactsView from './PostseasonFactsView';
 import { getTeamColorPalette } from '../utils/teamColors';
-import { compactPlayerName, formatFinalStatus } from '../utils/mlbHelpers';
+import { compactPlayerName, formatFinalStatus, mlbTeams, teamLogoUrl } from '../utils/mlbHelpers';
 import { assetUrl } from '../utils/baseUrl.js';
 import {
   CURRENT_CALENDAR_YEAR,
   LEAGUE_META,
+  adjacentFilteredYear,
   leagueLogoSrc,
   MIN_POSTSEASON_YEAR,
   clampPostseasonYear,
@@ -30,11 +39,22 @@ import {
   isCompletedGame,
   isIfNecessaryUnplayed,
   isLiveGame,
+  postseasonHref,
   postseasonYearOptions,
+  seriesDisplayTeams,
   seriesInvolvesTeam,
+  teamPostseasonYearOptions,
 } from '../utils/postseason';
 
 const YEAR_OPTIONS = postseasonYearOptions();
+const TEAM_FILTER_ALL = 'all';
+const MLB_TEAM_BY_ID = Object.fromEntries(mlbTeams.map((team) => [team.id, team]));
+
+const VIEW_OPTIONS = [
+  { value: 'rounds', label: 'Rounds' },
+  { value: 'bracket', label: 'Bracket' },
+  { value: 'facts', label: 'Facts' },
+];
 
 function cn(...parts) {
   return parts.filter(Boolean).join(' ');
@@ -53,49 +73,156 @@ function gamedayState(year, series) {
   };
 }
 
-function YearPicker({ year, onChange, isDark }) {
+function mlbLogoSrc(isDark) {
+  return isDark ? LEAGUE_META.WS.logo : LEAGUE_META.WS.logoLight;
+}
+
+function teamFilterOptions(isDark) {
+  return [
+    { value: TEAM_FILTER_ALL, label: 'All teams', icon: mlbLogoSrc(isDark) },
+    ...[...mlbTeams]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((team) => ({
+        value: team.id,
+        label: team.name,
+        icon: teamLogoUrl(team.id, { preferDark: isDark }),
+      })),
+  ];
+}
+
+function TeamCircleSelect({ value, onChange, options, isDark, selectedTeam }) {
+  return (
+    <Listbox value={value} onChange={onChange}>
+      <div className="relative shrink-0">
+        <ListboxButton
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-full border transition-colors sm:h-9 sm:w-9',
+            isDark
+              ? 'border-slate-700 bg-slate-900 hover:border-slate-500'
+              : 'border-slate-200 bg-white hover:border-slate-300',
+          )}
+          aria-label={selectedTeam ? `Team filter: ${selectedTeam.name}` : 'Filter by team'}
+        >
+          {selectedTeam ? (
+            <TeamLogoImg teamId={selectedTeam.id} className="h-5 w-5 object-contain sm:h-6 sm:w-6" alt="" />
+          ) : (
+            <img src={mlbLogoSrc(isDark)} alt="" className="h-5 w-5 object-contain sm:h-6 sm:w-6" />
+          )}
+        </ListboxButton>
+        <ListboxOptions
+          anchor="bottom end"
+          transition
+          className={cn(
+            'z-50 mt-1 w-56 max-h-60 overflow-auto rounded-2xl border py-1 shadow-xl',
+            'focus:outline-none',
+            'transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0',
+            isDark
+              ? 'bg-slate-900 border-slate-700'
+              : 'bg-white border-slate-200 shadow-slate-300/40',
+          )}
+        >
+          {options.map((opt) => (
+            <ListboxOption
+              key={opt.value}
+              value={opt.value}
+              className={({ focus, selected: isSelected }) =>
+                cn(
+                  'relative cursor-pointer select-none px-3 py-2 text-sm',
+                  focus
+                    ? isDark ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-900'
+                    : isDark ? 'text-slate-300' : 'text-slate-700',
+                  isSelected ? 'text-accent-400' : '',
+                )
+              }
+            >
+              {({ selected: isSelected }) => (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    {opt.icon && (
+                      <img src={opt.icon} alt="" className="h-5 w-5 object-contain" />
+                    )}
+                    <span className="truncate">{opt.label}</span>
+                  </span>
+                  {isSelected && <Check size={14} className="flex-shrink-0 text-accent-400" />}
+                </div>
+              )}
+            </ListboxOption>
+          ))}
+        </ListboxOptions>
+      </div>
+    </Listbox>
+  );
+}
+
+function YearPicker({ year, onChange, isDark, years, appearances, loading = false, variant = 'default' }) {
+  const filtered = Array.isArray(years);
+  const options = filtered
+    ? teamPostseasonYearOptions(appearances, years, year)
+    : YEAR_OPTIONS;
+  const older = filtered
+    ? adjacentFilteredYear(years, year, 'older')
+    : year > MIN_POSTSEASON_YEAR ? year - 1 : null;
+  const newer = filtered
+    ? adjacentFilteredYear(years, year, 'newer')
+    : year < CURRENT_CALENDAR_YEAR ? year + 1 : null;
+
+  const hero = variant === 'hero';
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-2xl border p-1',
-        isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white',
+        'flex min-w-0 items-center gap-0.5 rounded-xl border p-0.5',
+        hero
+          ? 'rounded-full border-white/25 bg-black/35 px-1 py-0.5'
+          : isDark
+            ? 'border-slate-800 bg-slate-900'
+            : 'border-slate-200 bg-white',
       )}
     >
       <button
         type="button"
-        onClick={() => onChange(year - 1)}
-        disabled={year <= MIN_POSTSEASON_YEAR}
+        onClick={() => older != null && onChange(older)}
+        disabled={loading || older == null}
         className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-30',
-          isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100',
+          'flex h-8 w-7 shrink-0 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30',
+          hero
+            ? 'text-white/80 hover:bg-white/10'
+            : isDark
+              ? 'text-slate-300 hover:bg-slate-800'
+              : 'text-slate-600 hover:bg-slate-100',
         )}
         aria-label="Previous postseason year"
       >
-        <ChevronLeft size={18} />
+        <ChevronLeft size={16} />
       </button>
-      <div className="min-w-[7.25rem]">
+      <div className={filtered ? 'min-w-[6.75rem]' : 'min-w-[3.75rem]'}>
         <Select
           value={year}
           onChange={onChange}
-          options={YEAR_OPTIONS}
+          options={options}
           size="sm"
+          showChevron={false}
+          optionsClassName="!w-44"
           buttonClassName={cn(
-            '!rounded-xl !border-0 !bg-transparent justify-center font-black',
-            isDark ? '' : '!text-slate-900',
+            '!rounded-lg !border-0 !bg-transparent !px-1 !py-1 justify-center font-black',
+            hero ? '!text-white' : isDark ? '' : '!text-slate-900',
           )}
         />
       </div>
       <button
         type="button"
-        onClick={() => onChange(year + 1)}
-        disabled={year >= CURRENT_CALENDAR_YEAR}
+        onClick={() => newer != null && onChange(newer)}
+        disabled={loading || newer == null}
         className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-30',
-          isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100',
+          'flex h-8 w-7 shrink-0 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30',
+          hero
+            ? 'text-white/80 hover:bg-white/10'
+            : isDark
+              ? 'text-slate-300 hover:bg-slate-800'
+              : 'text-slate-600 hover:bg-slate-100',
         )}
         aria-label="Next postseason year"
       >
-        <ChevronRight size={18} />
+        <ChevronRight size={16} />
       </button>
     </div>
   );
@@ -119,7 +246,7 @@ function TeamMark({ team, size = 'md', isDark }) {
   return <TeamLogoImg teamId={team.id} className={`${px} object-contain`} alt={team.name} />;
 }
 
-function ChampionBanner({ series, year, isDark }) {
+function ChampionBanner({ series, year, isDark, teamId }) {
   const winner = series?.winner;
   if (!winner || winner.placeholder) return null;
   const loser = series.teams.find((team) => team.id !== winner.id) ?? series.teams[1];
@@ -127,7 +254,7 @@ function ChampionBanner({ series, year, isDark }) {
 
   return (
     <Link
-      to={`/postseason/${year}/${encodeURIComponent(series.id)}`}
+      to={postseasonHref(year, series.id, teamId)}
       className={cn(
         'theme-on-dark group relative block overflow-hidden rounded-3xl border',
         isDark ? 'border-amber-400/30' : 'border-amber-300/80',
@@ -212,9 +339,10 @@ function LeagueHeading({ league, isDark }) {
   );
 }
 
-function SeriesCard({ series, year, isDark, favoriteTeamIds }) {
+function SeriesCard({ series, year, isDark, favoriteTeamIds, focusTeamId, teamId }) {
   const [away, home] = series.teams;
   const isFav = favoriteTeamIds.some((id) => seriesInvolvesTeam(series, id));
+  const isFocus = focusTeamId && seriesInvolvesTeam(series, focusTeamId);
   const winnerId = series.winner?.id;
   const score = formatSeriesScore(series);
   const dateLabel = series.startDate
@@ -227,11 +355,12 @@ function SeriesCard({ series, year, isDark, favoriteTeamIds }) {
 
   return (
     <Link
-      to={`/postseason/${year}/${encodeURIComponent(series.id)}`}
+      to={postseasonHref(year, series.id, teamId)}
       className={cn(
         'group block rounded-2xl border p-3.5 transition-all',
         surfaceClass(isDark),
-        isFav ? 'ring-1 ring-accent-400/40' : '',
+        isFav || isFocus ? 'ring-1 ring-accent-400/40' : '',
+        focusTeamId && !isFocus ? 'opacity-45 hover:opacity-100' : '',
         series.gameType === 'W'
           ? isDark
             ? 'border-amber-400/25 bg-gradient-to-br from-amber-500/10 to-slate-900'
@@ -322,7 +451,7 @@ function SeriesCard({ series, year, isDark, favoriteTeamIds }) {
   );
 }
 
-function RoundColumn({ round, year, isDark, favoriteTeamIds, leagueFilter }) {
+function RoundColumn({ round, year, isDark, favoriteTeamIds, leagueFilter, focusTeamId, teamId }) {
   const visible = round.series.filter((series) => {
     if (leagueFilter === 'all') return true;
     if (series.league === 'WS') return true;
@@ -346,6 +475,8 @@ function RoundColumn({ round, year, isDark, favoriteTeamIds, leagueFilter }) {
             year={year}
             isDark={isDark}
             favoriteTeamIds={favoriteTeamIds}
+            focusTeamId={focusTeamId}
+            teamId={teamId}
           />
         ))}
       </div>
@@ -502,36 +633,114 @@ function SeriesGameRow({ game, isDark, onOpen }) {
   );
 }
 
-function SeriesDetail({ series, year, isDark, favoriteTeamIds, onOpenGame }) {
-  const [away, home] = series.teams;
+function seriesHeroTitle(series) {
+  if (series.gameType === 'W') return 'World Series';
+  return series.shortLabel || series.description || 'Postseason';
+}
+
+function SeriesEventHero({
+  series,
+  year,
+  onBack,
+  yearPicker,
+  teamPicker,
+}) {
+  const logoSrc = usePostseasonEventLogo(series, year);
+  const title = seriesHeroTitle(series);
+
+  return (
+    <section
+      className="theme-on-dark relative overflow-hidden rounded-3xl px-3 pb-7 pt-3 sm:px-6 sm:pb-9"
+      aria-label={`${year} ${title}`}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[#070b14]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,rgba(212,175,55,0.26),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/40 to-transparent" />
+
+      <h1 className="sr-only">{year} {title}</h1>
+
+      <div className="relative flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm font-semibold text-white/70 transition-colors hover:text-white"
+        >
+          <ChevronLeft size={16} />
+          {year} bracket
+        </button>
+        <div className="flex items-center gap-2">
+          {yearPicker}
+          {teamPicker}
+        </div>
+      </div>
+
+      <div className="relative mt-3 flex min-h-[12.5rem] items-center justify-center sm:min-h-[17rem]">
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="max-h-52 w-auto max-w-[min(100%,34rem)] rounded-2xl object-contain drop-shadow-2xl sm:max-h-64"
+          />
+        ) : (
+          <img
+            src={assetUrl('icons/world-series-trophy.png')}
+            alt=""
+            className="h-36 w-36 object-contain drop-shadow-2xl sm:h-48 sm:w-48"
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SeriesDetail({
+  series,
+  year,
+  isDark,
+  favoriteTeamIds,
+  onOpenGame,
+  onBack,
+  yearPicker,
+  teamPicker,
+}) {
+  const { left, right } = seriesDisplayTeams(series, year);
   const winner = series.winner;
   const loser = winner ? series.teams.find((team) => team.id !== winner.id) : null;
-  const palette = getTeamColorPalette(winner?.id ?? away?.id);
   const isFav = favoriteTeamIds.some((id) => seriesInvolvesTeam(series, id));
+  const isWorldSeries = series.gameType === 'W';
 
   return (
     <div className="space-y-4">
+      <SeriesEventHero
+        series={series}
+        year={year}
+        onBack={onBack}
+        yearPicker={yearPicker}
+        teamPicker={teamPicker}
+      />
+
       <div
         className={cn(
           'relative overflow-hidden rounded-3xl border px-4 py-5 sm:px-6',
           surfaceClass(isDark),
-          series.gameType === 'W' ? (isDark ? 'border-amber-400/25' : 'border-amber-300/70') : '',
+          isWorldSeries ? (isDark ? 'border-amber-400/25' : 'border-amber-300/70') : '',
         )}
-        style={
-          winner && !winner.placeholder
-            ? { background: `linear-gradient(120deg, ${palette.primary}33, transparent 70%)` }
-            : undefined
-        }
       >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {series.league !== 'WS' && LEAGUE_META[series.league]?.logo && (
+            {isWorldSeries ? (
+              <img
+                src={assetUrl('icons/world-series-trophy.png')}
+                alt=""
+                className="h-6 w-6 object-contain drop-shadow sm:h-7 sm:w-7"
+              />
+            ) : series.league !== 'WS' && LEAGUE_META[series.league]?.logo ? (
               <img src={leagueLogoSrc(LEAGUE_META[series.league], isDark)} alt="" className="h-5 w-5 object-contain" />
-            )}
-            {series.gameType === 'W' && <Trophy size={16} className="text-amber-300" />}
+            ) : null}
             <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                {year} · {series.description}
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300/90">
+                {year} {series.description || series.shortLabel}
               </div>
               <h2 className={cn(
                 'font-display text-xl font-black tracking-tight sm:text-2xl',
@@ -554,26 +763,33 @@ function SeriesDetail({ series, year, isDark, favoriteTeamIds, onOpenGame }) {
         </div>
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <SeriesHeroTeam team={away} align="right" isDark={isDark} winner={winner} />
+          <SeriesHeroTeam team={left} align="right" isDark={isDark} winner={winner} />
           <div className="text-center">
+            {isWorldSeries && (
+              <img
+                src={assetUrl('icons/world-series-trophy.png')}
+                alt=""
+                className="mx-auto mb-1 h-10 w-10 object-contain drop-shadow sm:h-12 sm:w-12"
+              />
+            )}
             <div className={cn(
               'font-display text-3xl font-black tabular-nums sm:text-4xl',
               isDark ? 'text-white' : 'text-slate-900',
             )}
             >
-              {series.hasPlaceholders && !series.playedCount ? 'vs' : `${away.wins}–${home.wins}`}
+              {series.hasPlaceholders && !series.playedCount ? 'vs' : `${left.wins}–${right.wins}`}
             </div>
             <div className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
               {series.bestOf > 1 ? `Best of ${series.bestOf}` : 'Single game'}
             </div>
           </div>
-          <SeriesHeroTeam team={home} align="left" isDark={isDark} winner={winner} />
+          <SeriesHeroTeam team={right} align="left" isDark={isDark} winner={winner} />
         </div>
 
         {winner && !winner.placeholder && (
-          <p className="mt-4 text-center text-sm text-slate-400">
-            <span className={isDark ? 'font-bold text-white' : 'font-bold text-slate-900'}>{winner.name}</span>
-            {' '}won the series {winner.wins}–{loser?.wins ?? 0}
+          <p className="mt-4 text-center text-sm">
+            <span className="font-bold text-amber-300">{winner.name}</span>
+            <span className="text-slate-400"> won the series {winner.wins}–{loser?.wins ?? 0}</span>
           </p>
         )}
         {series.hasPlaceholders && (
@@ -638,16 +854,42 @@ function SeriesHeroTeam({ team, align, isDark, winner }) {
 export default function Postseason() {
   const { year: yearParam, seriesId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isDark } = useTheme();
   const { favoriteTeams } = useFavoriteTeams();
   const year = clampPostseasonYear(yearParam ?? defaultPostseasonYear());
   const { bracket, loading, error, cancelled, reload } = usePostseasonBracket(year);
+  const [storedView, setStoredView] = useLocalStorageState('mlb.postseason.overview', 'bracket');
+  const view = storedView === 'rounds' || storedView === 'facts' ? storedView : 'bracket';
+  const [factsRange, setFactsRange] = useLocalStorageState('mlb.postseason.facts.range', 'all');
+  const [factsSort, setFactsSort] = useLocalStorageState('mlb.postseason.facts.sort', 'last');
+  const [factsDir, setFactsDir] = useLocalStorageState('mlb.postseason.facts.dir', 'desc');
+  const facts = usePostseasonFacts(view === 'facts');
+
+  const teamParam = Number(searchParams.get('team'));
+  const teamId = MLB_TEAM_BY_ID[teamParam] ? teamParam : null;
+  const selectedTeam = teamId ? MLB_TEAM_BY_ID[teamId] : null;
+  const { years: teamYears, appearances: teamAppearances, loading: teamYearsLoading } = useTeamPostseasonYears(teamId);
+  const teamOptions = useMemo(() => teamFilterOptions(isDark), [isDark]);
+
+  const goTo = useCallback((nextYear, { series = seriesId, replace = false } = {}) => {
+    const y = clampPostseasonYear(nextYear);
+    const seriesPart = series ? `/${encodeURIComponent(series)}` : '';
+    const search = teamId ? `?team=${teamId}` : '';
+    navigate(`/postseason/${y}${seriesPart}${search}`, { replace });
+  }, [navigate, seriesId, teamId]);
 
   useEffect(() => {
     if (yearParam && Number(yearParam) === year) return;
-    const suffix = seriesId ? `/${encodeURIComponent(seriesId)}` : '';
-    navigate(`/postseason/${year}${suffix}`, { replace: true });
-  }, [year, yearParam, seriesId, navigate]);
+    goTo(year, { replace: true });
+  }, [year, yearParam, goTo]);
+
+  useEffect(() => {
+    if (view === 'facts') return;
+    if (!teamId || teamYearsLoading || !teamYears.length) return;
+    if (teamYears.includes(year)) return;
+    goTo(teamYears[0], { series: null, replace: true });
+  }, [view, teamId, teamYears, teamYearsLoading, year, goTo]);
 
   const selectedSeries = useMemo(() => {
     if (!seriesId) return null;
@@ -656,11 +898,22 @@ export default function Postseason() {
 
   const title = selectedSeries
     ? `${selectedSeries.shortLabel} ${year}`
-    : `${year} Postseason`;
+    : view === 'facts'
+      ? 'October facts'
+      : selectedTeam
+        ? `${selectedTeam.abbr} ${year} Postseason`
+        : `${year} Postseason`;
   useDocumentTitle(title);
 
+  const setTeamFilter = (value) => {
+    const next = new URLSearchParams(searchParams);
+    if (value && value !== TEAM_FILTER_ALL) next.set('team', String(value));
+    else next.delete('team');
+    setSearchParams(next, { replace: true });
+  };
+
   const goToYear = (nextYear) => {
-    navigate(`/postseason/${clampPostseasonYear(nextYear)}`);
+    goTo(nextYear, { series: null });
   };
 
   const openGame = (game) => {
@@ -683,13 +936,45 @@ export default function Postseason() {
       onYearChange={goToYear}
       isDark={isDark}
       selectedSeries={selectedSeries}
-      onBack={() => navigate(`/postseason/${year}`)}
+      view={view}
+      onViewChange={setStoredView}
+      showViewToggle={!selectedSeries && !seriesId}
+      hideYearPicker={view === 'facts'}
+      teamId={teamId}
+      teamOptions={teamOptions}
+      onTeamChange={setTeamFilter}
+      selectedTeam={selectedTeam}
+      teamYears={teamYears}
+      teamAppearances={teamAppearances}
+      teamYearsLoading={teamYearsLoading}
     >
-      {loading && (
+      {!selectedSeries && !seriesId && view === 'facts' && (
+        <PostseasonFactsView
+          sources={facts.sources}
+          loading={facts.loading}
+          error={facts.error}
+          range={factsRange}
+          onRangeChange={setFactsRange}
+          sort={factsSort}
+          dir={factsDir === 'asc' ? 'asc' : 'desc'}
+          onSortChange={setFactsSort}
+          onDirChange={setFactsDir}
+          isDark={isDark}
+          focusTeamId={teamId}
+          onOpenYear={(nextYear, nextTeamId) => {
+            setStoredView('bracket');
+            const y = clampPostseasonYear(nextYear);
+            const search = nextTeamId ? `?team=${nextTeamId}` : '';
+            navigate(`/postseason/${y}${search}`);
+          }}
+        />
+      )}
+
+      {view !== 'facts' && loading && (
         <LoadingSpinner size="lg" py="py-24" label="Loading October…" />
       )}
 
-      {!loading && error && (
+      {view !== 'facts' && !loading && error && (
         <div className="rounded-3xl border border-red-500/30 bg-red-900/20 p-8 text-center text-red-300">
           <div className="font-bold">Could not load the {year} postseason.</div>
           <div className="mt-1 text-sm text-red-200/70">{error}</div>
@@ -703,7 +988,7 @@ export default function Postseason() {
         </div>
       )}
 
-      {!loading && !error && cancelled && (
+      {view !== 'facts' && !loading && !error && cancelled && (
         <div className={cn('rounded-3xl border px-5 py-12 text-center', surfaceClass(isDark))}>
           <Trophy className="mx-auto mb-3 text-slate-500" size={28} />
           <h2 className={cn('font-display text-2xl font-black', isDark ? 'text-white' : 'text-slate-900')}>
@@ -722,15 +1007,36 @@ export default function Postseason() {
           isDark={isDark}
           favoriteTeamIds={favoriteTeams}
           onOpenGame={openGame}
+          onBack={() => goTo(year, { series: null })}
+          yearPicker={(
+            <YearPicker
+              year={year}
+              onChange={goToYear}
+              isDark={isDark}
+              years={teamId && teamYears.length ? teamYears : null}
+              appearances={teamAppearances}
+              loading={Boolean(teamId && teamYearsLoading)}
+              variant="hero"
+            />
+          )}
+          teamPicker={(
+            <TeamCircleSelect
+              value={teamId ?? TEAM_FILTER_ALL}
+              onChange={setTeamFilter}
+              options={teamOptions}
+              isDark={isDark}
+              selectedTeam={selectedTeam}
+            />
+          )}
         />
       )}
 
-      {!loading && !error && !cancelled && !selectedSeries && seriesId && (
+      {view !== 'facts' && !loading && !error && !cancelled && !selectedSeries && seriesId && (
         <div className={cn('rounded-3xl border px-5 py-10 text-center', surfaceClass(isDark))}>
           <p className="text-sm text-slate-400">That series isn&apos;t in the {year} bracket.</p>
           <button
             type="button"
-            onClick={() => navigate(`/postseason/${year}`)}
+            onClick={() => goTo(year, { series: null })}
             className="mt-3 text-sm font-bold text-accent-300 hover:underline"
           >
             Back to bracket
@@ -738,7 +1044,7 @@ export default function Postseason() {
         </div>
       )}
 
-      {!loading && !error && !cancelled && !selectedSeries && !seriesId && (
+      {view !== 'facts' && !loading && !error && !cancelled && !selectedSeries && !seriesId && (
         <BracketBody
           bracket={bracket}
           year={year}
@@ -746,50 +1052,100 @@ export default function Postseason() {
           favoriteTeamIds={favoriteTeams}
           hasBothLeagues={hasBothLeagues}
           leagueFilterOptions={leagueFilterOptions}
+          view={view}
+          focusTeamId={teamId}
+          teamId={teamId}
         />
       )}
     </PostseasonFrame>
   );
 }
 
-function PostseasonFrame({ year, onYearChange, isDark, selectedSeries, onBack, children }) {
+function PostseasonFrame({
+  year,
+  onYearChange,
+  isDark,
+  selectedSeries,
+  view,
+  onViewChange,
+  showViewToggle,
+  hideYearPicker = false,
+  teamId,
+  teamOptions,
+  onTeamChange,
+  selectedTeam,
+  teamYears,
+  teamAppearances,
+  teamYearsLoading,
+  children,
+}) {
+  const wide = showViewToggle && view === 'bracket';
+  const teamYearCount = selectedTeam && !teamYearsLoading ? teamYears.length : 0;
+  const factsView = view === 'facts';
   return (
-    <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      <header className="mb-5 sm:mb-7">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className={cn('mx-auto px-3 py-5 sm:px-6 sm:py-8', wide ? 'max-w-[90rem]' : 'max-w-6xl')}>
+      <header className={cn(selectedSeries ? 'hidden' : 'mb-5 sm:mb-7')}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            {selectedSeries ? (
-              <button
-                type="button"
-                onClick={onBack}
-                className={cn(
-                  'mb-2 inline-flex items-center gap-1.5 text-sm font-semibold transition-colors',
-                  isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900',
-                )}
-              >
-                <ChevronLeft size={16} />
-                {year} bracket
-              </button>
-            ) : (
-              <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-accent-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent-300 ring-1 ring-accent-500/25">
-                <Trophy size={12} aria-hidden />
-                Postseason
-              </div>
-            )}
+            <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-accent-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent-300 ring-1 ring-accent-500/25">
+              <Trophy size={12} aria-hidden />
+              Postseason
+            </div>
             <h1 className={cn(
               'font-display text-2xl font-black tracking-tight sm:text-3xl',
               isDark ? 'text-white' : 'text-slate-900',
             )}
             >
-              {selectedSeries ? selectedSeries.shortLabel : `${year} MLB Postseason`}
+              {selectedSeries
+                ? selectedSeries.shortLabel
+                : factsView
+                  ? 'October facts'
+                  : selectedTeam
+                    ? `${year} ${selectedTeam.name}`
+                    : `${year} MLB Postseason`}
             </h1>
             <p className="mt-1 max-w-xl text-sm text-slate-400">
               {selectedSeries
                 ? 'Pick a game to open Gameday — box, pitches, and the full feed.'
-                : 'Every October bracket since 1903. Select a matchup to browse the series.'}
+                : factsView
+                  ? 'Who has the most rings, who keeps getting back, and who has been waiting the longest.'
+                  : selectedTeam && teamYearCount
+                    ? `${teamYearCount} October${teamYearCount === 1 ? '' : 's'} in the books. The year list only includes seasons they made the dance.`
+                    : showViewToggle && view === 'bracket'
+                      ? 'American League on the left, National League on the right, World Series in the middle.'
+                      : 'Every October bracket since 1903. Select a matchup to browse the series.'}
             </p>
           </div>
-          <YearPicker year={year} onChange={onYearChange} isDark={isDark} />
+          <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:gap-1.5">
+            {showViewToggle && (
+              <SegmentedControl
+                value={view}
+                onChange={onViewChange}
+                size="xs"
+                variant="compact"
+                rounded="full"
+                optionClassName="!px-2 sm:!px-2.5"
+                options={VIEW_OPTIONS}
+              />
+            )}
+            {!hideYearPicker && (
+            <YearPicker
+              year={year}
+              onChange={onYearChange}
+              isDark={isDark}
+              years={teamId && teamYears.length ? teamYears : null}
+              appearances={teamAppearances}
+              loading={Boolean(teamId && teamYearsLoading)}
+            />
+            )}
+            <TeamCircleSelect
+              value={teamId ?? TEAM_FILTER_ALL}
+              onChange={onTeamChange}
+              options={teamOptions}
+              isDark={isDark}
+              selectedTeam={selectedTeam}
+            />
+          </div>
         </div>
       </header>
       {children}
@@ -804,6 +1160,9 @@ function BracketBody({
   favoriteTeamIds,
   hasBothLeagues,
   leagueFilterOptions,
+  view,
+  focusTeamId,
+  teamId,
 }) {
   const [leagueFilter, setLeagueFilter] = useState('all');
 
@@ -823,7 +1182,9 @@ function BracketBody({
 
   return (
     <div className="space-y-5">
-      {bracket.worldSeries && <ChampionBanner series={bracket.worldSeries} year={year} isDark={isDark} />}
+      {view !== 'bracket' && bracket.worldSeries && (
+        <ChampionBanner series={bracket.worldSeries} year={year} isDark={isDark} teamId={teamId} />
+      )}
 
       {bracket.isPreview && (
         <div className={cn(
@@ -835,40 +1196,55 @@ function BracketBody({
         </div>
       )}
 
-      {hasBothLeagues && (
-        <div className="sm:hidden">
-          <SegmentedControl
-            value={leagueFilter}
-            onChange={setLeagueFilter}
-            size="sm"
-            variant="pill"
-            options={leagueFilterOptions}
-          />
-        </div>
-      )}
+      {view === 'bracket' ? (
+        <PostseasonBracketView
+          bracket={bracket}
+          year={year}
+          isDark={isDark}
+          favoriteTeamIds={favoriteTeamIds}
+          focusTeamId={focusTeamId}
+          teamId={teamId}
+        />
+      ) : (
+        <>
+          {hasBothLeagues && (
+            <div className="sm:hidden">
+              <SegmentedControl
+                value={leagueFilter}
+                onChange={setLeagueFilter}
+                size="sm"
+                variant="pill"
+                options={leagueFilterOptions}
+              />
+            </div>
+          )}
 
-      <div className={cn(
-        'grid gap-6',
-        bracket.rounds.length >= 4
-          ? 'lg:grid-cols-4'
-          : bracket.rounds.length === 3
-            ? 'md:grid-cols-3'
-            : bracket.rounds.length === 2
-              ? 'md:grid-cols-2'
-              : 'grid-cols-1',
+          <div className={cn(
+            'grid gap-6',
+            bracket.rounds.length >= 4
+              ? 'lg:grid-cols-4'
+              : bracket.rounds.length === 3
+                ? 'md:grid-cols-3'
+                : bracket.rounds.length === 2
+                  ? 'md:grid-cols-2'
+                  : 'grid-cols-1',
+          )}
+          >
+            {bracket.rounds.map((round) => (
+              <RoundColumn
+                key={round.key}
+                round={round}
+                year={year}
+                isDark={isDark}
+                favoriteTeamIds={favoriteTeamIds}
+                leagueFilter={leagueFilter}
+                focusTeamId={focusTeamId}
+                teamId={teamId}
+              />
+            ))}
+          </div>
+        </>
       )}
-      >
-        {bracket.rounds.map((round) => (
-          <RoundColumn
-            key={round.key}
-            round={round}
-            year={year}
-            isDark={isDark}
-            favoriteTeamIds={favoriteTeamIds}
-            leagueFilter={leagueFilter}
-          />
-        ))}
-      </div>
     </div>
   );
 }

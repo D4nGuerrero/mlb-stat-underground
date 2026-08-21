@@ -69,7 +69,16 @@ export function isStrikeCancelledYear(year) {
   return STRIKE_YEARS.has(Number(year));
 }
 
-export function postseasonYearOptions() {
+export function postseasonYearOptions(years) {
+  const list = Array.isArray(years) && years.length
+    ? [...new Set(years.map(Number))].filter((year) => Number.isFinite(year)).sort((a, b) => b - a)
+    : null;
+  if (list) {
+    return list.map((year) => ({
+      value: year,
+      label: STRIKE_YEARS.has(year) ? `${year} (cancelled)` : String(year),
+    }));
+  }
   return Array.from(
     { length: CURRENT_CALENDAR_YEAR - MIN_POSTSEASON_YEAR + 1 },
     (_, index) => {
@@ -80,6 +89,180 @@ export function postseasonYearOptions() {
       };
     },
   );
+}
+
+export function parseTeamPostseasonYears(data) {
+  const splits = data?.stats?.[0]?.splits ?? [];
+  const years = new Set();
+  for (const split of splits) {
+    const year = Number(split.season);
+    if (!Number.isFinite(year)) continue;
+    if (year < MIN_POSTSEASON_YEAR || year > CURRENT_CALENDAR_YEAR) continue;
+    if (isStrikeCancelledYear(year)) continue;
+    const games = Number(split.stat?.gamesPlayed);
+    if (Number.isFinite(games) && games <= 0) continue;
+    years.add(year);
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
+const AL_FRANCHISE_IDS = new Set([
+  108, 110, 111, 114, 116, 117, 118, 133, 136, 139, 140, 141, 142, 145, 147,
+]);
+
+const ROUND_RANK = { F: 0, D: 1, L: 2, C: 2, W: 3 };
+
+export function teamLeagueInYear(teamId, year) {
+  const id = Number(teamId);
+  const season = Number(year);
+  if (id === 117) return season >= 2013 ? 'AL' : 'NL';
+  if (id === 158) return season >= 1998 ? 'NL' : 'AL';
+  return AL_FRANCHISE_IDS.has(id) ? 'AL' : 'NL';
+}
+
+function teamLeagueFromSeriesTeam(team, year) {
+  if (Number(team?.leagueId) === 103) return 'AL';
+  if (Number(team?.leagueId) === 104) return 'NL';
+  if (team?.id != null) return teamLeagueInYear(team.id, year);
+  return null;
+}
+
+/** World Series: AL on the left, NL on the right. Other series stay away/home. */
+export function seriesDisplayTeams(series, year) {
+  const [first, second] = series?.teams ?? [];
+  if (!first || !second) return { left: first ?? null, right: second ?? null };
+  if (series.gameType !== 'W') return { left: first, right: second };
+
+  const leftLeague = teamLeagueFromSeriesTeam(first, year);
+  const rightLeague = teamLeagueFromSeriesTeam(second, year);
+  if (leftLeague === 'NL' && rightLeague === 'AL') {
+    return { left: second, right: first };
+  }
+  return { left: first, right: second };
+}
+
+export function furthestRoundLabel(gameType, league) {
+  const lg = league === 'AL' || league === 'NL' ? league : '';
+  if (gameType === 'W') return 'WS';
+  if (gameType === 'L' || gameType === 'C') return lg ? `${lg}CS` : 'LCS';
+  if (gameType === 'D') return lg ? `${lg}DS` : 'DS';
+  if (gameType === 'F') return 'WC';
+  return ROUND_META[gameType]?.short ?? 'PS';
+}
+
+export function parseWsChampYears(data, teamId) {
+  const years = new Set();
+  const id = Number(teamId);
+  for (const rec of data?.awards ?? []) {
+    if (Number(rec.team?.id) !== id) continue;
+    const year = Number(rec.season);
+    if (Number.isFinite(year)) years.add(year);
+  }
+  return years;
+}
+
+export function parseAllWsChampByTeam(data) {
+  const byTeam = new Map();
+  for (const rec of data?.awards ?? []) {
+    const teamId = Number(rec.team?.id);
+    const year = Number(rec.season);
+    if (!Number.isFinite(teamId) || !Number.isFinite(year)) continue;
+    if (year < MIN_POSTSEASON_YEAR || year > CURRENT_CALENDAR_YEAR) continue;
+    if (!byTeam.has(teamId)) byTeam.set(teamId, new Set());
+    byTeam.get(teamId).add(year);
+  }
+  return byTeam;
+}
+
+export function parseTeamPostseasonAppearances({ byType, champYears, teamId }) {
+  const best = new Map();
+  for (const [type, payload] of Object.entries(byType ?? {})) {
+    if (!POSTSEASON_GAME_TYPES.has(type)) continue;
+    for (const year of parseTeamPostseasonYears(payload)) {
+      const prev = best.get(year);
+      if (prev == null || (ROUND_RANK[type] ?? -1) > (ROUND_RANK[prev] ?? -1)) {
+        best.set(year, type);
+      }
+    }
+  }
+  // gameType=P is the full October slate — fill years a round endpoint omitted.
+  for (const year of parseTeamPostseasonYears(byType?.P)) {
+    if (!best.has(year)) best.set(year, 'P');
+  }
+
+  const champs = champYears instanceof Set ? champYears : new Set(champYears ?? []);
+  return [...best.entries()]
+    .map(([year, gameType]) => {
+      const league = teamLeagueInYear(teamId, year);
+      return {
+        year,
+        gameType,
+        label: furthestRoundLabel(gameType, league),
+        wonWs: gameType === 'W' && champs.has(year),
+      };
+    })
+    .sort((a, b) => b.year - a.year);
+}
+
+export function appearanceFromBracket(bracket, teamId) {
+  const played = (bracket?.series ?? []).filter((series) =>
+    series.teams.some((team) => Number(team.id) === Number(teamId) && !team.placeholder),
+  );
+  if (!played.length) return null;
+
+  let best = played[0];
+  for (const series of played) {
+    const nextRank = ROUND_RANK[series.gameType] ?? -1;
+    const bestRank = ROUND_RANK[best.gameType] ?? -1;
+    if (nextRank > bestRank) best = series;
+  }
+
+  const league = best.league === 'AL' || best.league === 'NL'
+    ? best.league
+    : teamLeagueInYear(teamId, bracket.year);
+  const wonWs = best.gameType === 'W'
+    && best.winner
+    && !best.winner.placeholder
+    && Number(best.winner.id) === Number(teamId);
+
+  return {
+    year: Number(bracket.year),
+    gameType: best.gameType,
+    label: furthestRoundLabel(best.gameType, league),
+    wonWs,
+  };
+}
+
+export function teamPostseasonYearOptions(appearances, years, currentYear) {
+  const byYear = new Map((appearances ?? []).map((item) => [item.year, item]));
+  const list = (Array.isArray(years) && years.length
+    ? [...years]
+    : (appearances ?? []).map((item) => item.year));
+  if (currentYear && !list.includes(currentYear)) list.unshift(currentYear);
+  return list.map((year) => {
+    const appearance = byYear.get(year);
+    return {
+      value: year,
+      label: String(year),
+      suffix: appearance?.label,
+      trophy: Boolean(appearance?.wonWs),
+    };
+  });
+}
+
+export function adjacentFilteredYear(years, year, direction) {
+  if (!Array.isArray(years) || !years.length) return null;
+  const idx = years.indexOf(Number(year));
+  if (idx < 0) return null;
+  if (direction === 'older') return years[idx + 1] ?? null;
+  return years[idx - 1] ?? null;
+}
+
+export function postseasonHref(year, seriesId, teamId) {
+  const base = seriesId
+    ? `/postseason/${year}/${encodeURIComponent(seriesId)}`
+    : `/postseason/${year}`;
+  return teamId ? `${base}?team=${teamId}` : base;
 }
 
 export function isPlaceholderTeam(team) {
@@ -415,4 +598,187 @@ export function formatGameClock(gameDate) {
 export function seriesInvolvesTeam(series, teamId) {
   if (!teamId) return false;
   return series.teams.some((team) => Number(team.id) === Number(teamId));
+}
+
+const CHAMPIONSHIP_TYPES = new Set(['L', 'C']);
+
+export function parseSeriesId(id) {
+  const [type, raw] = String(id ?? '').split('_');
+  const num = Number(raw);
+  return { type, num: Number.isFinite(num) ? num : 0 };
+}
+
+export function compareSeriesOrder(a, b) {
+  const aSort = Number(a?.sortNumber ?? 0);
+  const bSort = Number(b?.sortNumber ?? 0);
+  if (aSort !== bSort) return aSort - bSort;
+  const aNum = parseSeriesId(a?.id).num;
+  const bNum = parseSeriesId(b?.id).num;
+  if (aNum !== bNum) return aNum - bNum;
+  return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+}
+
+export function seriesTeamIds(series) {
+  return (series?.teams ?? [])
+    .filter((team) => team?.id != null && !team.placeholder)
+    .map((team) => Number(team.id));
+}
+
+export function seriesSharesTeam(a, b) {
+  const ids = new Set(seriesTeamIds(a));
+  return seriesTeamIds(b).some((id) => ids.has(id));
+}
+
+function conventionalWcIdsForDs(dsId, wcCount) {
+  const { num } = parseSeriesId(dsId);
+  if (wcCount >= 8) {
+    return ({
+      1: ['F_1', 'F_4'],
+      2: ['F_2', 'F_3'],
+      3: ['F_5', 'F_8'],
+      4: ['F_6', 'F_7'],
+    })[num] ?? [];
+  }
+  if (wcCount >= 4) {
+    return ({
+      1: ['F_2'],
+      2: ['F_1'],
+      3: ['F_4'],
+      4: ['F_3'],
+    })[num] ?? [];
+  }
+  if (wcCount === 2) {
+    return ({
+      1: ['F_1'],
+      2: ['F_1'],
+      3: ['F_2'],
+      4: ['F_2'],
+    })[num] ?? [];
+  }
+  return [];
+}
+
+function pickWcFeeders(ds, wcSeries, usedIds, wcCount) {
+  const available = wcSeries.filter((series) => !usedIds.has(series.id));
+  const overlapped = available.filter((wc) => seriesSharesTeam(ds, wc));
+  if (overlapped.length) return overlapped.sort(compareSeriesOrder);
+
+  const byId = new Map(available.map((series) => [series.id, series]));
+  return conventionalWcIdsForDs(ds.id, wcCount)
+    .map((id) => byId.get(id))
+    .filter(Boolean);
+}
+
+function pickByeTeam(ds, feeders) {
+  if (feeders.length !== 1) return null;
+  const feederIds = new Set(feeders.flatMap(seriesTeamIds));
+  const seedNamed = ds.teams.find((team) => (
+    team && !feederIds.has(Number(team.id)) && /#\s*[12]\s*Seed|\bbye\b/i.test(team.name ?? '')
+  ));
+  if (seedNamed) return seedNamed;
+  const notFromFeeder = ds.teams.find((team) => (
+    team && team.id && !team.placeholder && !feederIds.has(Number(team.id))
+  ));
+  if (notFromFeeder) return notFromFeeder;
+  return ds.teams.find((team) => team && !/winner/i.test(team.name ?? '')) ?? null;
+}
+
+function makeByeNode(team, parentSeries) {
+  return {
+    kind: 'bye',
+    id: `bye:${parentSeries.id}`,
+    series: null,
+    team,
+    children: [],
+  };
+}
+
+function makeSeriesNode(series, children) {
+  return {
+    kind: 'series',
+    id: series.id,
+    series,
+    team: null,
+    children,
+  };
+}
+
+export function buildLeagueBracketTree(allSeries, league) {
+  const ofLeague = allSeries.filter((series) => series.league === league);
+  const championships = ofLeague
+    .filter((series) => CHAMPIONSHIP_TYPES.has(series.gameType))
+    .sort(compareSeriesOrder);
+  const ds = ofLeague.filter((series) => series.gameType === 'D').sort(compareSeriesOrder);
+  const wc = ofLeague.filter((series) => series.gameType === 'F').sort(compareSeriesOrder);
+  const wcCount = allSeries.filter((series) => series.gameType === 'F').length;
+  const used = new Set();
+
+  const dsNodes = ds.map((dsSeries) => {
+    const feeders = pickWcFeeders(dsSeries, wc, used, wcCount);
+    feeders.forEach((feeder) => used.add(feeder.id));
+    const children = feeders.map((feeder) => makeSeriesNode(feeder, []));
+    const bye = pickByeTeam(dsSeries, feeders);
+    if (bye) children.unshift(makeByeNode(bye, dsSeries));
+    used.add(dsSeries.id);
+    return makeSeriesNode(dsSeries, children);
+  });
+
+  let roots;
+  if (championships.length) {
+    const [primary, ...rest] = championships;
+    used.add(primary.id);
+    rest.forEach((series) => used.add(series.id));
+    roots = [
+      makeSeriesNode(primary, dsNodes),
+      ...rest.map((series) => makeSeriesNode(series, [])),
+    ];
+  } else if (dsNodes.length) {
+    roots = dsNodes;
+  } else {
+    roots = wc.map((series) => {
+      used.add(series.id);
+      return makeSeriesNode(series, []);
+    });
+  }
+
+  for (const extra of ofLeague) {
+    if (used.has(extra.id) || extra.gameType === 'W') continue;
+    roots.push(makeSeriesNode(extra, []));
+  }
+
+  return roots;
+}
+
+export function orderWorldSeriesTeams(worldSeries, allSeries) {
+  if (!worldSeries?.teams?.length) return worldSeries?.teams ?? [];
+  const [first, second] = worldSeries.teams;
+  if (!second) return worldSeries.teams;
+
+  const alcs = allSeries.find((series) => CHAMPIONSHIP_TYPES.has(series.gameType) && series.league === 'AL');
+  const nlcs = allSeries.find((series) => CHAMPIONSHIP_TYPES.has(series.gameType) && series.league === 'NL');
+
+  const leagueOf = (team) => {
+    if (Number(team.leagueId) === 103) return 'AL';
+    if (Number(team.leagueId) === 104) return 'NL';
+    if (team.id && alcs && seriesTeamIds(alcs).includes(Number(team.id))) return 'AL';
+    if (team.id && nlcs && seriesTeamIds(nlcs).includes(Number(team.id))) return 'NL';
+    return null;
+  };
+
+  const firstLeague = leagueOf(first);
+  const secondLeague = leagueOf(second);
+  if (firstLeague === 'NL' && secondLeague !== 'NL') return [second, first];
+  if (secondLeague === 'AL' && firstLeague !== 'AL') return [second, first];
+  return [first, second];
+}
+
+export function buildBracketDiagram(bracket) {
+  const series = bracket?.series ?? [];
+  const worldSeries = bracket?.worldSeries ?? series.find((item) => item.gameType === 'W') ?? null;
+  return {
+    al: buildLeagueBracketTree(series, 'AL'),
+    nl: buildLeagueBracketTree(series, 'NL'),
+    worldSeries,
+    worldSeriesTeams: orderWorldSeriesTeams(worldSeries, series),
+  };
 }
