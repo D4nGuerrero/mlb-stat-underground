@@ -81,29 +81,36 @@ export function parseGameHighlightVideos(content) {
     : legacyGameClips;
 
   return playableHighlights
-    .map((it) => ({
-      id: it.id,
-      headline: it.headline ?? '',
-      description: it.description ?? '',
-      thumbnail: pickThumbnail(it.image),
-      mp4Url: pickPlayback(it.playbacks, [
-        'mp4Avc',
-        'highBit',
-        'FLASH_2500K_1280X720',
-        'FLASH_1800K_960X540',
-        'FLASH_1200K_640X360',
-      ]),
-      hlsUrl: pickPlayback(it.playbacks, [
-        'hlsCloud',
-        'HTTP_CLOUD_WIRED',
-        'HTTP_CLOUD_WIRED_60',
-        'HTTP_CLOUD_TABLET',
-        'HTTP_CLOUD_MOBILE',
-      ]),
-      shareUrl: it.id ? `https://www.mlb.com/video/${it.id}` : null,
-      playerIds: keywordValues(it.keywordsAll, 'player_id').map(Number).filter(Boolean),
-      taxonomies: keywordValues(it.keywordsAll, 'taxonomy'),
-    }));
+    .map((it) => {
+      const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(it.guid ?? ''))
+        ? it.guid
+        : null;
+      return {
+        id: it.id,
+        headline: it.headline ?? '',
+        description: it.description ?? '',
+        thumbnail: pickThumbnail(it.image),
+        mp4Url: pickPlayback(it.playbacks, [
+          'mp4Avc',
+          'highBit',
+          'FLASH_2500K_1280X720',
+          'FLASH_1800K_960X540',
+          'FLASH_1200K_640X360',
+        ]),
+        hlsUrl: pickPlayback(it.playbacks, [
+          'hlsCloud',
+          'HTTP_CLOUD_WIRED',
+          'HTTP_CLOUD_WIRED_60',
+          'HTTP_CLOUD_TABLET',
+          'HTTP_CLOUD_MOBILE',
+        ]),
+        shareUrl: it.id ? `https://www.mlb.com/video/${it.id}` : null,
+        playerIds: keywordValues(it.keywordsAll, 'player_id').map(Number).filter(Boolean),
+        taxonomies: keywordValues(it.keywordsAll, 'taxonomy'),
+        guid,
+        playIdRef: guid,
+      };
+    });
 }
 
 function normalizeVideoItem(item, source = 'highlights') {
@@ -486,6 +493,13 @@ function extractMentionedInnings(highlight) {
     if (inning) innings.add(inning);
   }
 
+  // "bottom of the 5th" / "top of the 2nd" often omit the word "inning"
+  for (const match of text.matchAll(
+    /\b(?:top|bottom)\s+of\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/g,
+  )) {
+    innings.add(Number(match[1]));
+  }
+
   return innings;
 }
 
@@ -531,14 +545,56 @@ function rawHighlightText(highlight) {
 }
 
 function isCompilationHighlight(highlight) {
+  const tax = highlight?.taxonomies ?? [];
   const text = rawHighlightText(highlight);
   return (
-    highlight?.taxonomies?.includes('highlight-reel-offense') ||
-    highlight?.taxonomies?.includes('highlight-reel-defense') ||
+    tax.includes('highlight-reel-offense') ||
+    tax.includes('highlight-reel-defense') ||
+    tax.includes('highlight-reel-pitching') ||
+    tax.includes('highlight-reel-starting-pitching') ||
+    tax.includes('cut-4') ||
+    tax.includes('interview') ||
+    tax.includes('players-weekend') ||
+    tax.includes('condensed-game') ||
+    tax.includes('game-recap') ||
+    tax.includes('press-conference') ||
     /\b(two|three|four|multi)[-\s]?homer\b/.test(text) ||
     /\b(?:plates?|scores?)\s+\w+\s+(?:runs?\s+)?in\s+the\s+\d/.test(text) ||
     /\bcondensed game|game recap\b/.test(text)
   );
+}
+
+function isAbsHighlight(highlight) {
+  const tax = highlight?.taxonomies ?? [];
+  return (
+    tax.includes('abs') ||
+    tax.includes('challenge') ||
+    /\babs challenge\b/i.test(rawHighlightText(highlight))
+  );
+}
+
+function playHasReview(item) {
+  const play = item?.play;
+  if (play?.hasReview || play?.reviewDetails) return true;
+  if (/challenged\s*\(/i.test(item?.description ?? play?.result?.description ?? '')) return true;
+  return (play?.playEvents ?? []).some((ev) => ev?.reviewDetails || ev?.hasReview);
+}
+
+function absPlayerMatches(item, highlight) {
+  if (!highlight?.playerIds?.length) return false;
+  const ids = new Set(itemParticipantIds(item));
+  const play = item?.play;
+  const pitcherId = Number(play?.matchup?.pitcher?.id);
+  if (pitcherId) ids.add(pitcherId);
+
+  const addReviewPlayer = (review) => {
+    const id = Number(review?.player?.id);
+    if (id) ids.add(id);
+  };
+  addReviewPlayer(play?.reviewDetails);
+  for (const ev of play?.playEvents ?? []) addReviewPlayer(ev?.reviewDetails);
+
+  return highlight.playerIds.some((id) => ids.has(Number(id)));
 }
 
 function extractPlayStatNumber(text) {
@@ -660,13 +716,51 @@ export function matchHighlightForItem(item, highlights) {
   return best;
 }
 
+function assignHighlightVideo(map, used, item, video) {
+  if (!item?.key || !video || map[item.key] || used.has(video.id)) return false;
+  if (!video.mp4Url && !video.hlsUrl) return false;
+  map[item.key] = video;
+  used.add(video.id);
+  return true;
+}
+
 /** Build map of summary item key -> highlight video. */
 export function buildHighlightMap(summaryItems, highlights) {
   const map = {};
   const used = new Set();
   const batterScoringCount = new Map();
-
+  const videoByPlayId = buildVideoMapByPlayId(highlights);
   const playableItems = (summaryItems ?? []).filter((i) => i?.play && i?.eventType);
+  const hasPlayGuids = (highlights ?? []).some((h) => h.guid || h.playIdRef);
+
+  // Official MLB Gameday Summary attaches clips by highlight.guid === playEvent.playId.
+  for (const item of playableItems) {
+    const official = findOfficialVideoForItem(item, videoByPlayId);
+    if (official && !isCompilationHighlight(official)) {
+      assignHighlightVideo(map, used, item, official);
+    }
+  }
+
+  // ABS / challenge clips usually have no play GUID. Official Summary still
+  // pins them to the reviewed at-bat — never to a different inning's play.
+  for (const item of playableItems) {
+    if (map[item.key] || item.kind !== 'atbat' || !playHasReview(item)) continue;
+    const candidates = (highlights ?? [])
+      .filter((h) => (
+        !used.has(h.id)
+        && !h.guid
+        && !h.playIdRef
+        && isAbsHighlight(h)
+        && absPlayerMatches(item, h)
+      ))
+      .map((h) => ({ h, score: slugHighlightScore(item, h) + scoreHighlightMatch(item, h) }))
+      .sort((a, b) => b.score - a.score);
+    if (candidates[0]) assignHighlightVideo(map, used, item, candidates[0].h);
+  }
+
+  // Fuzzy headline matching is only a fallback for older clips that have no guid.
+  // When this game already has GUID play clips, require a near-exact slug so
+  // recaps / cut-4 / same-player highlights from later innings cannot attach.
   const orderedItems = [
     ...playableItems.filter((i) => i.isScoring),
     ...playableItems.filter((i) => !i.isScoring),
@@ -677,16 +771,24 @@ export function buildHighlightMap(summaryItems, highlights) {
     const priorBatterScoringCount = batterId ? (batterScoringCount.get(batterId) ?? 0) : 0;
     const matchContext = { priorBatterScoringCount };
 
-    const candidates = highlights
-      .filter((h) => !used.has(h.id))
-      .map((h) => ({ h, score: scoreHighlightMatch(item, h) }))
-      .filter(({ h, score }) => score >= (item.isScoring ? 7 : 9) && isReliableHighlightMatch(item, h, matchContext))
-      .sort((a, b) => b.score - a.score);
+    if (!map[item.key]) {
+      const candidates = highlights
+        .filter((h) => (
+          !used.has(h.id)
+          && !h.guid
+          && !h.playIdRef
+          && !isCompilationHighlight(h)
+          && !isAbsHighlight(h)
+        ))
+        .map((h) => ({ h, score: scoreHighlightMatch(item, h), slug: slugHighlightScore(item, h) }))
+        .filter(({ h, score, slug }) => {
+          if (hasPlayGuids && slug < 45) return false;
+          return score >= (item.isScoring ? 7 : 9) && isReliableHighlightMatch(item, h, matchContext);
+        })
+        .sort((a, b) => b.score - a.score);
 
-    const pick = candidates[0]?.h;
-    if (pick && (pick.mp4Url || pick.hlsUrl)) {
-      map[item.key] = pick;
-      used.add(pick.id);
+      const pick = candidates[0]?.h;
+      if (pick) assignHighlightVideo(map, used, item, pick);
     }
 
     if (item.isScoring && batterId) batterScoringCount.set(batterId, priorBatterScoringCount + 1);
@@ -873,15 +975,27 @@ function buildVideoMapByPlayId(videos) {
 }
 
 function findOfficialVideoForItem(item, videoByPlayId) {
-  const actionEvent = playEventFromActionItem(item);
-  const actionVideo = actionEvent?.playId ? videoByPlayId.get(actionEvent.playId) : null;
-  if (actionVideo) return actionVideo;
+  // Action rows (steals, wild pitches, runner placed) only own a clip when
+  // that action event's playId matches. Falling through to the parent at-bat's
+  // terminal pitch steals the at-bat highlight — official Summary does not.
+  if (item?.kind === 'action') {
+    const actionEvent = playEventFromActionItem(item);
+    return actionEvent?.playId ? (videoByPlayId.get(actionEvent.playId) ?? null) : null;
+  }
 
-  const terminalVideo = videoByPlayId.get(terminalPitchEvent(item?.play)?.playId);
-  if (terminalVideo) return terminalVideo;
+  const play = item?.play;
+  const preferredIds = [
+    terminalPitchEvent(play)?.playId,
+    play?.playEndEvent?.playId,
+    play?.resultPlayGuid,
+  ].filter(Boolean);
 
-  const resultVideo = videoByPlayId.get(item?.play?.resultPlayGuid);
-  return resultVideo ?? null;
+  for (const id of preferredIds) {
+    const video = videoByPlayId.get(id);
+    if (video) return video;
+  }
+
+  return null;
 }
 
 async function findMiLBVideoForItem(item, signal, videoByPlayId) {
