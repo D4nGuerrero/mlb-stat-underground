@@ -57,7 +57,7 @@ const PRIMARY_NAV = [
 
 const MORE_NAV = [
   { to: '/games', icon: Gamepad2, label: 'Games', description: 'Puzzles, trivia, and the sim' },
-  { to: '/postseason', icon: Trophy, label: 'Postseason', description: 'Brackets from every October' },
+  { to: '/postseason', icon: Trophy, label: 'Postseason', description: 'MLB, minors, and LMB playoffs' },
   { to: '/draft', icon: ClipboardList, label: 'Draft Tracker', description: 'Browse draft classes' },
   { to: '/docs', icon: FileText, label: 'API Docs', description: 'Stats API reference' },
   { to: '/settings', icon: SettingsIcon, label: 'Settings', description: 'Theme & mobile nav' },

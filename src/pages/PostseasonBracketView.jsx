@@ -11,6 +11,7 @@ import {
   postseasonHref,
   seriesInvolvesTeam,
 } from '../utils/postseason';
+import LmbBracketView from './LmbBracketView';
 
 function cn(...parts) {
   return parts.filter(Boolean).join(' ');
@@ -227,13 +228,15 @@ function MatchCard({ series, year, isDark, favoriteTeamIds, focusTeamId, teamId 
   );
 }
 
-function WorldSeriesCard({ series, teams, year, isDark, favoriteTeamIds, focusTeamId, teamId }) {
+function WorldSeriesCard({ series, teams, year, isDark, favoriteTeamIds, focusTeamId, teamId, title }) {
   const ordered = teams?.length ? teams : series.teams;
   const winner = series.winner;
   const palette = getTeamColorPalette(winner?.id ?? ordered?.[0]?.id);
   const isFav = favoriteTeamIds.some((id) => seriesInvolvesTeam(series, id));
   const isFocus = focusTeamId && seriesInvolvesTeam(series, focusTeamId);
   const loser = winner ? ordered.find((team) => Number(team.id) !== Number(winner.id)) : null;
+  const heading = title || (series.gameType === 'W' && series.league === 'WS' ? 'World Series' : series.shortLabel);
+  const showCommissionerTrophy = series.gameType === 'W' && series.league === 'WS';
 
   return (
     <Link
@@ -255,9 +258,9 @@ function WorldSeriesCard({ series, teams, year, isDark, favoriteTeamIds, focusTe
       <div className="relative flex flex-col items-center">
         <div className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">
           <Trophy size={11} />
-          World Series
+          {heading}
         </div>
-        {winner && !winner.placeholder ? (
+        {showCommissionerTrophy && winner && !winner.placeholder ? (
           <img
             src={assetUrl('icons/world-series-trophy.png')}
             alt=""
@@ -391,12 +394,12 @@ function BracketNode({ node, side, alignDepth, year, isDark, favoriteTeamIds, fo
   );
 }
 
-function LeagueHalf({ roots, side, year, isDark, favoriteTeamIds, focusTeamId, teamId }) {
+function LeagueHalf({ roots, side, league, year, isDark, favoriteTeamIds, focusTeamId, teamId }) {
   if (!roots.length) return null;
   const rootDepth = Math.max(...roots.map(subtreeDepth));
   return (
     <div className="flex min-w-0 flex-col">
-      <LeagueTag league={side === 'al' ? 'AL' : 'NL'} isDark={isDark} align={side === 'nl' ? 'right' : 'left'} />
+      <LeagueTag league={league} isDark={isDark} align={side === 'nl' ? 'right' : 'left'} />
       <div
         className={cn('flex-1', roots.length > 1 ? 'grid' : 'flex items-center')}
         style={roots.length > 1 ? { gridTemplateRows: `repeat(${roots.length}, minmax(0, 1fr))` } : undefined}
@@ -428,7 +431,20 @@ export default function PostseasonBracketView({
   teamId,
 }) {
   const diagram = useMemo(() => buildBracketDiagram(bracket), [bracket]);
-  const hasTree = diagram.al.length > 0 || diagram.nl.length > 0;
+  const hasTree = diagram.al.length > 0 || diagram.nl.length > 0 || (diagram.columns?.length > 0);
+  const columnLayout = diagram.layout === 'columns' && diagram.columns?.length;
+
+  if (diagram.layout === 'lmb') {
+    return (
+      <LmbBracketView
+        diagram={diagram}
+        year={year}
+        teamId={teamId}
+        favoriteTeamIds={favoriteTeamIds}
+        focusTeamId={focusTeamId}
+      />
+    );
+  }
 
   if (!diagram.worldSeries && !hasTree) return null;
 
@@ -438,22 +454,38 @@ export default function PostseasonBracketView({
         <div
           className={cn(
             'relative flex min-w-max items-stretch justify-center gap-0 px-3 py-5 sm:px-5 sm:py-7',
+            columnLayout ? 'gap-6 sm:gap-8' : '',
             isDark
               ? 'bg-[radial-gradient(ellipse_at_50%_50%,rgba(251,191,36,0.07),transparent_42%)]'
               : 'bg-[radial-gradient(ellipse_at_50%_50%,rgba(251,191,36,0.12),transparent_48%)]',
           )}
         >
+          {columnLayout ? diagram.columns.map((column) => (
+            <LeagueHalf
+              key={column.key}
+              roots={column.roots}
+              side="al"
+              league={column.key}
+              year={year}
+              isDark={isDark}
+              favoriteTeamIds={favoriteTeamIds}
+              focusTeamId={focusTeamId}
+              teamId={teamId}
+            />
+          )) : (
           <LeagueHalf
             roots={diagram.al}
             side="al"
+            league={diagram.leftLeague}
             year={year}
             isDark={isDark}
             favoriteTeamIds={favoriteTeamIds}
             focusTeamId={focusTeamId}
             teamId={teamId}
           />
+          )}
 
-          {diagram.worldSeries && (
+          {!columnLayout && diagram.worldSeries && (
             <div className="flex flex-col items-center justify-center px-0.5">
               <div className="mb-2 h-7" aria-hidden />
               <div className="flex items-center">
@@ -476,15 +508,18 @@ export default function PostseasonBracketView({
             </div>
           )}
 
+          {!columnLayout && (
           <LeagueHalf
             roots={diagram.nl}
             side="nl"
+            league={diagram.rightLeague}
             year={year}
             isDark={isDark}
             favoriteTeamIds={favoriteTeamIds}
             focusTeamId={focusTeamId}
             teamId={teamId}
           />
+          )}
         </div>
       </div>
       <p className="px-3 pb-3 text-center text-[11px] text-slate-500 lg:hidden">

@@ -15,3 +15,37 @@ export const LEAGUE_LEVEL_BY_VALUE = Object.fromEntries(
 );
 
 export const LEAGUE_LEVEL_VALUES = new Set(LEAGUE_LEVEL_OPTIONS.map((option) => option.value));
+
+export function isMlbLeagueLevel(value) {
+  return (value ?? 'mlb') === 'mlb';
+}
+
+export function leagueLevelSportId(value) {
+  const query = LEAGUE_LEVEL_BY_VALUE[value]?.sportQuery ?? 'sportId=1';
+  const match = query.match(/sportId=(\d+)/);
+  return Number(match?.[1] ?? 1);
+}
+
+export function leagueLevelLeagueId(value) {
+  const query = LEAGUE_LEVEL_BY_VALUE[value]?.sportQuery ?? '';
+  const match = query.match(/leagueId=(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+export function loadLeagueLevel() {
+  try {
+    const saved = localStorage.getItem(LEAGUE_LEVEL_STORAGE_KEY);
+    return LEAGUE_LEVEL_VALUES.has(saved) ? saved : 'mlb';
+  } catch {
+    return 'mlb';
+  }
+}
+
+export function saveLeagueLevel(value) {
+  if (!LEAGUE_LEVEL_VALUES.has(value)) return;
+  try {
+    localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, value);
+  } catch {
+    // ignore quota / private-mode failures
+  }
+}

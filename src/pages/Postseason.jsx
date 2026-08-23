@@ -12,16 +12,26 @@ import {
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react';
 import { Select, LoadingSpinner, SegmentedControl } from '../components/ui';
 import TeamLogoImg from '../components/TeamLogoImg';
+import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { useFavoriteTeams } from '../hooks/useFavoriteTeams';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { usePostseasonBracket } from '../hooks/usePostseasonBracket';
 import { usePostseasonEventLogo } from '../hooks/usePostseasonEventLogo';
 import { usePostseasonFacts } from '../hooks/usePostseasonFacts';
+import { useSportTeams } from '../hooks/useSportTeams';
 import { useTeamPostseasonYears } from '../hooks/useTeamPostseasonYears';
 import { useLocalStorageState } from '../hooks/useStorageState';
 import PostseasonBracketView from './PostseasonBracketView';
 import PostseasonFactsView from './PostseasonFactsView';
+import {
+  LEAGUE_LEVEL_BY_VALUE,
+  LEAGUE_LEVEL_STORAGE_KEY,
+  LEAGUE_LEVEL_VALUES,
+  isMlbLeagueLevel,
+  loadLeagueLevel,
+  saveLeagueLevel,
+} from '../constants/leagueLevels.js';
 import { getTeamColorPalette } from '../utils/teamColors';
 import { compactPlayerName, formatFinalStatus, mlbTeams, teamLogoUrl } from '../utils/mlbHelpers';
 import { assetUrl } from '../utils/baseUrl.js';
@@ -31,30 +41,35 @@ import {
   adjacentFilteredYear,
   leagueLogoSrc,
   MIN_POSTSEASON_YEAR,
-  clampPostseasonYear,
-  defaultPostseasonYear,
+  clampPostseasonYearForLevel,
+  defaultPostseasonYearForLevel,
   formatGameClock,
   formatOfficialDate,
   formatSeriesScore,
   isCompletedGame,
   isIfNecessaryUnplayed,
   isLiveGame,
+  isMlbWorldSeries,
+  isPostseasonInSeason,
+  minPostseasonYearForLevel,
   postseasonHref,
-  postseasonYearOptions,
+  postseasonYearOptionsForLevel,
   seriesDisplayTeams,
   seriesInvolvesTeam,
   teamPostseasonYearOptions,
+  yearForLevelSwitch,
 } from '../utils/postseason';
 
-const YEAR_OPTIONS = postseasonYearOptions();
 const TEAM_FILTER_ALL = 'all';
 const MLB_TEAM_BY_ID = Object.fromEntries(mlbTeams.map((team) => [team.id, team]));
+const HEADINGLESS_LEAGUES = new Set(['WS', 'CHAMP', 'REY', 'OTH', 'LMB', 'MLB']);
 
 const VIEW_OPTIONS = [
   { value: 'rounds', label: 'Rounds' },
   { value: 'bracket', label: 'Bracket' },
   { value: 'facts', label: 'Facts' },
 ];
+const MINOR_VIEW_OPTIONS = VIEW_OPTIONS.filter((option) => option.value !== 'facts');
 
 function cn(...parts) {
   return parts.filter(Boolean).join(' ');
@@ -77,10 +92,11 @@ function mlbLogoSrc(isDark) {
   return isDark ? LEAGUE_META.WS.logo : LEAGUE_META.WS.logoLight;
 }
 
-function teamFilterOptions(isDark) {
+function teamFilterOptions(isDark, teams, allIcon) {
+  const list = Array.isArray(teams) && teams.length ? teams : mlbTeams;
   return [
-    { value: TEAM_FILTER_ALL, label: 'All teams', icon: mlbLogoSrc(isDark) },
-    ...[...mlbTeams]
+    { value: TEAM_FILTER_ALL, label: 'All teams', icon: allIcon || mlbLogoSrc(isDark) },
+    ...[...list]
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((team) => ({
         value: team.id,
@@ -154,14 +170,24 @@ function TeamCircleSelect({ value, onChange, options, isDark, selectedTeam }) {
   );
 }
 
-function YearPicker({ year, onChange, isDark, years, appearances, loading = false, variant = 'default' }) {
+function YearPicker({
+  year,
+  onChange,
+  isDark,
+  years,
+  appearances,
+  loading = false,
+  variant = 'default',
+  yearOptions,
+  minYear = MIN_POSTSEASON_YEAR,
+}) {
   const filtered = Array.isArray(years);
   const options = filtered
     ? teamPostseasonYearOptions(appearances, years, year)
-    : YEAR_OPTIONS;
+    : (yearOptions ?? postseasonYearOptionsForLevel('mlb'));
   const older = filtered
     ? adjacentFilteredYear(years, year, 'older')
-    : year > MIN_POSTSEASON_YEAR ? year - 1 : null;
+    : year > minYear ? year - 1 : null;
   const newer = filtered
     ? adjacentFilteredYear(years, year, 'newer')
     : year < CURRENT_CALENDAR_YEAR ? year + 1 : null;
@@ -246,11 +272,13 @@ function TeamMark({ team, size = 'md', isDark }) {
   return <TeamLogoImg teamId={team.id} className={`${px} object-contain`} alt={team.name} />;
 }
 
-function ChampionBanner({ series, year, isDark, teamId }) {
+function ChampionBanner({ series, year, isDark, teamId, isMlb = true }) {
   const winner = series?.winner;
   if (!winner || winner.placeholder) return null;
   const loser = series.teams.find((team) => team.id !== winner.id) ?? series.teams[1];
   const palette = getTeamColorPalette(winner.id);
+  const seriesTitle = isMlb ? 'World Series' : (series.shortLabel || series.description || 'Championship');
+  const champLabel = isMlb ? 'World Champions' : 'Champions';
 
   return (
     <Link
@@ -269,20 +297,27 @@ function ChampionBanner({ series, year, isDark, teamId }) {
       <div className="relative flex flex-col items-center gap-5 px-4 py-6 sm:flex-row sm:items-center sm:gap-8 sm:px-7 sm:py-7">
         <div className="relative flex-shrink-0">
           <div className="absolute inset-4 rounded-full bg-amber-300/15 blur-2xl" aria-hidden />
-          <img
-            src={assetUrl('icons/world-series-trophy.png')}
-            alt="Commissioner's Trophy"
-            className="relative h-36 w-36 object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] sm:h-44 sm:w-44"
-          />
+          {isMlb ? (
+            <img
+              src={assetUrl('icons/world-series-trophy.png')}
+              alt="Commissioner's Trophy"
+              className="relative h-36 w-36 object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] sm:h-44 sm:w-44"
+            />
+          ) : (
+            <Trophy
+              size={96}
+              className="relative mx-auto text-amber-200 drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] sm:h-28 sm:w-28"
+            />
+          )}
         </div>
 
         <div className="min-w-0 flex-1 text-center sm:text-left">
           <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-amber-200 ring-1 ring-amber-300/35">
             <Crown size={12} />
-            World Champions
+            {champLabel}
           </div>
           <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.22em] text-amber-100/70">
-            {year} World Series
+            {year} {seriesTitle}
           </div>
           {winner.id && !winner.placeholder && (
             <TeamLogoImg
@@ -319,21 +354,25 @@ function ChampionBanner({ series, year, isDark, teamId }) {
 
 function LeagueHeading({ league, isDark }) {
   const meta = LEAGUE_META[league];
-  if (!meta) return null;
+  if (!meta && !league) return null;
+  const label = meta?.label ?? league;
+  const logo = meta ? leagueLogoSrc(meta, isDark) : '';
   return (
     <div className="flex items-center gap-2.5 px-0.5 pb-0.5">
-      <img
-        src={leagueLogoSrc(meta, isDark)}
-        alt=""
-        className="h-8 w-8 object-contain sm:h-9 sm:w-9"
-      />
+      {logo ? (
+        <img
+          src={logo}
+          alt=""
+          className="h-8 w-8 object-contain sm:h-9 sm:w-9"
+        />
+      ) : null}
       <span
         className={cn(
           'font-display text-base font-black tracking-tight sm:text-lg',
           isDark ? 'text-white' : 'text-slate-900',
         )}
       >
-        {meta.label}
+        {label}
       </span>
     </div>
   );
@@ -361,7 +400,7 @@ function SeriesCard({ series, year, isDark, favoriteTeamIds, focusTeamId, teamId
         surfaceClass(isDark),
         isFav || isFocus ? 'ring-1 ring-accent-400/40' : '',
         focusTeamId && !isFocus ? 'opacity-45 hover:opacity-100' : '',
-        series.gameType === 'W'
+        series.league === 'WS' || series.league === 'CHAMP' || series.league === 'REY'
           ? isDark
             ? 'border-amber-400/25 bg-gradient-to-br from-amber-500/10 to-slate-900'
             : 'border-amber-300/80 bg-gradient-to-br from-amber-50 to-white'
@@ -371,17 +410,21 @@ function SeriesCard({ series, year, isDark, favoriteTeamIds, focusTeamId, teamId
     >
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          {series.league !== 'WS' && LEAGUE_META[series.league]?.logo && (
+          {!HEADINGLESS_LEAGUES.has(series.league) && LEAGUE_META[series.league]?.logo && (
             <img
               src={leagueLogoSrc(LEAGUE_META[series.league], isDark)}
               alt=""
               className="h-4 w-4 object-contain opacity-80"
             />
           )}
-          {series.gameType === 'W' && <Trophy size={13} className="text-amber-300" />}
+          {(series.league === 'WS' || series.league === 'CHAMP' || series.league === 'REY') && (
+            <Trophy size={13} className="text-amber-300" />
+          )}
           <span className={cn(
             'truncate text-[11px] font-black uppercase tracking-[0.14em]',
-            series.gameType === 'W' ? 'text-amber-200' : isDark ? 'text-slate-400' : 'text-slate-500',
+            series.league === 'WS' || series.league === 'CHAMP' || series.league === 'REY'
+              ? 'text-amber-200'
+              : isDark ? 'text-slate-400' : 'text-slate-500',
           )}
           >
             {series.shortLabel}
@@ -451,37 +494,43 @@ function SeriesCard({ series, year, isDark, favoriteTeamIds, focusTeamId, teamId
   );
 }
 
+function seriesGroupsForRound(visible) {
+  const byLeague = new Map();
+  for (const series of visible) {
+    const key = series.league || 'OTH';
+    if (!byLeague.has(key)) byLeague.set(key, []);
+    byLeague.get(key).push(series);
+  }
+
+  if (byLeague.has('AL') || byLeague.has('NL')) {
+    const other = [];
+    for (const [key, items] of byLeague) {
+      if (key === 'AL' || key === 'NL') continue;
+      other.push(...items);
+    }
+    return [
+      { league: 'AL', items: byLeague.get('AL') ?? [] },
+      { league: 'NL', items: byLeague.get('NL') ?? [] },
+      { league: null, items: other },
+    ];
+  }
+
+  const hideHeadings = byLeague.size <= 1;
+  return [...byLeague.entries()].map(([key, items]) => ({
+    league: hideHeadings || HEADINGLESS_LEAGUES.has(key) ? null : key,
+    items,
+  }));
+}
+
 function RoundColumn({ round, year, isDark, favoriteTeamIds, leagueFilter, focusTeamId, teamId }) {
   const visible = round.series.filter((series) => {
     if (leagueFilter === 'all') return true;
-    if (series.league === 'WS') return true;
+    if (HEADINGLESS_LEAGUES.has(series.league)) return true;
     return series.league === leagueFilter;
   });
   if (!visible.length) return null;
 
-  const al = visible.filter((series) => series.league === 'AL');
-  const nl = visible.filter((series) => series.league === 'NL');
-  const other = visible.filter((series) => series.league !== 'AL' && series.league !== 'NL');
-
-  const renderGroup = (leagueKey, items) => {
-    if (!items.length) return null;
-    return (
-      <div className="space-y-2.5">
-        {leagueKey && <LeagueHeading league={leagueKey} isDark={isDark} />}
-        {items.map((series) => (
-          <SeriesCard
-            key={series.id}
-            series={series}
-            year={year}
-            isDark={isDark}
-            favoriteTeamIds={favoriteTeamIds}
-            focusTeamId={focusTeamId}
-            teamId={teamId}
-          />
-        ))}
-      </div>
-    );
-  };
+  const groups = seriesGroupsForRound(visible);
 
   return (
     <section className="min-w-0">
@@ -498,9 +547,25 @@ function RoundColumn({ round, year, isDark, favoriteTeamIds, leagueFilter, focus
         </span>
       </div>
       <div className="space-y-5">
-        {renderGroup('AL', al)}
-        {renderGroup('NL', nl)}
-        {renderGroup(null, other)}
+        {groups.map((group, index) => {
+          if (!group.items.length) return null;
+          return (
+            <div key={group.league ?? `group-${index}`} className="space-y-2.5">
+              {group.league && <LeagueHeading league={group.league} isDark={isDark} />}
+              {group.items.map((series) => (
+                <SeriesCard
+                  key={series.id}
+                  series={series}
+                  year={year}
+                  isDark={isDark}
+                  favoriteTeamIds={favoriteTeamIds}
+                  focusTeamId={focusTeamId}
+                  teamId={teamId}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -633,8 +698,8 @@ function SeriesGameRow({ game, isDark, onOpen }) {
   );
 }
 
-function seriesHeroTitle(series) {
-  if (series.gameType === 'W') return 'World Series';
+function seriesHeroTitle(series, isMlb = true) {
+  if (isMlb && series.gameType === 'W') return 'World Series';
   return series.shortLabel || series.description || 'Postseason';
 }
 
@@ -645,8 +710,9 @@ function SeriesEventHero({
   yearPicker,
   teamPicker,
 }) {
-  const logoSrc = usePostseasonEventLogo(series, year);
-  const title = seriesHeroTitle(series);
+  const isMlb = series.league === 'AL' || series.league === 'NL' || series.league === 'WS';
+  const logoSrc = usePostseasonEventLogo(isMlb ? series : null, year);
+  const title = seriesHeroTitle(series, isMlb);
 
   return (
     <section
@@ -682,12 +748,14 @@ function SeriesEventHero({
             referrerPolicy="no-referrer"
             className="max-h-52 w-auto max-w-[min(100%,34rem)] rounded-2xl object-contain drop-shadow-2xl sm:max-h-64"
           />
-        ) : (
+        ) : isMlb ? (
           <img
             src={assetUrl('icons/world-series-trophy.png')}
             alt=""
             className="h-36 w-36 object-contain drop-shadow-2xl sm:h-48 sm:w-48"
           />
+        ) : (
+          <Trophy className="h-28 w-28 text-amber-200/90 drop-shadow-2xl sm:h-36 sm:w-36" />
         )}
       </div>
     </section>
@@ -708,7 +776,7 @@ function SeriesDetail({
   const winner = series.winner;
   const loser = winner ? series.teams.find((team) => team.id !== winner.id) : null;
   const isFav = favoriteTeamIds.some((id) => seriesInvolvesTeam(series, id));
-  const isWorldSeries = series.gameType === 'W';
+  const isWorldSeries = isMlbWorldSeries(series, series.league === 'WS' ? 'mlb' : 'minor');
 
   return (
     <div className="space-y-4">
@@ -857,27 +925,80 @@ export default function Postseason() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isDark } = useTheme();
   const { favoriteTeams } = useFavoriteTeams();
-  const year = clampPostseasonYear(yearParam ?? defaultPostseasonYear());
-  const { bracket, loading, error, cancelled, reload } = usePostseasonBracket(year);
+  const [leagueLevel, setLeagueLevel] = useState(loadLeagueLevel);
+  const selectedLeague = LEAGUE_LEVEL_BY_VALUE[leagueLevel] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
+  const isMlb = isMlbLeagueLevel(leagueLevel);
+  const year = clampPostseasonYearForLevel(
+    leagueLevel,
+    yearParam ?? defaultPostseasonYearForLevel(leagueLevel),
+  );
+  const { bracket, loading, error, cancelled, reload } = usePostseasonBracket(year, { level: leagueLevel });
   const [storedView, setStoredView] = useLocalStorageState('mlb.postseason.overview', 'bracket');
-  const view = storedView === 'rounds' || storedView === 'facts' ? storedView : 'bracket';
+  const view = !isMlb && storedView === 'facts'
+    ? 'bracket'
+    : storedView === 'rounds' || storedView === 'facts'
+      ? storedView
+      : 'bracket';
   const [factsRange, setFactsRange] = useLocalStorageState('mlb.postseason.facts.range', 'all');
   const [factsSort, setFactsSort] = useLocalStorageState('mlb.postseason.facts.sort', 'last');
   const [factsDir, setFactsDir] = useLocalStorageState('mlb.postseason.facts.dir', 'desc');
-  const facts = usePostseasonFacts(view === 'facts');
+  const facts = usePostseasonFacts(isMlb && view === 'facts');
+  const { teams: sportTeams, loading: sportTeamsLoading } = useSportTeams(leagueLevel, year);
 
   const teamParam = Number(searchParams.get('team'));
-  const teamId = MLB_TEAM_BY_ID[teamParam] ? teamParam : null;
-  const selectedTeam = teamId ? MLB_TEAM_BY_ID[teamId] : null;
-  const { years: teamYears, appearances: teamAppearances, loading: teamYearsLoading } = useTeamPostseasonYears(teamId);
-  const teamOptions = useMemo(() => teamFilterOptions(isDark), [isDark]);
+  const sportTeamById = useMemo(
+    () => Object.fromEntries((isMlb ? mlbTeams : sportTeams).map((team) => [team.id, team])),
+    [isMlb, sportTeams],
+  );
+  const teamId = sportTeamById[teamParam] ? teamParam : null;
+  const selectedTeam = teamId ? sportTeamById[teamId] : null;
+  const { years: teamYears, appearances: teamAppearances, loading: teamYearsLoading } = useTeamPostseasonYears(
+    isMlb ? teamId : null,
+  );
+  const teamOptions = useMemo(
+    () => teamFilterOptions(isDark, isMlb ? mlbTeams : sportTeams, selectedLeague.logo),
+    [isDark, isMlb, sportTeams, selectedLeague.logo],
+  );
+  const yearOptions = useMemo(() => postseasonYearOptionsForLevel(leagueLevel), [leagueLevel]);
+  const minYear = minPostseasonYearForLevel(leagueLevel);
 
   const goTo = useCallback((nextYear, { series = seriesId, replace = false } = {}) => {
-    const y = clampPostseasonYear(nextYear);
+    const y = clampPostseasonYearForLevel(leagueLevel, nextYear);
     const seriesPart = series ? `/${encodeURIComponent(series)}` : '';
     const search = teamId ? `?team=${teamId}` : '';
     navigate(`/postseason/${y}${seriesPart}${search}`, { replace });
-  }, [navigate, seriesId, teamId]);
+  }, [navigate, seriesId, teamId, leagueLevel]);
+
+  const handleLeagueLevelChange = useCallback((nextLevel) => {
+    if (!LEAGUE_LEVEL_VALUES.has(nextLevel) || nextLevel === leagueLevel) return;
+    saveLeagueLevel(nextLevel);
+    setLeagueLevel(nextLevel);
+    const nextYear = yearForLevelSwitch(nextLevel, year);
+    if (isPostseasonInSeason(nextLevel) || (!isMlbLeagueLevel(nextLevel) && storedView === 'facts')) {
+      setStoredView('bracket');
+    }
+    navigate(`/postseason/${nextYear}`, { replace: true });
+  }, [leagueLevel, year, navigate, storedView, setStoredView]);
+
+  useEffect(() => {
+    saveLeagueLevel(leagueLevel);
+  }, [leagueLevel]);
+
+  useEffect(() => {
+    if (yearParam) return;
+    if (!isPostseasonInSeason(leagueLevel)) return;
+    setStoredView((prev) => (prev === 'rounds' ? prev : 'bracket'));
+  }, [yearParam, leagueLevel, setStoredView]);
+
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key !== LEAGUE_LEVEL_STORAGE_KEY) return;
+      const next = LEAGUE_LEVEL_VALUES.has(event.newValue) ? event.newValue : 'mlb';
+      setLeagueLevel(next);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     if (yearParam && Number(yearParam) === year) return;
@@ -885,11 +1006,18 @@ export default function Postseason() {
   }, [year, yearParam, goTo]);
 
   useEffect(() => {
-    if (view === 'facts') return;
+    if (!isMlb || view === 'facts') return;
     if (!teamId || teamYearsLoading || !teamYears.length) return;
     if (teamYears.includes(year)) return;
     goTo(teamYears[0], { series: null, replace: true });
-  }, [view, teamId, teamYears, teamYearsLoading, year, goTo]);
+  }, [isMlb, view, teamId, teamYears, teamYearsLoading, year, goTo]);
+
+  useEffect(() => {
+    if (!teamParam || teamId || sportTeamsLoading) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('team');
+    setSearchParams(next, { replace: true });
+  }, [teamParam, teamId, sportTeamsLoading, searchParams, setSearchParams]);
 
   const selectedSeries = useMemo(() => {
     if (!seriesId) return null;
@@ -921,14 +1049,28 @@ export default function Postseason() {
     navigate(`/game/${game.gamePk}`, { state: gamedayState(year, selectedSeries) });
   };
 
-  const hasBothLeagues = bracket.series.some((s) => s.league === 'AL')
-    && bracket.series.some((s) => s.league === 'NL');
+  const subLeagueKeys = [...new Set(
+    bracket.series
+      .map((item) => item.league)
+      .filter((key) => key && !HEADINGLESS_LEAGUES.has(key)),
+  )];
+  const hasBothLeagues = isMlb
+    ? bracket.series.some((s) => s.league === 'AL') && bracket.series.some((s) => s.league === 'NL')
+    : subLeagueKeys.length > 1;
 
-  const leagueFilterOptions = [
-    { value: 'all', label: 'All' },
-    { value: 'AL', label: 'AL' },
-    { value: 'NL', label: 'NL' },
-  ];
+  const leagueFilterOptions = isMlb
+    ? [
+        { value: 'all', label: 'All' },
+        { value: 'AL', label: 'AL' },
+        { value: 'NL', label: 'NL' },
+      ]
+    : [
+        { value: 'all', label: 'All' },
+        ...subLeagueKeys.map((key) => ({
+          value: key,
+          label: LEAGUE_META[key]?.short ?? key,
+        })),
+      ];
 
   return (
     <PostseasonFrame
@@ -939,14 +1081,20 @@ export default function Postseason() {
       view={view}
       onViewChange={setStoredView}
       showViewToggle={!selectedSeries && !seriesId}
+      viewOptions={isMlb ? VIEW_OPTIONS : MINOR_VIEW_OPTIONS}
       hideYearPicker={view === 'facts'}
       teamId={teamId}
       teamOptions={teamOptions}
       onTeamChange={setTeamFilter}
       selectedTeam={selectedTeam}
-      teamYears={teamYears}
-      teamAppearances={teamAppearances}
-      teamYearsLoading={teamYearsLoading}
+      teamYears={isMlb ? teamYears : []}
+      teamAppearances={isMlb ? teamAppearances : []}
+      teamYearsLoading={isMlb && teamYearsLoading}
+      yearOptions={yearOptions}
+      minYear={minYear}
+      leagueLevel={leagueLevel}
+      leagueLabel={selectedLeague}
+      onLeagueLevelChange={handleLeagueLevelChange}
     >
       {!selectedSeries && !seriesId && view === 'facts' && (
         <PostseasonFactsView
@@ -963,7 +1111,7 @@ export default function Postseason() {
           focusTeamId={teamId}
           onOpenYear={(nextYear, nextTeamId) => {
             setStoredView('bracket');
-            const y = clampPostseasonYear(nextYear);
+            const y = clampPostseasonYearForLevel('mlb', nextYear);
             const search = nextTeamId ? `?team=${nextTeamId}` : '';
             navigate(`/postseason/${y}${search}`);
           }}
@@ -971,7 +1119,7 @@ export default function Postseason() {
       )}
 
       {view !== 'facts' && loading && (
-        <LoadingSpinner size="lg" py="py-24" label="Loading October…" />
+        <LoadingSpinner size="lg" py="py-24" label={isMlb ? 'Loading October…' : 'Loading postseason…'} />
       )}
 
       {view !== 'facts' && !loading && error && (
@@ -1013,10 +1161,12 @@ export default function Postseason() {
               year={year}
               onChange={goToYear}
               isDark={isDark}
-              years={teamId && teamYears.length ? teamYears : null}
+              years={isMlb && teamId && teamYears.length ? teamYears : null}
               appearances={teamAppearances}
-              loading={Boolean(teamId && teamYearsLoading)}
+              loading={Boolean(isMlb && teamId && teamYearsLoading)}
               variant="hero"
+              yearOptions={yearOptions}
+              minYear={minYear}
             />
           )}
           teamPicker={(
@@ -1049,6 +1199,8 @@ export default function Postseason() {
           bracket={bracket}
           year={year}
           isDark={isDark}
+          isMlb={isMlb}
+          leagueLabel={selectedLeague.label}
           favoriteTeamIds={favoriteTeams}
           hasBothLeagues={hasBothLeagues}
           leagueFilterOptions={leagueFilterOptions}
@@ -1077,20 +1229,33 @@ function PostseasonFrame({
   teamYears,
   teamAppearances,
   teamYearsLoading,
+  yearOptions,
+  minYear,
+  leagueLevel,
+  leagueLabel,
+  onLeagueLevelChange,
+  viewOptions = VIEW_OPTIONS,
   children,
 }) {
   const wide = showViewToggle && view === 'bracket';
   const teamYearCount = selectedTeam && !teamYearsLoading ? teamYears.length : 0;
   const factsView = view === 'facts';
+  const isMlb = isMlbLeagueLevel(leagueLevel);
   return (
     <div className={cn('mx-auto px-3 py-5 sm:px-6 sm:py-8', wide ? 'max-w-[90rem]' : 'max-w-6xl')}>
+      <div className="mb-3 flex items-center justify-between gap-3 px-0.5">
+        <div className="text-accent-400 text-xs font-mono tracking-[3px] uppercase">
+          {leagueLabel?.shortLabel ?? 'MLB'} Postseason
+        </div>
+        <LeagueLevelPicker
+          value={leagueLevel}
+          onChange={onLeagueLevelChange}
+          ariaLabel="Change postseason league level"
+        />
+      </div>
       <header className={cn(selectedSeries ? 'hidden' : 'mb-5 sm:mb-7')}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-accent-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent-300 ring-1 ring-accent-500/25">
-              <Trophy size={12} aria-hidden />
-              Postseason
-            </div>
             <h1 className={cn(
               'font-display text-2xl font-black tracking-tight sm:text-3xl',
               isDark ? 'text-white' : 'text-slate-900',
@@ -1102,7 +1267,7 @@ function PostseasonFrame({
                   ? 'October facts'
                   : selectedTeam
                     ? `${year} ${selectedTeam.name}`
-                    : `${year} MLB Postseason`}
+                    : `${year} ${leagueLabel?.label ?? 'MLB'} Postseason`}
             </h1>
             <p className="mt-1 max-w-xl text-sm text-slate-400">
               {selectedSeries
@@ -1111,9 +1276,15 @@ function PostseasonFrame({
                   ? 'Who has the most rings, who keeps getting back, and who has been waiting the longest.'
                   : selectedTeam && teamYearCount
                     ? `${teamYearCount} October${teamYearCount === 1 ? '' : 's'} in the books. The year list only includes seasons they made the dance.`
-                    : showViewToggle && view === 'bracket'
-                      ? 'American League on the left, National League on the right, World Series in the middle.'
-                      : 'Every October bracket since 1903. Select a matchup to browse the series.'}
+                    : view === 'bracket'
+                      ? isMlb
+                        ? 'American League on the left, National League on the right, World Series in the middle.'
+                        : leagueLabel?.value === 'lmb'
+                          ? 'Norte on the left, Sur on the right, Serie del Rey in the middle.'
+                          : 'League trees on the sides, championship in the middle. Switch to Rounds for a list.'
+                      : isMlb
+                        ? 'Every October bracket since 1903. Select a matchup to browse the series.'
+                        : 'Playoff series for this level. Select a matchup to open Gameday.'}
             </p>
           </div>
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:gap-1.5">
@@ -1125,7 +1296,7 @@ function PostseasonFrame({
                 variant="compact"
                 rounded="full"
                 optionClassName="!px-2 sm:!px-2.5"
-                options={VIEW_OPTIONS}
+                options={viewOptions}
               />
             )}
             {!hideYearPicker && (
@@ -1136,6 +1307,8 @@ function PostseasonFrame({
               years={teamId && teamYears.length ? teamYears : null}
               appearances={teamAppearances}
               loading={Boolean(teamId && teamYearsLoading)}
+              yearOptions={yearOptions}
+              minYear={minYear}
             />
             )}
             <TeamCircleSelect
@@ -1157,6 +1330,8 @@ function BracketBody({
   bracket,
   year,
   isDark,
+  isMlb = true,
+  leagueLabel,
   favoriteTeamIds,
   hasBothLeagues,
   leagueFilterOptions,
@@ -1174,16 +1349,24 @@ function BracketBody({
           No series yet
         </h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-          MLB hasn&apos;t published a {year} postseason schedule.
+          {leagueLabel ?? 'This league'} hasn&apos;t published a {year} postseason schedule.
         </p>
       </div>
     );
   }
 
+  const headlineSeries = bracket.headlineSeries ?? (isMlb ? bracket.worldSeries : null);
+
   return (
     <div className="space-y-5">
-      {view !== 'bracket' && bracket.worldSeries && (
-        <ChampionBanner series={bracket.worldSeries} year={year} isDark={isDark} teamId={teamId} />
+      {view !== 'bracket' && headlineSeries && (
+        <ChampionBanner
+          series={headlineSeries}
+          year={year}
+          isDark={isDark}
+          teamId={teamId}
+          isMlb={isMlb}
+        />
       )}
 
       {bracket.isPreview && (

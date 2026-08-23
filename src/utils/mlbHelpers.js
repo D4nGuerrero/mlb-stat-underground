@@ -180,8 +180,12 @@ const BASE_URL = 'https://www.mlbstatic.com/team-logos';
 const TEAM_LOGO_OVERRIDES = {
   484: 'https://midfield.mlbstatic.com/v1/team/484/spots/256',
   536: 'https://lmb.com.mx/_next/image?url=https%3A%2F%2Fd11rb39sj794dg.cloudfront.net%2Fpublic%2F2024-04%2FTecolotes.png&w=96&q=75',
-  562: 'https://sultanes.com.mx/static/images/logo-left.webp',
 };
+
+/** Regular mlbstatic SVG is a navy mark; themed cap assets keep contrast. */
+const THEMED_CAP_LOGO_TEAMS = new Set([
+  562, // Sultanes de Monterrey
+]);
 
 function defaultPreferDarkLogo() {
   if (typeof document === 'undefined') return true;
@@ -226,7 +230,7 @@ export const teamLogoUrl = (teamId, options = {}) => {
     forceRegular
     || isMinors
     || level === 'minors'
-    || !isMlbClub
+    || (!isMlbClub && !THEMED_CAP_LOGO_TEAMS.has(numericId))
     || regularPreferredTeams.has(numericId);
 
   if (useMinorOrOverride) {
