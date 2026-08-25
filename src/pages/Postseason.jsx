@@ -1269,23 +1269,7 @@ function PostseasonFrame({
                     ? `${year} ${selectedTeam.name}`
                     : `${year} ${leagueLabel?.label ?? 'MLB'} Postseason`}
             </h1>
-            <p className="mt-1 max-w-xl text-sm text-slate-400">
-              {selectedSeries
-                ? 'Pick a game to open Gameday — box, pitches, and the full feed.'
-                : factsView
-                  ? 'Who has the most rings, who keeps getting back, and who has been waiting the longest.'
-                  : selectedTeam && teamYearCount
-                    ? `${teamYearCount} October${teamYearCount === 1 ? '' : 's'} in the books. The year list only includes seasons they made the dance.`
-                    : view === 'bracket'
-                      ? isMlb
-                        ? 'American League on the left, National League on the right, World Series in the middle.'
-                        : leagueLabel?.value === 'lmb'
-                          ? 'Norte on the left, Sur on the right, Serie del Rey in the middle.'
-                          : 'League trees on the sides, championship in the middle. Switch to Rounds for a list.'
-                      : isMlb
-                        ? 'Every October bracket since 1903. Select a matchup to browse the series.'
-                        : 'Playoff series for this level. Select a matchup to open Gameday.'}
-            </p>
+           
           </div>
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:gap-1.5">
             {showViewToggle && (
