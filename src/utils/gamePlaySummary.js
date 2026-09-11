@@ -21,6 +21,7 @@ export const SUMMARY_ACTION_TYPES = new Set([
   'pickoff_caught_stealing_2b',
   'pickoff_caught_stealing_3b',
   'defensive_indiff',
+  'ejection',
 ]);
 
 const SHOE_ICON_TYPES = new Set([
@@ -61,10 +62,16 @@ export function getSummaryPlayIconKind(item) {
   if (item?.kind === 'offensive_substitution') return 'pitching_sub';
   if (item?.kind === 'defensive_substitution') return 'pitching_sub';
   const eventType = item?.eventType;
+  if (eventType === 'ejection') return 'ejection';
   if (eventType === 'runner_placed') return 'runner_placed';
   if (SHOE_ICON_TYPES.has(eventType)) return 'shoe';
   if (PITCH_ICON_TYPES.has(eventType)) return 'pitch';
   return null;
+}
+
+export function getPlayEventPlayer(ev) {
+  const player = ev?.player?.id ? ev.player : ev?.details?.player;
+  return player?.id ? player : null;
 }
 
 const ROUTINE_STATUS_CHANGES = new Set([
@@ -348,9 +355,12 @@ export function buildSummaryItems(allPlays, gameData) {
       const rawDescription = ev.details?.description || ev.details?.call?.description || '';
       const outOccurred = playEventRecordedOut(play, eventIdx, ev);
       const runnerId = ev.details?.runner?.id;
+      const ejected = eventType === 'ejection' ? getPlayEventPlayer(ev) : null;
       const { description, outsLabel } = eventType === 'runner_placed'
         ? { description: formatRunnerPlacedDescription(ev, play), outsLabel: null }
-        : buildPlayDescription(
+        : eventType === 'ejection'
+          ? { description: normalizeDescription(rawDescription || 'Ejection'), outsLabel: null }
+          : buildPlayDescription(
             rawDescription,
             ev.count?.outs ?? play.count?.outs,
             outOccurred,
@@ -364,9 +374,11 @@ export function buildSummaryItems(allPlays, gameData) {
         description,
         outsLabel,
         about: play.about,
-        batterId: play.matchup?.batter?.id,
-        batterName: play.matchup?.batter?.fullName,
-        participantIds: buildScoringParticipantIds(play, runnerId),
+        batterId: ejected?.id ?? play.matchup?.batter?.id,
+        batterName: ejected?.fullName ?? play.matchup?.batter?.fullName,
+        participantIds: ejected?.id
+          ? [ejected.id]
+          : buildScoringParticipantIds(play, runnerId),
         awayScore: ev.details?.awayScore,
         homeScore: ev.details?.homeScore,
         isScoring: isScoringDescription(description),

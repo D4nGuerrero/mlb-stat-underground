@@ -398,7 +398,10 @@ const PLAY_BADGE = {
     label: 'Pitching Change',
     cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
   },
- 
+  ejection: {
+    label: 'Ejection',
+    cls: 'bg-red-500/20 text-red-300 border-red-500/40',
+  },
 };
 
 function withEventTypeLabel(badge, eventType, eventTypesByCode) {
@@ -434,6 +437,46 @@ function inferFieldOutBadge(context, eventTypesByCode = null) {
   if (/line|lines|lined|line_drive/.test(text)) return withEventTypeLabel(PLAY_BADGE.lineout, 'lineout', eventTypesByCode);
   if (/pop|pops|popped|popup/.test(text)) return withEventTypeLabel(PLAY_BADGE.pop_out, 'pop_out', eventTypesByCode);
   return withEventTypeLabel(PLAY_BADGE.field_out, 'field_out', eventTypesByCode);
+}
+
+function BoxScoreGameNotes({ info, weather, compact = false }) {
+  const rows = Array.isArray(info) ? info.filter((item) => item?.label || item?.value) : [];
+  const infoHasWeather = rows.some((item) => /^weather$/i.test(item.label));
+  const infoHasWind = rows.some((item) => /^wind$/i.test(item.label));
+  const weatherParts = [
+    !infoHasWeather ? weather?.condition : null,
+    !infoHasWeather && weather?.temp ? `${weather.temp}°F` : null,
+    !infoHasWind && weather?.wind ? `Wind: ${weather.wind}` : null,
+  ].filter(Boolean);
+  const weatherLine = weatherParts.join(', ');
+
+  if (!rows.length && !weatherLine) return null;
+
+  return (
+    <div
+      className={
+        compact
+          ? 'mt-2 max-h-[7.75rem] shrink-0 overflow-y-auto border-t border-slate-800/70 pt-2 text-[10px] 2xl:text-[11px] leading-snug text-slate-500 grid grid-cols-2 gap-x-3 gap-y-0.5'
+          : 'mt-2 border-t border-slate-700/40 pt-4 text-[11px] text-slate-500 space-y-1'
+      }
+    >
+      {rows.map((item, i) => (
+        <div key={`${item.label || 'note'}-${i}`} className={compact ? 'min-w-0' : undefined}>
+          {item.label ? (
+            <>
+              <span className="font-semibold text-slate-400">{item.label}:</span>{' '}
+            </>
+          ) : null}
+          {item.value}
+        </div>
+      ))}
+      {weatherLine ? (
+        <div className={compact ? 'min-w-0' : undefined}>
+          <span className="font-semibold text-slate-400">Weather:</span> {weatherLine}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 const buildPlayBadge = (et, context = null, eventTypesByCode = null) => {
@@ -3635,18 +3678,19 @@ function GamePageContent({ gamePk, navigate, location }) {
     <div className="relative z-0 bg-slate-900 border border-slate-700/60 sm:rounded-2xl overflow-visible">
       <div className="pointer-events-none absolute -top-4 left-0 right-0 z-30 h-5 bg-slate-900 sm:rounded-t-2xl" aria-hidden />
       <div className="relative z-20 hidden border-b border-slate-800 bg-slate-900 xl:block sm:rounded-t-2xl">
-        <div className="flex items-center gap-5 px-4 py-3">
+        <div className="flex items-center gap-x-2.5 overflow-x-auto px-3 py-2.5">
           {[
             { key: 'live', label: 'Live' },
             { key: 'summary', label: 'Summary' },
             { key: 'video', label: 'Video' },
-            { key: 'tools', label: 'Game Tools' },
+            { key: 'savant', label: 'Savant' },
+            { key: 'tools', label: 'Tools' },
           ].map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setLeftRailView(tab.key)}
-              className={`text-sm font-black transition-colors ${
+              className={`shrink-0 text-[13px] font-black transition-colors ${
                 leftRailView === tab.key
                   ? 'text-white'
                   : 'text-slate-400 hover:text-slate-200'
@@ -3686,6 +3730,10 @@ function GamePageContent({ gamePk, navigate, location }) {
         ) : leftRailView === 'video' ? (
           <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
             {compactVideoPanel}
+          </div>
+        ) : leftRailView === 'savant' ? (
+          <div className="-m-2 sm:-m-4 xl:-m-3 2xl:-m-4">
+            {savantPanel}
           </div>
         ) : leftRailView === 'tools' ? (
           <div className="space-y-3 p-1">
@@ -3775,32 +3823,10 @@ function GamePageContent({ gamePk, navigate, location }) {
         onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
       />
 
-      {ld.boxscore.info?.length > 0 && (
-        <div className="mt-2 pt-4 border-t border-slate-700/40 text-[11px] text-slate-500 space-y-1">
-          {ld.boxscore.info.map((item, i) => (
-            <div key={i}>
-              <span className="font-semibold text-slate-400">
-                {item.label}:
-              </span>{' '}
-              {item.value}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {ld.boxscore.weather && (
-        <div className="text-[11px] text-slate-500 mt-1">
-          <span className="font-semibold text-slate-400">Weather:</span>{' '}
-          {[
-            ld.boxscore.weather.condition,
-            ld.boxscore.weather.temp && `${ld.boxscore.weather.temp}°F`,
-            ld.boxscore.weather.wind &&
-              `Wind: ${ld.boxscore.weather.wind}`,
-          ]
-            .filter(Boolean)
-            .join(', ')}
-        </div>
-      )}
+      <BoxScoreGameNotes
+        info={ld.boxscore.info}
+        weather={ld.boxscore.weather || gd.weather}
+      />
 
       {!isFinal && (
         <div className="mt-4 pt-4 border-t border-slate-700/40">
@@ -3814,8 +3840,8 @@ function GamePageContent({ gamePk, navigate, location }) {
   ) : null;
 
   const desktopLiveBoxScorePanel = ld.boxscore ? (
-    <div className="gameday-scroll-rail bg-slate-900 border border-slate-700/60 p-2.5 2xl:p-3 rounded-2xl h-full min-h-0 overflow-y-auto">
-      <div className="flex items-center justify-between gap-3 mb-2 shrink-0">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900 p-2.5 2xl:p-3">
+      <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
         <span className="text-[10px] text-slate-500 uppercase tracking-widest">
           Box Score
         </span>
@@ -3823,38 +3849,63 @@ function GamePageContent({ gamePk, navigate, location }) {
           {gameStart.dateLine}
         </span>
       </div>
-      <div className="grid grid-cols-2 items-start gap-2 2xl:gap-3">
-        <TeamBoxSection
-          sideKey="away"
-          team={away}
-          teamBox={ld.boxscore?.teams?.away}
-          decisions={decisions}
-          compact
-          onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
-        />
-        <TeamBoxSection
-          sideKey="home"
-          team={home}
-          teamBox={ld.boxscore?.teams?.home}
-          decisions={decisions}
-          compact
-          onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
-        />
-      </div>
-      {!isFinal && (
-        <div className="mt-3 grid grid-cols-2 items-start gap-2 2xl:gap-3 border-t border-slate-800/70 pt-3">
-          <TeamReservesSection
+      <div className="gameday-scroll-rail min-h-0 flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 items-start gap-x-2 gap-y-3 2xl:gap-x-3">
+          <TeamBoxSection
+            team={away}
             teamBox={ld.boxscore?.teams?.away}
+            decisions={decisions}
             compact
+            part="batting"
             onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
           />
-          <TeamReservesSection
+          <TeamBoxSection
+            team={home}
             teamBox={ld.boxscore?.teams?.home}
+            decisions={decisions}
             compact
+            part="batting"
+            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          />
+          <TeamBoxSection
+            team={away}
+            teamBox={ld.boxscore?.teams?.away}
+            decisions={decisions}
+            compact
+            hideHeader
+            part="pitching"
+            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          />
+          <TeamBoxSection
+            team={home}
+            teamBox={ld.boxscore?.teams?.home}
+            decisions={decisions}
+            compact
+            hideHeader
+            part="pitching"
             onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
           />
         </div>
-      )}
+        {!isFinal && (
+          <div className="mt-3 grid grid-cols-2 items-start gap-2 2xl:gap-3 border-t border-slate-800/70 pt-3">
+            <TeamReservesSection
+              teamBox={ld.boxscore?.teams?.away}
+              compact
+              onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            />
+            <TeamReservesSection
+              teamBox={ld.boxscore?.teams?.home}
+              compact
+              onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            />
+          </div>
+        )}
+      </div>
+      <BoxScoreGameNotes
+        info={ld.boxscore.info}
+        weather={ld.boxscore.weather || gd.weather}
+        compact
+      />
     </div>
   ) : null;
 
@@ -3862,7 +3913,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     <div className="h-full min-h-0 flex flex-col gap-3 overflow-hidden">
       {!isPreview && (
         <div className="shrink-0 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900">
-          <div className={redditGameChatLinks.length ? 'grid grid-cols-[minmax(0,1fr)_13rem] divide-x divide-slate-700/60' : ''}>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] divide-x divide-slate-700/60">
             <LinescoreBoard
               key={`desktop-linescore-${gamePk}`}
               ls={ls}
@@ -3872,11 +3923,16 @@ function GamePageContent({ gamePk, navigate, location }) {
               homeRuns={homeRuns}
               compact
             />
-            {redditGameChatLinks.length > 0 && (
-              <div className="flex min-h-0 items-center justify-center px-3 py-2">
+            <div className="flex min-h-0 min-w-[11.5rem] flex-col items-center justify-center gap-2 px-3 py-2">
+              <WatchInlineLink
+                gamePk={gamePk}
+                logoSrc={leagueLogoSrc}
+                leagueLabel={Number(gameSportId) === 1 ? 'MLB' : 'MiLB'}
+              />
+              {redditGameChatLinks.length > 0 && (
                 <GameChatStackedLinks links={redditGameChatLinks} />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

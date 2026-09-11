@@ -217,6 +217,17 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
     );
   }
 
+  if (iconKind === 'ejection') {
+    return (
+      <div
+        className={iconShellClass}
+        aria-hidden
+      >
+        <i className={`fa-solid fa-user-slash ${iconSize} text-red-400`} />
+      </div>
+    );
+  }
+
   if (!item.batterId) {
     return (
       <div

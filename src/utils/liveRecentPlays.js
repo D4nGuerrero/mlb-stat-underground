@@ -7,6 +7,7 @@ import {
   formatSubstitutionDescription,
   formatGameAdvisoryDescription,
   isNotableGameAdvisory,
+  getPlayEventPlayer,
   SUMMARY_ACTION_TYPES,
 } from './gamePlaySummary';
 import {
@@ -262,10 +263,11 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
   if (isPickoffEventType(eventType)) return;
 
   const raw = ev.details?.description || ev.details?.call?.description || '';
+  const ejected = eventType === 'ejection' ? getPlayEventPlayer(ev) : null;
   const { description, outsLabel } = eventType === 'runner_placed'
     ? { description: formatRunnerPlacedDescription(ev, play), outsLabel: null }
     : buildPlayDescription(
-        raw,
+        eventType === 'ejection' ? (raw || 'Ejection') : raw,
         ev.count?.outs ?? play.count?.outs,
         false,
       );
@@ -278,11 +280,11 @@ function pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays) {
     eventType,
     description,
     outsLabel,
-    batterId: play.matchup?.batter?.id,
+    batterId: ejected?.id ?? play.matchup?.batter?.id,
     ...meta,
     sortTime,
   });
-  if (eventType === 'runner_placed') return;
+  if (eventType === 'runner_placed' || eventType === 'ejection') return;
   pushRunnersRow(
     rows,
     play,

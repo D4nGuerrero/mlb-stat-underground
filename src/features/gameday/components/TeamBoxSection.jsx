@@ -188,6 +188,7 @@ export default function TeamBoxSection({
   hideHeader = false,
   compact = false,
   fullscreenFit = false,
+  part = 'all',
   onPlayerSelect,
 }) {
   if (!teamBox) return null;
@@ -243,6 +244,8 @@ export default function TeamBoxSection({
     : compact
       ? BOX_SCORE_TABLE_COMPACT
       : BOX_SCORE_TABLE;
+  const showBatting = part === 'all' || part === 'batting';
+  const showPitching = part === 'all' || part === 'pitching';
 
   return (
     <div
@@ -250,11 +253,13 @@ export default function TeamBoxSection({
         fullscreenFit
           ? 'h-full min-h-0 overflow-hidden text-[9px] 2xl:text-[10px] flex flex-col'
           : compact
-            ? 'mb-4 text-[10px] 2xl:text-[11px]'
-            : 'mb-8'
+            ? `text-[10px] 2xl:text-[11px] ${part === 'all' ? 'mb-4' : ''}`
+            : part === 'all'
+              ? 'mb-8'
+              : ''
       }
     >
-      {!hideHeader && (
+      {showBatting && !hideHeader && (
         <div className={`flex items-center gap-2 shrink-0 ${fullscreenFit ? 'mb-1' : 'mb-3'}`}>
           <img
             src={teamLogoUrl(team.id)}
@@ -267,6 +272,8 @@ export default function TeamBoxSection({
         </div>
       )}
 
+      {showBatting && (
+        <>
       <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mb-1 shrink-0' : 'mb-2'}`}>
         <table className={tableClassName}>
           <colgroup>
@@ -372,9 +379,11 @@ export default function TeamBoxSection({
           </div>
         </div>
       ))}
+        </>
+      )}
 
-      {pitchers.length > 0 && (
-        <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mt-1 shrink-0' : 'mt-4'}`}>
+      {showPitching && pitchers.length > 0 && (
+        <div className={`${TABLE_SCROLL} ${fullscreenFit ? 'mt-1 shrink-0' : part === 'all' ? 'mt-4' : ''}`}>
           <table className={tableClassName}>
             <colgroup>
               <col />

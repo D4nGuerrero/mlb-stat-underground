@@ -102,6 +102,14 @@ function LiveActionAvatar({ row, onPlayerClick }) {
     );
   }
 
+  if (iconKind === 'ejection') {
+    return (
+      <IconAvatar>
+        <i className="fa-solid fa-user-slash text-base text-red-400" />
+      </IconAvatar>
+    );
+  }
+
   if (iconKind === 'runner_placed') {
     return (
       <IconAvatar>

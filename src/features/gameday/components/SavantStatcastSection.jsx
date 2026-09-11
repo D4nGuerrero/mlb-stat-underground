@@ -142,6 +142,7 @@ function normalizeSavantRows(data) {
         batterId: paRow.batter,
         batterName: paRow.batter_name,
         year: paRow.year,
+        gamePk: paRow.game_pk,
         battedBallPlayId: battedBall?.play_id,
         abNumber,
         inning: paRow.inning,
@@ -170,7 +171,41 @@ async function fetchSavantGame(gamePk, signal) {
   return data;
 }
 
-async function fetchHrParkDetails(row) {
+function mapGamefeedPark(item) {
+  return {
+    key: String(item?.id ?? item?.team_id ?? item?.team_abbrev ?? item?.name),
+    abbr: item?.team_abbrev || '—',
+    teamId: item?.team_id,
+    park: item?.name || item?.name_display_club || '—',
+  };
+}
+
+function parksFromLeaderboardRow(detailRow) {
+  const homeRunParks = [];
+  const notHomeRunParks = [];
+  MLB_PARKS.forEach((park) => {
+    const bucket = Number(detailRow[park.key]) > 0 ? homeRunParks : notHomeRunParks;
+    bucket.push(park);
+  });
+  return { homeRunParks, notHomeRunParks };
+}
+
+async function fetchGamefeedXParks(gamePk, playId) {
+  if (!gamePk || !playId) return null;
+  const cacheKey = `xparks:${gamePk}:${playId}`;
+  if (!hrParkDetailsCache.has(cacheKey)) {
+    const res = await fetch(`https://baseballsavant.mlb.com/gamefeed/x-parks/${gamePk}/${playId}`);
+    if (!res.ok) throw new Error(`Savant HR/Park HTTP ${res.status}`);
+    hrParkDetailsCache.set(cacheKey, await res.json());
+  }
+  const data = hrParkDetailsCache.get(cacheKey);
+  const homeRunParks = (data?.hr ?? []).map(mapGamefeedPark);
+  const notHomeRunParks = (data?.not ?? []).map(mapGamefeedPark);
+  if (!homeRunParks.length && !notHomeRunParks.length) return null;
+  return { row: data, homeRunParks, notHomeRunParks };
+}
+
+async function fetchLeaderboardHrParks(row) {
   if (!row?.batterId || !row?.year || !row?.battedBallPlayId) return null;
 
   const cacheKey = `${row.batterId}:${row.year}:xhr`;
@@ -191,15 +226,18 @@ async function fetchHrParkDetails(row) {
 
   const detailRow = hrParkDetailsCache.get(cacheKey)?.find((item) => item.play_id === row.battedBallPlayId);
   if (!detailRow) return null;
+  return { row: detailRow, ...parksFromLeaderboardRow(detailRow) };
+}
 
-  const homeRunParks = [];
-  const notHomeRunParks = [];
-  MLB_PARKS.forEach((park) => {
-    const bucket = Number(detailRow[park.key]) > 0 ? homeRunParks : notHomeRunParks;
-    bucket.push(park);
-  });
-
-  return { row: detailRow, homeRunParks, notHomeRunParks };
+async function fetchHrParkDetails(row, fallbackGamePk) {
+  const gamePk = row?.gamePk || fallbackGamePk;
+  try {
+    const liveDetails = await fetchGamefeedXParks(gamePk, row?.battedBallPlayId);
+    if (liveDetails) return liveDetails;
+  } catch {
+    // Live gamefeed can 404 for some older plays; the season leaderboard is the fallback.
+  }
+  return fetchLeaderboardHrParks(row);
 }
 
 function SavantStatCell({ column, row, onHrParksClick }) {
@@ -346,7 +384,7 @@ function ParkList({ title, parks, tone }) {
         <div className="border-b border-slate-800 bg-slate-950 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
           Ballpark
         </div>
-        <div className="max-h-[42vh] overflow-y-auto">
+        <div className="md:max-h-[42vh] md:overflow-y-auto">
           {parks.map((park, index) => (
             <div
               key={park.key}
@@ -377,7 +415,7 @@ function HrParkSheet({ open, onClose, selected, loading, error, details }) {
     >
       <div className="gameday-scroll-rail max-h-[calc(88vh-3.5rem)] overflow-y-auto p-4">
         <p className="mb-4 text-xs italic leading-relaxed text-slate-400">
-          This shows whether the batted ball would have been a home run in other parks based on Savant&apos;s standard trajectory-to-wall comparison when that per-park detail is available.
+          This shows whether the batted ball would have been a home run in other parks based on Savant&apos;s standard trajectory-to-wall comparison.
         </p>
 
         {selected && (
@@ -481,10 +519,10 @@ export default function SavantStatcastSection({ gamePk, allPlays = [], onOpenPla
     setSelectedHrParkRow(row);
     setHrParkSheetState({ loading: true, error: null, details: null });
     try {
-      const details = await fetchHrParkDetails(row);
+      const details = await fetchHrParkDetails(row, gamePk);
       setHrParkSheetState({
         loading: false,
-        error: details ? null : 'Savant has the HR/Park count for this batted ball, but the per-park breakdown is not available from the detail endpoint yet.',
+        error: details ? null : 'Savant has the HR/Park count for this batted ball, but the per-park breakdown is not available yet.',
         details,
       });
     } catch (err) {
@@ -525,7 +563,7 @@ export default function SavantStatcastSection({ gamePk, allPlays = [], onOpenPla
       )}
 
       {!state.loading && !state.error && rows.length > 0 && (
-        <div className="gameday-scroll-rail max-h-[70vh] overflow-auto">
+        <div className="gameday-scroll-rail max-h-[70vh] overflow-auto xl:max-h-none">
           <table className="w-full min-w-[720px] table-auto border-collapse text-[11px] sm:text-xs">
             <thead className="text-[9px] uppercase tracking-[0.12em] text-slate-500">
               <tr>

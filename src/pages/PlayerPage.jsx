@@ -861,6 +861,18 @@ function isSeasonTotalRow(row) {
   return Boolean(row?.isSeasonTotal) || !row?.team?.id;
 }
 
+/** Career highs compare one row per season: the year total when splits exist. */
+function rowsForCareerHighs(rows) {
+  const seasonsWithTotal = new Set(
+    (rows ?? []).filter(isSeasonTotalRow).map((row) => row.season),
+  );
+  return (rows ?? []).filter((row) => {
+    if (row?.season == null) return false;
+    if (seasonsWithTotal.has(row.season)) return isSeasonTotalRow(row);
+    return true;
+  });
+}
+
 function getMostPlayedTeam(rows) {
   const teams = new Map();
 
@@ -1401,7 +1413,7 @@ function StatsTable({
   }, [rows, cols, sortCol, sortDir]);
 
   const careerHighs = highlightCareerHighs
-    ? computeCareerHighs(rows.filter((row) => !isSeasonTotalRow(row)), cols)
+    ? computeCareerHighs(rowsForCareerHighs(rows), cols)
     : null;
 
   const duplicateSeasons = useMemo(() => {
@@ -1472,7 +1484,8 @@ function StatsTable({
       </td>
       {cols.map((c, colIdx) => {
         const value = row[c.key] ?? row.stat?.[c.key];
-        const isHigh = !isFooter && careerHighs && isCareerHigh(c.key, value, careerHighs);
+        const isSplitStint = duplicateSeasons?.has(row.season) && !isSeasonTotalRow(row);
+        const isHigh = !isFooter && !isSplitStint && careerHighs && isCareerHigh(c.key, value, careerHighs);
         const isTeamSticky = colIdx === 0 && c.format === 'team';
         return (
           <td
