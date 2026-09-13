@@ -56,7 +56,7 @@ function seedOccupied(initial) {
   const setRunner = (base, runner) => {
     if (!runner?.id) return;
     const old = runnerLocations.get(runner.id);
-    if (old) occupied.delete(old);
+    if (old && occupied.get(old)?.id === runner.id) occupied.delete(old);
     occupied.set(base, runner);
     runnerLocations.set(runner.id, base);
   };
@@ -64,15 +64,19 @@ function seedOccupied(initial) {
   const clearRunner = (runner) => {
     if (!runner?.id) return;
     const old = runnerLocations.get(runner.id);
-    if (old) occupied.delete(old);
+    if (old && occupied.get(old)?.id === runner.id) occupied.delete(old);
     runnerLocations.delete(runner.id);
   };
+
+  const getRunnerBase = (runner) => (
+    runner?.id ? runnerLocations.get(runner.id) ?? null : null
+  );
 
   if (initial.first) setRunner('1B', initial.first);
   if (initial.second) setRunner('2B', initial.second);
   if (initial.third) setRunner('3B', initial.third);
 
-  return { occupied, setRunner, clearRunner };
+  return { occupied, setRunner, clearRunner, getRunnerBase };
 }
 
 function normalizeBaseCode(base) {
@@ -96,19 +100,68 @@ function runnerFromPlacedEvent(ev) {
   };
 }
 
-/** Replay runner movements through a given play event index (inclusive). */
-export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity) {
-  const initial = getInitialBasesForPlay(play, allPlays);
-  const { occupied, setRunner, clearRunner } = seedOccupied(initial);
+function runnerNameFromPinchRunnerDescription(description = '') {
+  return description.match(/pinch[-\s]?runner\s+(.+?)\s+replaces/i)?.[1]?.trim() ?? null;
+}
+
+export function isPinchRunnerSubstitution(ev) {
+  if (ev?.details?.eventType !== 'offensive_substitution') return false;
+  const position = ev.position;
+  if (position?.abbreviation === 'PR' || position?.code === '12') return true;
+  if (/pinch runner/i.test(position?.name || '')) return true;
+  return /pinch[-\s]?runner/i.test(ev.details?.description || '');
+}
+
+function runnerFromPinchRunnerEvent(ev) {
+  const player = ev?.details?.runner?.id ? ev.details.runner : ev?.player;
+  if (!player?.id) return null;
+  return {
+    id: player.id,
+    link: player.link,
+    fullName:
+      player.fullName
+      || runnerNameFromPinchRunnerDescription(ev.details?.description)
+      || 'Runner',
+  };
+}
+
+function collectPlayRunnerMovements(play) {
   const runnerMovements = [...(play.runners ?? [])];
 
   for (const ev of play.playEvents ?? []) {
-    if (ev?.details?.eventType !== 'runner_placed') continue;
-    const runner = runnerFromPlacedEvent(ev);
-    if (!runner?.id) continue;
     const playIndex = ev.index ?? 0;
+
+    if (ev?.details?.eventType === 'runner_placed') {
+      const runner = runnerFromPlacedEvent(ev);
+      if (!runner?.id) continue;
+      const hasMovement = runnerMovements.some((movement) => (
+        movement?.details?.eventType === 'runner_placed' &&
+        movement?.details?.runner?.id === runner.id &&
+        movement?.details?.playIndex === playIndex
+      ));
+      if (hasMovement) continue;
+
+      runnerMovements.push({
+        details: {
+          eventType: 'runner_placed',
+          playIndex,
+          runner,
+        },
+        movement: {
+          start: null,
+          end: normalizeBaseCode(ev.base ?? ev.details?.base) || '2B',
+          isOut: false,
+        },
+      });
+      continue;
+    }
+
+    if (!isPinchRunnerSubstitution(ev)) continue;
+
+    const runner = runnerFromPinchRunnerEvent(ev);
+    if (!runner?.id) continue;
     const hasMovement = runnerMovements.some((movement) => (
-      movement?.details?.eventType === 'runner_placed' &&
+      movement?.details?.eventType === 'offensive_substitution' &&
       movement?.details?.runner?.id === runner.id &&
       movement?.details?.playIndex === playIndex
     ));
@@ -116,45 +169,81 @@ export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity
 
     runnerMovements.push({
       details: {
-        eventType: 'runner_placed',
+        eventType: 'offensive_substitution',
         playIndex,
         runner,
+        replacedPlayer: ev.replacedPlayer ?? null,
       },
       movement: {
-        start: null,
-        end: normalizeBaseCode(ev.base ?? ev.details?.base) || '2B',
+        start: normalizeBaseCode(ev.base ?? ev.details?.base),
+        end: normalizeBaseCode(ev.base ?? ev.details?.base),
         isOut: false,
       },
     });
   }
 
-  const sorted = runnerMovements.sort(
+  return runnerMovements.sort(
     (a, b) => (a.details?.playIndex ?? 0) - (b.details?.playIndex ?? 0),
   );
+}
 
-  for (const r of sorted) {
+function applyRunnerMovement(r, { occupied, setRunner, clearRunner, getRunnerBase }) {
+  const m = r.movement;
+  const runner = r.details?.runner;
+  if (!runner?.id) return;
+
+  if (r.details?.eventType === 'offensive_substitution') {
+    const replaced = r.details?.replacedPlayer;
+    let dest = normalizeBaseCode(m?.end) || normalizeBaseCode(m?.start);
+    if (replaced?.id) {
+      dest = dest || getRunnerBase(replaced);
+      clearRunner(replaced);
+    }
+    if (dest === '1B' || dest === '2B' || dest === '3B') {
+      const occupant = occupied.get(dest);
+      if (occupant && occupant.id !== runner.id) clearRunner(occupant);
+      setRunner(dest, runner);
+    }
+    return;
+  }
+
+  if (!m) return;
+
+  const startBase = normalizeBaseCode(m.start);
+  const wasOnBase = getRunnerBase(runner);
+  clearRunner(runner);
+
+  // Pinch-runner identity swap: MLB credits the new runner with the movement
+  // (1B → 2B steal) without a runner-movement for the substitution itself.
+  if (!wasOnBase && startBase) {
+    const occupant = occupied.get(startBase);
+    if (occupant && occupant.id !== runner.id) clearRunner(occupant);
+  }
+
+  if (m.isOut || m.end === 'score' || m.end === '4B') {
+    return;
+  }
+
+  if (m.end === '1B' || m.end === '2B' || m.end === '3B') {
+    setRunner(m.end, runner);
+  }
+}
+
+/** Replay runner movements through a given play event index (inclusive). */
+export function getBasesAtPlayIndex(play, allPlays = [], maxPlayIndex = Infinity, initialBases = null) {
+  const initial = initialBases ?? getInitialBasesForPlay(play, allPlays);
+  const occupancy = seedOccupied(initial);
+
+  for (const r of collectPlayRunnerMovements(play)) {
     const playIndex = r.details?.playIndex;
     if (playIndex != null && playIndex > maxPlayIndex) break;
-
-    const m = r.movement;
-    const runner = r.details?.runner;
-    if (!m || !runner?.id) continue;
-
-    clearRunner(runner);
-
-    if (m.isOut || m.end === 'score' || m.end === '4B') {
-      continue;
-    }
-
-    if (m.end === '1B' || m.end === '2B' || m.end === '3B') {
-      setRunner(m.end, runner);
-    }
+    applyRunnerMovement(r, occupancy);
   }
 
   return {
-    first: occupied.get('1B') ?? null,
-    second: occupied.get('2B') ?? null,
-    third: occupied.get('3B') ?? null,
+    first: occupancy.occupied.get('1B') ?? null,
+    second: occupancy.occupied.get('2B') ?? null,
+    third: occupancy.occupied.get('3B') ?? null,
   };
 }
 

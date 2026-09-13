@@ -14,6 +14,7 @@ import {
   formatRunnersSituationLabel,
   getBasesAfterPlay,
   getBasesAtPlayIndex,
+  isPinchRunnerSubstitution,
   toIndicatorBases,
 } from './playSituation';
 import { compactPlayerName } from './mlbHelpers';
@@ -182,7 +183,7 @@ function pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { inc
   return true;
 }
 
-function pushPlayEventRows(rows, play, ev, eventIdx, ordinals) {
+function pushPlayEventRows(rows, play, ev, eventIdx, ordinals, allPlays) {
   const eventType = ev.details?.eventType;
   if (!eventType || !LIVE_EXTRA_EVENT_TYPES.has(eventType)) return;
 
@@ -211,6 +212,18 @@ function pushPlayEventRows(rows, play, ev, eventIdx, ordinals) {
       ...meta,
       sortTime,
     });
+    if (isPinchRunnerSubstitution(ev)) {
+      pushRunnersRow(
+        rows,
+        play,
+        `${play.about?.atBatIndex}-${eventIdx}`,
+        meta,
+        sortTime,
+        allPlays,
+        ev.index ?? eventIdx,
+        { outsAfter: ev.count?.outs },
+      );
+    }
     return;
   }
 
@@ -306,7 +319,7 @@ function pushActiveAtBatEventRows(rows, play, ordinals, allPlays, { includePicko
   }));
 
   playEventsWithContext.forEach((ev, eventIdx) => {
-    pushPlayEventRows(rows, play, ev, eventIdx, ordinals);
+    pushPlayEventRows(rows, play, ev, eventIdx, ordinals, allPlays);
 
     if (pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { includeAttempts: includePickoffAttempts })) {
       return;
@@ -440,7 +453,7 @@ export function buildLiveRecentPlaysRows({
     }
 
     (play.playEvents ?? []).forEach((ev, eventIdx) => {
-      pushPlayEventRows(rows, play, ev, eventIdx, ordinals);
+      pushPlayEventRows(rows, play, ev, eventIdx, ordinals, allPlays);
       if (!pushPickoffEventRow(rows, play, ev, eventIdx, ordinals, allPlays, { includeAttempts: false })) {
         pushActionRow(rows, play, ev, eventIdx, ordinals, allPlays);
       }

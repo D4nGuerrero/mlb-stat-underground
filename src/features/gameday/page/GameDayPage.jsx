@@ -3593,6 +3593,7 @@ function GamePageContent({ gamePk, navigate, location }) {
       </div>
 
       <LiveMatchupStrip
+        allPlays={ld.plays?.allPlays}
         currentPlay={currentPlay}
         dueUpBatters={dueUpBatters}
         dueUpHalfLabel={dueUpHalfLabel}

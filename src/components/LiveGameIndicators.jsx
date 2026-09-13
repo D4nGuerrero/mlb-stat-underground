@@ -1,4 +1,4 @@
-import { getSituationBeforePlayResult } from '../utils/playSituation';
+import { getBasesAtPlayIndex, getSituationBeforePlayResult } from '../utils/playSituation';
 import { useTheme } from '../context/ThemeContext.jsx';
 
 /** Catcher's view: left = 3rd, top = 2nd, right = 1st (MLB At Bat bases SVG). */
@@ -29,41 +29,6 @@ function runnerOccupied(slot) {
   return Boolean(slot);
 }
 
-function basesFromPlayRunners(play) {
-  const occupied = new Map();
-  const runnerBase = new Map();
-
-  for (const r of play.runners ?? []) {
-    const m = r.movement;
-    const runner = r.details?.runner;
-    if (!m || !runner?.id) continue;
-
-    const prev = runnerBase.get(runner.id);
-    if (prev) occupied.delete(prev);
-
-    if (m.isOut) {
-      runnerBase.delete(runner.id);
-      continue;
-    }
-
-    if (m.end === 'score' || m.end === '4B') {
-      runnerBase.delete(runner.id);
-      continue;
-    }
-
-    if (m.end === '1B' || m.end === '2B' || m.end === '3B') {
-      occupied.set(m.end, runner);
-      runnerBase.set(runner.id, m.end);
-    }
-  }
-
-  return {
-    first: occupied.get('1B') ?? null,
-    second: occupied.get('2B') ?? null,
-    third: occupied.get('3B') ?? null,
-  };
-}
-
 function basesFromOffense(offense = {}) {
   return {
     first: offense.first ?? offense.onFirst ?? null,
@@ -81,7 +46,7 @@ function toIndicatorBases({ first, second, third }) {
 }
 
 /** Resolve occupied bases from linescore (and optional current play). */
-export function getRunnersOnBase(linescore, currentPlay = null) {
+export function getRunnersOnBase(linescore, currentPlay = null, allPlays = null) {
   if (!linescore) return EMPTY_BASES;
 
   const outs = Number(linescore.outs ?? 0);
@@ -104,13 +69,10 @@ export function getRunnersOnBase(linescore, currentPlay = null) {
       });
     }
 
-    const fromRunners = basesFromPlayRunners(currentPlay);
-    const fromOffense = basesFromOffense(linescore.offense);
-    return toIndicatorBases({
-      first: fromRunners.first ?? fromOffense.first,
-      second: fromRunners.second ?? fromOffense.second,
-      third: fromRunners.third ?? fromOffense.third,
-    });
+    const initial = allPlays?.length
+      ? null
+      : basesFromOffense(linescore.offense);
+    return toIndicatorBases(getBasesAtPlayIndex(currentPlay, allPlays ?? [], Infinity, initial));
   }
 
   return toIndicatorBases(basesFromOffense(linescore.offense));

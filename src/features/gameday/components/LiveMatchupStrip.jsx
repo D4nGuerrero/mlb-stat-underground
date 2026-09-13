@@ -85,6 +85,7 @@ function formatBatterRole(player, currentPlay, linescore) {
 }
 
 export default function LiveMatchupStrip({
+  allPlays = null,
   currentPlay,
   dueUpBatters,
   dueUpHalfLabel,
@@ -101,9 +102,7 @@ export default function LiveMatchupStrip({
   const batterPlayer = getGamePlayer?.(linescore?.offense?.batter?.id);
   const batterRole = formatBatterRole(batterPlayer, currentPlay, linescore);
   const pitcherRole = formatPitcherRole(currentPlay, linescore);
-  // The matchup strip should mirror the live situation. `currentPlay.runners`
-  // can lag during diff updates, so use the linescore offense for bases here.
-  const liveBases = getRunnersOnBase(linescore);
+  const liveBases = getRunnersOnBase(linescore, currentPlay, allPlays);
 
 function formatPitcherStat(s) {
   if (!s) return null;
