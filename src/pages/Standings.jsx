@@ -533,7 +533,10 @@ export default function Standings() {
       <button
         type="button"
         className="text-left hover:opacity-90 transition-opacity"
-        onClick={() => navigate(`/team/${team.teamId}`)}
+        onClick={() => {
+          const seasonQuery = season && season !== String(CURRENT_YEAR) ? `?season=${season}` : '';
+          navigate(`/team/${team.teamId}${seasonQuery}`);
+        }}
       >
         <span className="inline-flex items-center gap-0.5 min-w-0">
           {team.clinchIndicator && (

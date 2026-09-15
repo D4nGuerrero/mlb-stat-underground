@@ -3,6 +3,7 @@ import { Modal } from '../../../components/ui';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
 import { formatPitchDescriptionWithAbsContext } from '../../../utils/absChallenge';
 import { playerHeadshotUrl } from '../../../utils/mlbHelpers';
+import { PlayerAbsButton, PlayerAbsNameButton } from './PlayerAbsTrigger';
 import {
   BaseDiamondIndicator,
   OutsIndicator,
@@ -53,6 +54,7 @@ export default function PlayDetailSheet({
   allPlays,
   gamePk,
   onPlayerSelect,
+  onPlayerAbsSelect,
   getPlayBadge,
   getPlayHitData,
   renderHitDataPanel,
@@ -152,27 +154,32 @@ export default function PlayDetailSheet({
 
           <div className="border- border-slate-700/50 py-4">
             <div className="flex items-center justify-between gap-3">
-                <button
-                  className="group flex min-w-0 flex-1 items-center gap-3 text-left transition-opacity hover:opacity-85"
-                  onClick={() => onPlayerSelect(pitcherId)}
-                >
-                  <img
-                    src={playerHeadshotUrl(pitcherId)}
-                    className="h-14 w-14 rounded-full object-cover border border-slate-700"
-                    alt=""
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-black text-slate-100">
-                      {pitcherDisplay}
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <PlayerAbsNameButton
+                    playerId={pitcherId}
+                    onOpenPlayer={onPlayerSelect}
+                    onOpenAbs={onPlayerAbsSelect}
+                    className="group flex min-w-0 flex-1 items-center gap-3 text-left transition-opacity hover:opacity-85"
+                  >
+                    <img
+                      src={playerHeadshotUrl(pitcherId)}
+                      className="h-14 w-14 rounded-full object-cover border border-slate-700"
+                      alt=""
+                    />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-slate-100">
+                        {pitcherDisplay}
+                      </div>
+                      <div className="mt-0.5 text-xs font-bold text-slate-500">
+                        {play.matchup?.pitchHand?.code
+                          ? `${play.matchup.pitchHand.code}HP`
+                          : 'Pitcher'}
+                        {play.matchup?.pitcher?.primaryNumber ? ` | #${play.matchup.pitcher.primaryNumber}` : ''}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-xs font-bold text-slate-500">
-                      {play.matchup?.pitchHand?.code
-                        ? `${play.matchup.pitchHand.code}HP`
-                        : 'Pitcher'}
-                      {play.matchup?.pitcher?.primaryNumber ? ` | #${play.matchup.pitcher.primaryNumber}` : ''}
-                    </div>
-                  </div>
-                </button>
+                  </PlayerAbsNameButton>
+                  <PlayerAbsButton playerId={pitcherId} onOpenAbs={onPlayerAbsSelect} />
+                </div>
 
                 <div className="flex flex-shrink-0 flex-col items-center justify-center gap-1">
                   <BaseDiamondIndicator {...situation.bases} size="md" />
@@ -182,27 +189,32 @@ export default function PlayDetailSheet({
                   <OutsIndicator outs={situation.outs} size="md" />
                 </div>
 
-                <button
-                  className="group flex min-w-0 flex-1 items-center justify-end gap-3 text-right transition-opacity hover:opacity-85"
-                  onClick={() => onPlayerSelect(batterId)}
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-black text-slate-100">
-                      {batterDisplay}
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+                  <PlayerAbsButton playerId={batterId} onOpenAbs={onPlayerAbsSelect} />
+                  <PlayerAbsNameButton
+                    playerId={batterId}
+                    onOpenPlayer={onPlayerSelect}
+                    onOpenAbs={onPlayerAbsSelect}
+                    className="group flex min-w-0 flex-1 items-center justify-end gap-3 text-right transition-opacity hover:opacity-85"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-slate-100">
+                        {batterDisplay}
+                      </div>
+                      <div className="mt-0.5 text-xs font-bold text-slate-500">
+                        {play.matchup?.batSide?.code
+                          ? `${play.matchup?.batter?.primaryPosition?.abbreviation || ''} | ${play.matchup.batSide.code}`
+                          : 'Batter'}
+                        {play.matchup?.batter?.primaryNumber ? ` | #${play.matchup.batter.primaryNumber}` : ''}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-xs font-bold text-slate-500">
-                      {play.matchup?.batSide?.code
-                        ? `${play.matchup?.batter?.primaryPosition?.abbreviation || ''} | ${play.matchup.batSide.code}`
-                        : 'Batter'}
-                      {play.matchup?.batter?.primaryNumber ? ` | #${play.matchup.batter.primaryNumber}` : ''}
-                    </div>
-                  </div>
-                  <img
-                    src={playerHeadshotUrl(batterId)}
-                    className="h-14 w-14 rounded-full object-cover border border-slate-700"
-                    alt=""
-                  />
-                </button>
+                    <img
+                      src={playerHeadshotUrl(batterId)}
+                      className="h-14 w-14 rounded-full object-cover border border-slate-700"
+                      alt=""
+                    />
+                  </PlayerAbsNameButton>
+                </div>
             </div>
           </div>
 

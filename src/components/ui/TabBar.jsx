@@ -26,6 +26,7 @@ export default function TabBar({
   listClassName = '',
   tabClassName = '',
   variant = 'contained',
+  trailing = null,
   children,
 }) {
   const styles = VARIANTS[variant] ?? VARIANTS.contained;
@@ -44,16 +45,42 @@ export default function TabBar({
       tabClassName,
     ].join(' ');
 
+  const wrapTrailing = Boolean(trailing);
+  const listClass = [
+    wrapTrailing && variant === 'page'
+      ? 'flex gap-1 overflow-x-auto scrollbar-none'
+      : styles.list,
+    listClassName,
+  ].filter(Boolean).join(' ');
+
+  const tabList = (
+    <TabList className={listClass}>
+      {tabs.map((tab) => (
+        <Tab key={tab.key} className={({ selected }) => tabClasses(selected)}>
+          {tab.label}
+        </Tab>
+      ))}
+    </TabList>
+  );
+
+  const header = wrapTrailing ? (
+    <div
+      className={[
+        'flex items-stretch min-w-0',
+        variant === 'page' ? 'border-b border-slate-700/60' : '',
+      ].join(' ')}
+    >
+      <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">{tabList}</div>
+      <div className="flex-shrink-0 flex items-center pl-2 pr-2 sm:pr-0">
+        {trailing}
+      </div>
+    </div>
+  ) : tabList;
+
   if (children) {
     return (
       <TabGroup selectedIndex={activeIndex} onChange={handleChange}>
-        <TabList className={[styles.list, listClassName].filter(Boolean).join(' ')}>
-          {tabs.map((tab) => (
-            <Tab key={tab.key} className={({ selected }) => tabClasses(selected)}>
-              {tab.label}
-            </Tab>
-          ))}
-        </TabList>
+        {header}
         <TabPanels className={className}>
           {tabs.map((tab) => (
             <TabPanel key={tab.key} className="focus:outline-none">
@@ -67,13 +94,7 @@ export default function TabBar({
 
   return (
     <TabGroup selectedIndex={activeIndex} onChange={handleChange} className={className}>
-      <TabList className={[styles.list, listClassName].filter(Boolean).join(' ')}>
-        {tabs.map((tab) => (
-          <Tab key={tab.key} className={({ selected }) => tabClasses(selected)}>
-            {tab.label}
-          </Tab>
-        ))}
-      </TabList>
+      {header}
     </TabGroup>
   );
 }

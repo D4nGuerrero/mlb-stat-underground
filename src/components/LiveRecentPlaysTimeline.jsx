@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { useLongPress } from '../hooks/useLongPress';
 import {
   teamLogoUrl,
   playerHeadshotUrl,
@@ -83,7 +84,7 @@ function LiveTimelineRow({ avatar, children, onClick, avatarScale = 'icon', clas
   );
 }
 
-function LiveActionAvatar({ row, onPlayerClick }) {
+function LiveActionAvatar({ row, onPlayerClick, onPlayerAbsClick }) {
   const iconKind = getSummaryPlayIconKind(row);
 
   if (iconKind === 'shoe') {
@@ -123,15 +124,32 @@ function LiveActionAvatar({ row, onPlayerClick }) {
   }
 
   return (
+    <LivePlayerHeadshot
+      batterId={row.batterId}
+      onPlayerClick={onPlayerClick}
+      onPlayerAbsClick={onPlayerAbsClick}
+    />
+  );
+}
+
+function LivePlayerHeadshot({ batterId, onPlayerClick, onPlayerAbsClick }) {
+  const longPress = useLongPress({
+    enabled: Boolean(batterId && onPlayerAbsClick),
+    onClick: (e) => {
+      e.stopPropagation();
+      onPlayerClick?.(e, batterId);
+    },
+    onLongPress: () => onPlayerAbsClick?.(batterId),
+  });
+
+  return (
     <button
       type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onPlayerClick?.(e, row.batterId);
-      }}
+      title="Tap for player page. Hold for today's at-bats."
       className="flex-shrink-0"
+      {...longPress}
     >
-      <img src={playerHeadshotUrl(row.batterId, 2)} className={`${PLAYER_SIZE} object-cover rounded-full`} alt="" />
+      <img src={playerHeadshotUrl(batterId, 2)} className={`${PLAYER_SIZE} object-cover rounded-full`} alt="" />
     </button>
   );
 }
@@ -173,6 +191,7 @@ function LiveRecentPlayRow({
   expandedVideoKey,
   pinnedVideo,
   onPlayerClick,
+  onPlayerAbsClick,
   onOpenPlay,
   onToggleVideo,
   ScoringPlayVideo,
@@ -382,7 +401,7 @@ function LiveRecentPlayRow({
     return (
       <LiveTimelineRow
         avatarScale={row.batterId ? 'player' : 'icon'}
-        avatar={<LiveActionAvatar row={row} onPlayerClick={onPlayerClick} />}
+        avatar={<LiveActionAvatar row={row} onPlayerClick={onPlayerClick} onPlayerAbsClick={onPlayerAbsClick} />}
         onClick={row.play ? () => onOpenPlay(row.play) : undefined}
       >
         <span className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${b.cls}`}>
@@ -413,16 +432,11 @@ function LiveRecentPlayRow({
         avatarScale={row.batterId ? 'player' : 'icon'}
         avatar={(
           row.batterId ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPlayerClick?.(e, row.batterId);
-              }}
-              className="flex-shrink-0"
-            >
-              <img src={playerHeadshotUrl(row.batterId, 2)} className={`${PLAYER_SIZE} object-cover rounded-full`} alt="" />
-            </button>
+            <LivePlayerHeadshot
+              batterId={row.batterId}
+              onPlayerClick={onPlayerClick}
+              onPlayerAbsClick={onPlayerAbsClick}
+            />
           ) : (
             <div className={`${ICON_SIZE} rounded-full bg-slate-800/80 border-2 border-slate-600`} aria-hidden />
           )
@@ -483,6 +497,7 @@ export default function LiveRecentPlaysTimeline({
   expandedVideoKey,
   pinnedVideo,
   onPlayerClick,
+  onPlayerAbsClick,
   onOpenPlay,
   onToggleVideo,
   ScoringPlayVideo,
@@ -540,6 +555,7 @@ export default function LiveRecentPlaysTimeline({
                     expandedVideoKey={expandedVideoKey}
                     pinnedVideo={pinnedVideo}
                     onPlayerClick={onPlayerClick}
+                    onPlayerAbsClick={onPlayerAbsClick}
                     onOpenPlay={onOpenPlay}
                     onToggleVideo={onToggleVideo}
                     ScoringPlayVideo={ScoringPlayVideo}

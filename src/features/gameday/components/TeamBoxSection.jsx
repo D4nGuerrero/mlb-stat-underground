@@ -1,6 +1,7 @@
 import { compactPlayerName, teamLogoUrl, sumInningsPitched } from '../../../utils/mlbHelpers';
 import { stickyHead, stickyCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } from '../../../components/ui';
 import { TABLE_TEXT_CLASS } from '../../../theme/tableTheme';
+import { PlayerAbsButton, PlayerAbsNameButton } from './PlayerAbsTrigger';
 
 const BOX_SCORE_TABLE = `${TABLE_BASE} ${TABLE_TEXT_CLASS} table-auto w-max min-w-full`;
 const BOX_SCORE_TABLE_COMPACT = `${TABLE_BASE} text-[10px] 2xl:text-[11px] table-auto w-max min-w-full`;
@@ -78,6 +79,48 @@ function getPitchingDecisionNote(player, decisions) {
   );
 }
 
+function BoxScorePlayerName({
+  person,
+  compact,
+  isSubstitute = false,
+  subLetter = null,
+  pos = null,
+  onPlayerSelect,
+  onPlayerAbsSelect,
+  showAbsButton = true,
+}) {
+  const lastName = compactPlayerName(person, '');
+
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <PlayerAbsNameButton
+        playerId={person?.id}
+        onOpenPlayer={onPlayerSelect}
+        onOpenAbs={onPlayerAbsSelect}
+        className={`text-left whitespace-nowrap hover:text-accent-400 transition-colors ${isSubstitute ? 'pl-3' : ''}`}
+      >
+        {subLetter && <span className="text-slate-500 mr-0.5">{subLetter}-</span>}
+        <span className={isSubstitute ? 'text-slate-400' : 'text-slate-200'}>
+          <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
+          {!compact && (
+            <span className="hidden sm:inline">{person?.fullName}</span>
+          )}
+        </span>
+        {pos && (
+          <span className="text-slate-600 ml-1 text-[10px]">{pos}</span>
+        )}
+      </PlayerAbsNameButton>
+      {showAbsButton && (
+        <PlayerAbsButton
+          playerId={person?.id}
+          onOpenAbs={onPlayerAbsSelect}
+          compact={compact}
+        />
+      )}
+    </div>
+  );
+}
+
 function ReservePlayersSection({
   players,
   title,
@@ -85,6 +128,7 @@ function ReservePlayersSection({
   compact,
   fullscreenFit,
   onPlayerSelect,
+  onPlayerAbsSelect,
 }) {
   if (!players.length) return null;
 
@@ -118,19 +162,31 @@ function ReservePlayersSection({
             ];
 
           return (
-            <button
+            <div
               key={person.id}
-              type="button"
-              onClick={() => onPlayerSelect?.(person.id)}
               className={`min-w-0 rounded-lg border border-slate-800/70 bg-slate-900/55 px-2 py-1.5 text-left transition-colors hover:border-accent-500/35 hover:bg-slate-800/70`}
             >
-              <div className={`${fullscreenFit ? 'text-[9px]' : 'text-[11px]'} font-bold text-slate-200 truncate`}>
-                {name || person.fullName}
+              <div className="flex items-start justify-between gap-1">
+                <PlayerAbsNameButton
+                  playerId={person.id}
+                  onOpenPlayer={onPlayerSelect}
+                  onOpenAbs={onPlayerAbsSelect}
+                  className={`${fullscreenFit ? 'text-[9px]' : 'text-[11px]'} min-w-0 flex-1 font-bold text-slate-200 truncate text-left hover:text-accent-400`}
+                >
+                  {name || person.fullName}
+                </PlayerAbsNameButton>
+                {!fullscreenFit && (
+                  <PlayerAbsButton
+                    playerId={person.id}
+                    onOpenAbs={onPlayerAbsSelect}
+                    compact={compact || fullscreenFit}
+                  />
+                )}
               </div>
               <div className={`${fullscreenFit ? 'text-[8px]' : 'text-[10px]'} text-slate-500 truncate`}>
                 {meta.filter(Boolean).join(' | ') || 'Available'}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -143,6 +199,7 @@ export function TeamReservesSection({
   compact = false,
   fullscreenFit = false,
   onPlayerSelect,
+  onPlayerAbsSelect,
 }) {
   if (!teamBox) return null;
 
@@ -168,6 +225,7 @@ export function TeamReservesSection({
         compact={compact}
         fullscreenFit={fullscreenFit}
         onPlayerSelect={onPlayerSelect}
+        onPlayerAbsSelect={onPlayerAbsSelect}
       />
       <ReservePlayersSection
         title="Bullpen"
@@ -176,6 +234,7 @@ export function TeamReservesSection({
         compact={compact}
         fullscreenFit={fullscreenFit}
         onPlayerSelect={onPlayerSelect}
+        onPlayerAbsSelect={onPlayerAbsSelect}
       />
     </div>
   );
@@ -190,6 +249,7 @@ export default function TeamBoxSection({
   fullscreenFit = false,
   part = 'all',
   onPlayerSelect,
+  onPlayerAbsSelect,
 }) {
   if (!teamBox) return null;
 
@@ -298,7 +358,6 @@ export default function TeamBoxSection({
               const seasonBatting = player.seasonStats?.batting || {};
               const subLetter = getSubLetter(player.battingOrder);
               const isSubstitute = Boolean(subLetter);
-              const lastName = compactPlayerName(player.person, '');
               const pos = formatBoxScorePositions(player);
 
               return (
@@ -307,22 +366,16 @@ export default function TeamBoxSection({
                   className="group border-b border-slate-800/40 hover:bg-slate-800/20"
                 >
                   <td className={stickyCell('bg-slate-900')}>
-                    <button
-                      type="button"
-                      onClick={() => onPlayerSelect(player.person?.id)}
-                      className={`text-left whitespace-nowrap hover:text-accent-400 transition-colors ${isSubstitute ? 'pl-3' : ''}`}
-                    >
-                      {subLetter && <span className="text-slate-500 mr-0.5">{subLetter}-</span>}
-                      <span className={isSubstitute ? 'text-slate-400' : 'text-slate-200'}>
-                        <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
-                        {!compact && (
-                          <span className="hidden sm:inline">{player.person?.fullName}</span>
-                        )}
-                      </span>
-                      {pos && (
-                        <span className="text-slate-600 ml-1 text-[10px]">{pos}</span>
-                      )}
-                    </button>
+                    <BoxScorePlayerName
+                      person={player.person}
+                      compact={compact}
+                      isSubstitute={isSubstitute}
+                      subLetter={subLetter}
+                      pos={pos}
+                      onPlayerSelect={onPlayerSelect}
+                      onPlayerAbsSelect={onPlayerAbsSelect}
+                      showAbsButton={!fullscreenFit}
+                    />
                   </td>
                   <td className={boxScoreStatCell('text-slate-400')}>{batting.atBats ?? '-'}</td>
                   <td className={boxScoreStatCell('text-slate-400')}>{batting.runs ?? '-'}</td>
@@ -406,7 +459,6 @@ export default function TeamBoxSection({
                 const pitching = player.stats?.pitching || {};
                 const seasonPitching = player.seasonStats?.pitching || {};
                 const seasonEra = seasonPitching.era;
-                const lastName = compactPlayerName(player.person, '');
                 const decisionNote = getPitchingDecisionNote(player, decisions);
 
                 return (
@@ -416,15 +468,13 @@ export default function TeamBoxSection({
                   >
                     <td className={stickyCell('bg-slate-900')}>
                       <div className="min-w-0">
-                        <button
-                          onClick={() => onPlayerSelect(player.person?.id)}
-                          className={`block max-w-full truncate hover:text-accent-400 transition-colors text-slate-200`}
-                        >
-                          <span className={compact ? '' : 'sm:hidden'}>{lastName}</span>
-                          {!compact && (
-                            <span className="hidden sm:inline">{player.person?.fullName}</span>
-                          )}
-                        </button>
+                        <BoxScorePlayerName
+                          person={player.person}
+                          compact={compact}
+                          onPlayerSelect={onPlayerSelect}
+                          onPlayerAbsSelect={onPlayerAbsSelect}
+                          showAbsButton={!fullscreenFit}
+                        />
                         {decisionNote && (
                           <span className="mt-0.5 block text-[9px] leading-tight font-semibold text-slate-500 break-words whitespace-normal">
                             {decisionNote}

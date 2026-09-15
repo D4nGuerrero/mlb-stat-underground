@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { compactPlayerName, mlbTeams, teamLogoUrl, playerHeadshotUrl, FALLBACK_HEADSHOT } from '../utils/mlbHelpers';
 import { TabBar, Select, SegmentedControl, LoadingSpinner, Modal, BottomSheetModal, SwipeableCarousel, stickyPlayerHead, stickyPlayerCell, scrollStickyHead, scrollStickyCell, scrollStatHead, scrollStatCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { loadTeamPageState, saveTeamPageState, persistTeamPageLeave, restoreTeamPageScroll } from '../utils/teamPageState';
@@ -15,13 +15,40 @@ const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2002 + 1 }, (_, i) =>
   const y = CURRENT_YEAR - i;
   return { value: String(y), label: String(y) };
 });
-const SCHEDULE_SEASON_OPTIONS = Array.from(
-  { length: CURRENT_YEAR - 2003 + 1 },
-  (_, i) => CURRENT_YEAR - i,
-).map((year) => ({
-  value: String(year),
-  label: `${year} Season`,
-}));
+const AL_LEAGUE_ID = 103;
+const NL_LEAGUE_ID = 104;
+const MLB_TEAM_AFFILIATION = {
+  110: { leagueId: AL_LEAGUE_ID, divisionId: 201 },
+  111: { leagueId: AL_LEAGUE_ID, divisionId: 201 },
+  147: { leagueId: AL_LEAGUE_ID, divisionId: 201 },
+  139: { leagueId: AL_LEAGUE_ID, divisionId: 201 },
+  141: { leagueId: AL_LEAGUE_ID, divisionId: 201 },
+  145: { leagueId: AL_LEAGUE_ID, divisionId: 202 },
+  114: { leagueId: AL_LEAGUE_ID, divisionId: 202 },
+  116: { leagueId: AL_LEAGUE_ID, divisionId: 202 },
+  118: { leagueId: AL_LEAGUE_ID, divisionId: 202 },
+  142: { leagueId: AL_LEAGUE_ID, divisionId: 202 },
+  117: { leagueId: AL_LEAGUE_ID, divisionId: 200 },
+  108: { leagueId: AL_LEAGUE_ID, divisionId: 200 },
+  133: { leagueId: AL_LEAGUE_ID, divisionId: 200 },
+  136: { leagueId: AL_LEAGUE_ID, divisionId: 200 },
+  140: { leagueId: AL_LEAGUE_ID, divisionId: 200 },
+  144: { leagueId: NL_LEAGUE_ID, divisionId: 204 },
+  146: { leagueId: NL_LEAGUE_ID, divisionId: 204 },
+  121: { leagueId: NL_LEAGUE_ID, divisionId: 204 },
+  143: { leagueId: NL_LEAGUE_ID, divisionId: 204 },
+  120: { leagueId: NL_LEAGUE_ID, divisionId: 204 },
+  112: { leagueId: NL_LEAGUE_ID, divisionId: 205 },
+  113: { leagueId: NL_LEAGUE_ID, divisionId: 205 },
+  158: { leagueId: NL_LEAGUE_ID, divisionId: 205 },
+  134: { leagueId: NL_LEAGUE_ID, divisionId: 205 },
+  138: { leagueId: NL_LEAGUE_ID, divisionId: 205 },
+  109: { leagueId: NL_LEAGUE_ID, divisionId: 203 },
+  115: { leagueId: NL_LEAGUE_ID, divisionId: 203 },
+  119: { leagueId: NL_LEAGUE_ID, divisionId: 203 },
+  135: { leagueId: NL_LEAGUE_ID, divisionId: 203 },
+  137: { leagueId: NL_LEAGUE_ID, divisionId: 203 },
+};
 
 const HERO_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 2px 8px rgba(0,0,0,0.6)' };
 const MLB_SPORT_ID = 1;
@@ -426,6 +453,178 @@ const sortScheduleGames = (a, b) => {
   if (numA !== numB) return numA - numB;
   return new Date(a.gameDate ?? 0) - new Date(b.gameDate ?? 0);
 };
+
+const isValidTeamSeason = (value) => SEASON_OPTIONS.some((option) => option.value === String(value));
+
+const isScheduleGameFinal = (g) => g?.status?.abstractGameState === 'Final';
+
+const isScheduleGamePostponed = (g) =>
+  /postponed|cancelled|canceled/i.test(g?.status?.detailedState ?? '');
+
+const scheduleGameResult = (g, teamId) => {
+  const { isHome } = getScheduleOpponent(g, teamId);
+  const homeScore = scheduleGameScore('home', g);
+  const awayScore = scheduleGameScore('away', g);
+  if (homeScore == null || awayScore == null) return null;
+  const teamScore = isHome ? homeScore : awayScore;
+  const oppScore = isHome ? awayScore : homeScore;
+  let result = 'tie';
+  if (teamScore > oppScore) result = 'win';
+  else if (teamScore < oppScore) result = 'loss';
+  return { isHome, teamScore, oppScore, result };
+};
+
+const summarizeMatchup = (games, teamId) => {
+  let wins = 0;
+  let losses = 0;
+  let ties = 0;
+  let rs = 0;
+  let ra = 0;
+  let homeWins = 0;
+  let homeLosses = 0;
+  let awayWins = 0;
+  let awayLosses = 0;
+  for (const g of games) {
+    if (!isScheduleGameFinal(g) || isScheduleGamePostponed(g)) continue;
+    const result = scheduleGameResult(g, teamId);
+    if (!result) continue;
+    rs += result.teamScore;
+    ra += result.oppScore;
+    if (result.result === 'win') {
+      wins += 1;
+      if (result.isHome) homeWins += 1;
+      else awayWins += 1;
+    } else if (result.result === 'loss') {
+      losses += 1;
+      if (result.isHome) homeLosses += 1;
+      else awayLosses += 1;
+    } else {
+      ties += 1;
+    }
+  }
+  return { wins, losses, ties, rs, ra, homeWins, homeLosses, awayWins, awayLosses };
+};
+
+const groupGamesByMonth = (games) => {
+  const map = {};
+  for (const g of games) {
+    const dateStr = scheduleGameDateKey(g);
+    if (!dateStr) continue;
+    const key = dateStr.slice(0, 7);
+    (map[key] = map[key] ?? []).push(g);
+  }
+  Object.values(map).forEach((arr) => {
+    arr.sort(sortScheduleGames);
+  });
+  return map;
+};
+
+const buildSeasonMatchups = (games, teamId) => {
+  const map = new Map();
+  for (const g of games) {
+    if (isScheduleGamePostponed(g)) continue;
+    const { opp } = getScheduleOpponent(g, teamId);
+    const oppId = opp?.team?.id;
+    if (oppId == null) continue;
+    if (!map.has(oppId)) {
+      map.set(oppId, {
+        opponentId: oppId,
+        opponent: opp.team,
+        games: [],
+      });
+    }
+    map.get(oppId).games.push(g);
+  }
+
+  return [...map.values()]
+    .map((row) => ({
+      ...row,
+      games: [...row.games].sort(sortScheduleGames),
+      record: summarizeMatchup(row.games, teamId),
+    }))
+    .sort((a, b) => {
+      const nameA = a.opponent?.name || a.opponent?.teamName || '';
+      const nameB = b.opponent?.name || b.opponent?.teamName || '';
+      return nameA.localeCompare(nameB);
+    });
+};
+
+const matchupRecordLabel = (record) => {
+  if (!record) return '0-0';
+  return record.ties > 0
+    ? `${record.wins}-${record.losses}-${record.ties}`
+    : `${record.wins}-${record.losses}`;
+};
+
+const opponentAffiliation = (opponent) => {
+  const id = Number(opponent?.id);
+  const fallback = MLB_TEAM_AFFILIATION[id] ?? {};
+  return {
+    leagueId: Number(opponent?.league?.id) || fallback.leagueId || null,
+    divisionId: Number(opponent?.division?.id) || fallback.divisionId || null,
+  };
+};
+
+const leagueSectionTitle = (leagueId) => {
+  if (leagueId === NL_LEAGUE_ID) return 'vs National League';
+  if (leagueId === AL_LEAGUE_ID) return 'vs American League';
+  return 'vs League';
+};
+
+const compareMatchupRecord = (a, b) => {
+  const ar = a.record ?? {};
+  const br = b.record ?? {};
+  const ag = (ar.wins ?? 0) + (ar.losses ?? 0);
+  const bg = (br.wins ?? 0) + (br.losses ?? 0);
+  const apct = ag > 0 ? ar.wins / ag : -1;
+  const bpct = bg > 0 ? br.wins / bg : -1;
+  if (bpct !== apct) return bpct - apct;
+  if ((br.wins ?? 0) !== (ar.wins ?? 0)) return (br.wins ?? 0) - (ar.wins ?? 0);
+  const adiff = (ar.rs ?? 0) - (ar.ra ?? 0);
+  const bdiff = (br.rs ?? 0) - (br.ra ?? 0);
+  if (bdiff !== adiff) return bdiff - adiff;
+  const nameA = a.opponent?.name || a.opponent?.teamName || '';
+  const nameB = b.opponent?.name || b.opponent?.teamName || '';
+  return nameA.localeCompare(nameB);
+};
+
+const groupSeasonMatchups = (matchups, teamLeagueId, teamDivisionId) => {
+  const division = [];
+  const al = [];
+  const nl = [];
+  const other = [];
+
+  for (const row of matchups) {
+    const { leagueId, divisionId } = opponentAffiliation(row.opponent);
+    if (teamDivisionId && divisionId === teamDivisionId) division.push(row);
+    else if (leagueId === AL_LEAGUE_ID) al.push(row);
+    else if (leagueId === NL_LEAGUE_ID) nl.push(row);
+    else other.push(row);
+  }
+
+  const sections = [];
+  if (division.length) {
+    sections.push({ key: 'division', title: 'vs Division', rows: [...division].sort(compareMatchupRecord) });
+  }
+  const leagueSections = teamLeagueId === NL_LEAGUE_ID
+    ? [
+        { key: 'nl', title: leagueSectionTitle(NL_LEAGUE_ID), rows: nl },
+        { key: 'al', title: leagueSectionTitle(AL_LEAGUE_ID), rows: al },
+      ]
+    : [
+        { key: 'al', title: leagueSectionTitle(AL_LEAGUE_ID), rows: al },
+        { key: 'nl', title: leagueSectionTitle(NL_LEAGUE_ID), rows: nl },
+      ];
+  for (const section of leagueSections) {
+    if (section.rows.length) {
+      sections.push({ ...section, rows: [...section.rows].sort(compareMatchupRecord) });
+    }
+  }
+  if (other.length) {
+    sections.push({ key: 'other', title: 'Other', rows: [...other].sort(compareMatchupRecord) });
+  }
+  return sections;
+};
 const fmt = (v, dec = 3) => {
   if (v == null || v === '') return '–';
   const n = parseFloat(v);
@@ -700,13 +899,6 @@ const rangeYears = (startYear, endYear = CURRENT_YEAR) => {
   return Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => String(start + i));
 };
 
-const statsSeasonOptions = (firstYearOfPlay) => [
-  { value: 'all', label: 'All' },
-  ...rangeYears(firstYearOfPlay, CURRENT_YEAR)
-    .reverse()
-    .map((year) => ({ value: year, label: year })),
-];
-
 async function mapLimit(items, limit, mapper) {
   const results = [];
   for (let i = 0; i < items.length; i += limit) {
@@ -852,6 +1044,7 @@ function StatsTab({
   teamId,
   sub,
   setSub,
+  season,
   statsSeason,
   setStatsSeason,
   teamName,
@@ -862,7 +1055,8 @@ function StatsTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const isHistorical = statsSeason === 'all';
-  const dataKey = `${statsSeason}:${sub}`;
+  const statsYear = isHistorical ? 'all' : season;
+  const dataKey = `${statsYear}:${sub}`;
 
   useEffect(() => {
     if (isHistorical) return;
@@ -879,7 +1073,7 @@ function StatsTab({
           query: {
             stats: 'season',
             group: TEAM_STATS_GROUP_MAP[sub],
-            season: statsSeason,
+            season: statsYear,
             teamId,
             playerPool: 'all',
             sportId: 1,
@@ -908,7 +1102,7 @@ function StatsTab({
       cancelled = true;
       controller.abort();
     };
-  }, [data, dataKey, isHistorical, statsSeason, sub, teamId]);
+  }, [data, dataKey, isHistorical, statsYear, sub, teamId]);
 
   // top leader in each key category
   const leaderStats = sub === 'batting'
@@ -952,13 +1146,14 @@ function StatsTab({
             ]}
           />
         </div>
-        <Select
-          value={statsSeason}
-          onChange={setStatsSeason}
-          options={statsSeasonOptions(firstYearOfPlay)}
+        <SegmentedControl
+          value={isHistorical ? 'all' : 'season'}
+          onChange={(value) => setStatsSeason(value === 'all' ? 'all' : season)}
           size="sm"
-          className="w-28 sm:w-32"
-          buttonClassName="border-slate-600 py-2"
+          options={[
+            { value: 'season', label: season },
+            { value: 'all', label: 'All' },
+          ]}
         />
       </div>
 
@@ -996,7 +1191,7 @@ function StatsTab({
         </div>
       )}
       {!loading && !error && rows.length === 0 && data[dataKey] != null && (
-        <div className="py-12 text-center text-slate-500 text-sm">No stats available for {statsSeason}.</div>
+        <div className="py-12 text-center text-slate-500 text-sm">No stats available for {statsYear}.</div>
       )}
         </>
       )}
@@ -1202,11 +1397,16 @@ function ScheduleTab({
   teamId,
   season,
   sportId = MLB_SPORT_ID,
-  setSeason,
+  teamLeagueId = null,
+  teamDivisionId = null,
   view,
   setView,
   selectedMonth,
   setSelectedMonth,
+  matchupOpponentId,
+  setMatchupOpponentId,
+  matchupSeriesView,
+  setMatchupSeriesView,
   onNavigateAway,
 }) {
   const navigate = useNavigate();
@@ -1222,9 +1422,10 @@ function ScheduleTab({
 
   const goToGame = (gamePk) => {
     onNavigateAway?.({ scheduleMonth: selectedMonth });
+    const seasonQuery = season ? `?season=${season}` : '';
     navigate(`/game/${gamePk}`, {
       state: {
-        returnTo: `/team/${teamId}`,
+        returnTo: `/team/${teamId}${seasonQuery}`,
         returnLabel: 'Team',
       },
     });
@@ -1274,20 +1475,26 @@ function ScheduleTab({
   const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const monthName = (mm) => new Date(Number(season), Number(mm) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
 
-  const gamesByMonth = useMemo(() => {
-    const map = {};
-    for (const g of games) {
-      const dateStr = g.officialDate ?? (g.gameDate ? g.gameDate.split('T')[0] : '');
-      if (!dateStr) continue;
-      const d = new Date(`${dateStr}T12:00:00`);
-      const k = monthKey(d);
-      (map[k] = map[k] ?? []).push(g);
-    }
-    Object.values(map).forEach((arr) => {
-      arr.sort(sortScheduleGames);
-    });
-    return map;
-  }, [games]);
+  const gamesByMonth = useMemo(() => groupGamesByMonth(games), [games]);
+  const matchups = useMemo(() => buildSeasonMatchups(games, teamId), [games, teamId]);
+  const resolvedLeagueId = Number(teamLeagueId) || MLB_TEAM_AFFILIATION[Number(teamId)]?.leagueId || null;
+  const resolvedDivisionId = Number(teamDivisionId) || MLB_TEAM_AFFILIATION[Number(teamId)]?.divisionId || null;
+  const matchupSections = useMemo(
+    () => groupSeasonMatchups(matchups, resolvedLeagueId, resolvedDivisionId),
+    [matchups, resolvedLeagueId, resolvedDivisionId],
+  );
+  const selectedMatchup = useMemo(
+    () => matchups.find((row) => String(row.opponentId) === String(matchupOpponentId)) ?? null,
+    [matchups, matchupOpponentId],
+  );
+  const matchupGamesByMonth = useMemo(
+    () => groupGamesByMonth(selectedMatchup?.games ?? []),
+    [selectedMatchup],
+  );
+  const matchupMonthsForYear = useMemo(
+    () => Object.keys(matchupGamesByMonth).filter((key) => key.startsWith(`${season}-`)).sort(),
+    [matchupGamesByMonth, season],
+  );
 
   const months = useMemo(() => Object.keys(gamesByMonth).sort(), [gamesByMonth]);
 
@@ -1324,7 +1531,23 @@ function ScheduleTab({
     el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
   }, [filteredGames, view, selectedMonth, season]);
 
-  const buildMonthGrid = (monthStr) => {
+  useEffect(() => {
+    if (loading || !matchupOpponentId || !games.length) return;
+    if (!matchups.some((row) => String(row.opponentId) === String(matchupOpponentId))) {
+      setMatchupOpponentId(null);
+    }
+  }, [games.length, loading, matchupOpponentId, matchups, setMatchupOpponentId]);
+
+  useEffect(() => {
+    if (view !== 'matchups' || !selectedMatchup || matchupSeriesView !== 'month') return;
+    if (!matchupMonthsForYear.length) return;
+    setSelectedMonth((prev) => {
+      if (prev && matchupMonthsForYear.includes(`${season}-${prev}`)) return prev;
+      return matchupMonthsForYear[0].split('-')[1];
+    });
+  }, [view, selectedMatchup, matchupSeriesView, matchupMonthsForYear, season, setSelectedMonth]);
+
+  const buildMonthGrid = (monthStr, byMonth = gamesByMonth) => {
     const [yy, mm] = monthStr.split('-').map((x) => Number(x));
     const first = new Date(yy, mm - 1, 1);
     const last = new Date(yy, mm, 0);
@@ -1336,7 +1559,7 @@ function ScheduleTab({
       days.push(new Date(cursor));
       cursor.setDate(cursor.getDate() + 1);
     }
-    const gamesForMonth = gamesByMonth[monthStr] ?? [];
+    const gamesForMonth = byMonth[monthStr] ?? [];
     const byDate = {};
     for (const g of gamesForMonth) {
       const k = g.officialDate ?? (g.gameDate ? g.gameDate.split('T')[0] : '');
@@ -1352,11 +1575,12 @@ function ScheduleTab({
   };
 
   const goToAdjacentMonth = (direction) => {
-    if (!selectedMonth || !monthsForYear.length) return;
+    const monthList = view === 'matchups' ? matchupMonthsForYear : monthsForYear;
+    if (!selectedMonth || !monthList.length) return;
     const currentKey = `${season}-${selectedMonth}`;
-    const currentIdx = monthsForYear.indexOf(currentKey);
+    const currentIdx = monthList.indexOf(currentKey);
     if (currentIdx < 0) return;
-    const next = monthsForYear[currentIdx + direction];
+    const next = monthList[currentIdx + direction];
     if (!next) return;
     setCalendarSlideDirection(direction > 0 ? 'next' : 'prev');
     setSelectedMonth(next.split('-')[1]);
@@ -1436,8 +1660,41 @@ function ScheduleTab({
     e.stopPropagation();
   };
 
-  const renderMonthCalendar = (monthStr) => {
-    const { days, byDate, monthDate } = buildMonthGrid(monthStr);
+  const renderGameList = (list) => (
+    <div className="space-y-1">
+      {list.map((g) => {
+        const { isHome, opp } = getScheduleOpponent(g, teamId);
+        const gameLabel = formatCalendarGameLabel(g, teamId);
+        const dateStr = scheduleGameDateKey(g);
+        const isToday = dateStr === todayStr;
+        const dhLabel = getDoubleHeaderLabel(g);
+        return (
+          <div
+            key={g.gamePk}
+            ref={(el) => { if (el) gameRefs.current[g.gamePk] = el; }}
+            className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? `bg-accent-500/[0.06] border-accent-500/20` : ''}`}
+            onClick={() => goToGame(g.gamePk)}
+          >
+            <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">
+              <div>{fmtDate(dateStr)}</div>
+              {dhLabel && <div className="text-[10px] text-slate-400 mt-0.5">{dhLabel}</div>}
+            </div>
+            <div className="w-5 sm:w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
+            <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
+            <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name ?? opp?.team?.abbreviation ?? 'Opponent'}</div>
+            <div className="text-right flex-shrink-0 text-sm">
+              <span className={`font-semibold tabular-nums ${calendarLabelClass(gameLabel.type)}`}>
+                {gameLabel.text}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderMonthCalendar = (monthStr, byMonth = gamesByMonth) => {
+    const { days, byDate, monthDate } = buildMonthGrid(monthStr, byMonth);
     const monthIdx = monthDate.getMonth();
 
     return (
@@ -1562,24 +1819,30 @@ function ScheduleTab({
             onChange={setView}
             size="sm"
             options={[
-              { value: 'month', label: 'Monthly' },
+              { value: 'month', label: 'Month' },
               { value: 'list', label: 'List' },
+              { value: 'matchups', label: 'Matchups' },
             ]}
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={season}
-            onChange={setSeason}
-            options={SCHEDULE_SEASON_OPTIONS}
-            buttonClassName="bg-slate-900 min-w-[140px]"
-          />
-          {monthsForYear.length > 0 && (
+          {view !== 'matchups' && monthsForYear.length > 0 && (
             <Select
               value={selectedMonth}
               onChange={handleMonthSelect}
               options={monthsForYear.map((m) => {
+                const mm = m.split('-')[1];
+                return { value: mm, label: monthName(mm) };
+              })}
+              buttonClassName="bg-slate-900 min-w-[120px]"
+            />
+          )}
+          {view === 'matchups' && selectedMatchup && matchupSeriesView === 'month' && matchupMonthsForYear.length > 0 && (
+            <Select
+              value={selectedMonth}
+              onChange={handleMonthSelect}
+              options={matchupMonthsForYear.map((m) => {
                 const mm = m.split('-')[1];
                 return { value: mm, label: monthName(mm) };
               })}
@@ -1593,38 +1856,7 @@ function ScheduleTab({
         <div className="py-12 text-center text-slate-500 text-sm">No schedule found for {season}.</div>
       )}
 
-      {view === 'list' && filteredGames.length > 0 && (
-        <div className="space-y-1">
-          {filteredGames.map((g) => {
-            const { isHome, opp } = getScheduleOpponent(g, teamId);
-            const gameLabel = formatCalendarGameLabel(g, teamId);
-            const dateStr = scheduleGameDateKey(g);
-            const isToday = dateStr === todayStr;
-            const dhLabel = getDoubleHeaderLabel(g);
-            return (
-              <div
-                key={g.gamePk}
-                ref={(el) => { if (el) gameRefs.current[g.gamePk] = el; }}
-                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors cursor-pointer rounded-xl ${isToday ? `bg-accent-500/[0.06] border-accent-500/20` : ''}`}
-                onClick={() => goToGame(g.gamePk)}
-              >
-                <div className="w-14 sm:w-16 text-xs text-slate-500 flex-shrink-0">
-                  <div>{fmtDate(dateStr)}</div>
-                  {dhLabel && <div className="text-[10px] text-slate-400 mt-0.5">{dhLabel}</div>}
-                </div>
-                <div className="w-5 sm:w-6 text-xs text-slate-500 flex-shrink-0">{isHome ? 'vs' : '@'}</div>
-                <img src={teamLogoUrl(opp?.team?.id)} alt="" className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0" onError={(e) => (e.target.style.display = 'none')} />
-                <div className="flex-1 min-w-0 text-sm font-medium truncate">{opp?.team?.name ?? opp?.team?.abbreviation ?? 'Opponent'}</div>
-                <div className="text-right flex-shrink-0 text-sm">
-                  <span className={`font-semibold tabular-nums ${calendarLabelClass(gameLabel.type)}`}>
-                    {gameLabel.text}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {view === 'list' && filteredGames.length > 0 && renderGameList(filteredGames)}
 
       {view === 'list' && games.length > 0 && filteredGames.length === 0 && selectedMonth && (
         <div className="py-12 text-center text-slate-500 text-sm">No games in {monthName(selectedMonth)} {season}.</div>
@@ -1632,6 +1864,127 @@ function ScheduleTab({
 
       {view === 'month' && monthsForYear.length > 0 && selectedMonth && (
         renderMonthCalendar(`${season}-${selectedMonth}`)
+      )}
+
+      {view === 'matchups' && games.length > 0 && !selectedMatchup && (
+        <div className="space-y-4">
+          {matchups.length === 0 && (
+            <div className="py-12 text-center text-slate-500 text-sm">No opponents found for {season}.</div>
+          )}
+          {matchupSections.map((section) => (
+            <div key={section.key}>
+              <div className="px-3 sm:px-4 pb-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                {section.title}
+              </div>
+              <div className="space-y-1">
+                {section.rows.map((row) => {
+                  const remaining = row.games.filter((g) => !isScheduleGameFinal(g) && !isScheduleGamePostponed(g)).length;
+                  const lastFinal = [...row.games].reverse().find((g) => isScheduleGameFinal(g) && !isScheduleGamePostponed(g));
+                  const lastLabel = lastFinal ? formatCalendarGameLabel(lastFinal, teamId) : null;
+                  return (
+                    <button
+                      key={row.opponentId}
+                      type="button"
+                      onClick={() => setMatchupOpponentId(row.opponentId)}
+                      className="flex w-full items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors rounded-xl text-left"
+                    >
+                      <img
+                        src={teamLogoUrl(row.opponentId)}
+                        alt=""
+                        className="w-8 h-8 sm:w-9 sm:h-9 object-contain flex-shrink-0"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-slate-100 truncate">
+                          {row.opponent?.name || row.opponent?.teamName || 'Opponent'}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {row.games.length} game{row.games.length === 1 ? '' : 's'}
+                          {remaining > 0 ? ` · ${remaining} remaining` : ''}
+                          {lastLabel ? ` · Last ${lastLabel.text}` : ''}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-black tabular-nums text-slate-100">
+                          {matchupRecordLabel(row.record)}
+                        </div>
+                        <div className="text-[10px] text-slate-500 tabular-nums">
+                          {row.record.rs}-{row.record.ra} RS
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {view === 'matchups' && selectedMatchup && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setMatchupOpponentId(null)}
+              className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+            >
+              <i className="fa-solid fa-arrow-left text-xs" aria-hidden />
+              All matchups
+            </button>
+            <SegmentedControl
+              value={matchupSeriesView}
+              onChange={setMatchupSeriesView}
+              size="sm"
+              options={[
+                { value: 'list', label: 'List' },
+                { value: 'month', label: 'Month' },
+              ]}
+            />
+          </div>
+
+          <div className="rounded-2xl border border-slate-700/60 bg-slate-900/50 px-4 py-4">
+            <div className="flex items-center gap-3">
+              <img src={teamLogoUrl(teamId)} alt="" className="w-10 h-10 object-contain" />
+              <div className="text-slate-500 font-black text-xs uppercase tracking-widest">vs</div>
+              <img src={teamLogoUrl(selectedMatchup.opponentId)} alt="" className="w-10 h-10 object-contain" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-base sm:text-lg font-black text-white">
+                  vs {selectedMatchup.opponent?.name || selectedMatchup.opponent?.teamName}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {season} season series · {matchupRecordLabel(selectedMatchup.record)}
+                  {` · ${selectedMatchup.record.rs}-${selectedMatchup.record.ra} RS`}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Home {selectedMatchup.record.homeWins}-{selectedMatchup.record.homeLosses}
+                  {' · '}
+                  Away {selectedMatchup.record.awayWins}-{selectedMatchup.record.awayLosses}
+                </div>
+              </div>
+            </div>
+            {matchups.length > 1 && (
+              <div className="mt-3">
+                <Select
+                  value={String(selectedMatchup.opponentId)}
+                  onChange={(value) => setMatchupOpponentId(Number(value) || value)}
+                  options={matchups.map((row) => ({
+                    value: String(row.opponentId),
+                    label: row.opponent?.name || row.opponent?.teamName || 'Opponent',
+                    icon: teamLogoUrl(row.opponentId),
+                    suffix: matchupRecordLabel(row.record),
+                  }))}
+                  buttonClassName="bg-slate-950 min-w-0"
+                />
+              </div>
+            )}
+          </div>
+
+          {matchupSeriesView === 'list' && selectedMatchup.games.length > 0 && renderGameList(selectedMatchup.games)}
+          {matchupSeriesView === 'month' && matchupMonthsForYear.length > 0 && selectedMonth && (
+            renderMonthCalendar(`${season}-${selectedMonth}`, matchupGamesByMonth)
+          )}
+        </div>
       )}
 
 
@@ -2931,15 +3284,22 @@ function normalizeScheduleMonth(value) {
   return str;
 }
 
-function readTeamPageDefaults(teamId) {
+function readTeamPageDefaults(teamId, seasonFromUrl) {
   const saved = loadTeamPageState(teamId);
+  const season = isValidTeamSeason(seasonFromUrl)
+    ? String(seasonFromUrl)
+    : String(CURRENT_YEAR);
   return {
     activeTab: saved?.activeTab ?? 'stats',
-    season: saved?.season ?? String(CURRENT_YEAR),
+    season,
     statsSub: saved?.statsSub ?? 'batting',
-    statsSeason: saved?.statsSeason ?? (saved?.statsMode === 'historical' ? 'all' : String(CURRENT_YEAR)),
+    statsSeason: isValidTeamSeason(seasonFromUrl)
+      ? String(seasonFromUrl)
+      : String(CURRENT_YEAR),
     scheduleView: saved?.scheduleView ?? 'month',
     scheduleMonth: normalizeScheduleMonth(saved?.scheduleMonth),
+    matchupOpponentId: saved?.matchupOpponentId ?? null,
+    matchupSeriesView: saved?.matchupSeriesView ?? 'list',
     rosterCountry: saved?.rosterCountry ?? null,
     rosterCountryScroll: Number(saved?.rosterCountryScroll) || 0,
   };
@@ -2947,17 +3307,25 @@ function readTeamPageDefaults(teamId) {
 
 // ─── Main TeamPage ────────────────────────────────────────────────────────────
 function TeamPageContent({ teamId }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const seasonParam = searchParams.get('season');
   const [teamInfo, setTeamInfo] = useState(null);
   const [teamRecord, setTeamRecord] = useState(null);
-  const defaults = useMemo(() => readTeamPageDefaults(teamId), [teamId]);
+  const defaults = useMemo(
+    () => readTeamPageDefaults(teamId, seasonParam),
+    [teamId, seasonParam],
+  );
   const [season, setSeason] = useState(defaults.season);
   const [activeTab, setActiveTab] = useState(defaults.activeTab);
   const [statsSub, setStatsSub] = useState(defaults.statsSub);
   const [statsSeason, setStatsSeason] = useState(defaults.statsSeason);
   const [scheduleView, setScheduleView] = useState(defaults.scheduleView);
   const [scheduleMonth, setScheduleMonth] = useState(defaults.scheduleMonth);
+  const [matchupOpponentId, setMatchupOpponentId] = useState(defaults.matchupOpponentId);
+  const [matchupSeriesView, setMatchupSeriesView] = useState(defaults.matchupSeriesView);
   const [rosterCountry, setRosterCountry] = useState(defaults.rosterCountry);
   const [rosterCountryScroll, setRosterCountryScroll] = useState(defaults.rosterCountryScroll);
+  const lastSeasonParamRef = useRef(seasonParam);
   const { toggleFavoriteTeam, isFavoriteTeam } = useFavoriteTeams();
   const isFavorite = isFavoriteTeam(teamId);
   const teamSportId = Number(teamInfo?.sport?.id) || MLB_SPORT_ID;
@@ -2966,6 +3334,24 @@ function TeamPageContent({ teamId }) {
   useEffect(() => {
     restoreTeamPageScroll(teamId);
   }, [teamId]);
+
+  useEffect(() => {
+    if (!isValidTeamSeason(seasonParam)) return;
+    if (seasonParam !== season) setSeason(String(seasonParam));
+    if (lastSeasonParamRef.current !== seasonParam) {
+      lastSeasonParamRef.current = seasonParam;
+      setStatsSeason((current) => (current === 'all' ? current : String(seasonParam)));
+    }
+  }, [seasonParam, season]);
+
+  const handleSeasonChange = useCallback((nextSeason) => {
+    setSeason(nextSeason);
+    setStatsSeason((current) => (current === 'all' ? current : nextSeason));
+    const next = new URLSearchParams(searchParams);
+    if (nextSeason && String(nextSeason) !== String(CURRENT_YEAR)) next.set('season', String(nextSeason));
+    else next.delete('season');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3035,10 +3421,12 @@ function TeamPageContent({ teamId }) {
       statsSeason,
       scheduleView,
       scheduleMonth,
+      matchupOpponentId,
+      matchupSeriesView,
       rosterCountry,
       rosterCountryScroll,
     });
-  }, [teamId, activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth, rosterCountry, rosterCountryScroll]);
+  }, [teamId, activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth, matchupOpponentId, matchupSeriesView, rosterCountry, rosterCountryScroll]);
 
   const teamPageSnapshot = useMemo(() => ({
     activeTab,
@@ -3047,9 +3435,11 @@ function TeamPageContent({ teamId }) {
     statsSeason,
     scheduleView,
     scheduleMonth,
+    matchupOpponentId,
+    matchupSeriesView,
     rosterCountry,
     rosterCountryScroll,
-  }), [activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth, rosterCountry, rosterCountryScroll]);
+  }), [activeTab, season, statsSub, statsSeason, scheduleView, scheduleMonth, matchupOpponentId, matchupSeriesView, rosterCountry, rosterCountryScroll]);
 
   const onNavigateAway = useCallback((overrides = {}) => {
     persistTeamPageLeave(teamId, { ...teamPageSnapshot, ...overrides });
@@ -3092,29 +3482,20 @@ function TeamPageContent({ teamId }) {
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/80 pointer-events-none" />
 
-          <div className="relative flex items-center justify-between gap-3 mb-auto">
-           
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Select
-                value={season}
-                onChange={setSeason}
-                options={SEASON_OPTIONS}
-                buttonClassName="bg-slate-900/80 border-slate-600/80 text-xs sm:text-sm min-w-[88px]"
-              />
-              <button
-                type="button"
-                onClick={toggleFavorite}
-                className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all active:scale-[0.985] ${
-                  isFavorite
-                    ? 'bg-yellow-400/15 hover:bg-yellow-400/20 text-yellow-300 border-yellow-400/30'
-                    : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-600/80'
-                }`}
-                title={isFavorite ? 'Unfavorite team' : 'Favorite team'}
-              >
-                {isFavorite ? '★' : '☆'}
-                <span className="hidden sm:inline ml-1">{isFavorite ? 'Favorited' : 'Favorite'}</span>
-              </button>
-            </div>
+          <div className="relative flex items-center justify-end gap-3 mb-auto">
+            <button
+              type="button"
+              onClick={toggleFavorite}
+              className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all active:scale-[0.985] ${
+                isFavorite
+                  ? 'bg-yellow-400/15 hover:bg-yellow-400/20 text-yellow-300 border-yellow-400/30'
+                  : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-600/80'
+              }`}
+              title={isFavorite ? 'Unfavorite team' : 'Favorite team'}
+            >
+              {isFavorite ? '★' : '☆'}
+              <span className="hidden sm:inline ml-1">{isFavorite ? 'Favorited' : 'Favorite'}</span>
+            </button>
           </div>
 
           <div className="relative flex items-end gap-4 sm:gap-5 mt-4">
@@ -3160,6 +3541,14 @@ function TeamPageContent({ teamId }) {
             variant="page"
             tabs={TABS}
             activeKey={activeTab}
+            trailing={(
+              <Select
+                value={season}
+                onChange={handleSeasonChange}
+                options={SEASON_OPTIONS}
+                buttonClassName="bg-slate-900/80 border-slate-600/80 text-xs sm:text-sm min-w-[88px]"
+              />
+            )}
             onChange={(tab) => {
               setActiveTab(tab);
               if (tab !== 'roster') {
@@ -3176,6 +3565,7 @@ function TeamPageContent({ teamId }) {
                     teamId={teamId}
                     sub={statsSub}
                     setSub={setStatsSub}
+                    season={season}
                     statsSeason={statsSeason}
                     setStatsSeason={setStatsSeason}
                     teamName={teamInfo?.name}
@@ -3191,11 +3581,16 @@ function TeamPageContent({ teamId }) {
                     teamId={teamId}
                     season={season}
                     sportId={teamSportId}
-                    setSeason={setSeason}
+                    teamLeagueId={Number(teamInfo?.league?.id) || MLB_TEAM_AFFILIATION[Number(teamId)]?.leagueId || null}
+                    teamDivisionId={Number(teamInfo?.division?.id) || MLB_TEAM_AFFILIATION[Number(teamId)]?.divisionId || null}
                     view={scheduleView}
                     setView={setScheduleView}
                     selectedMonth={scheduleMonth}
                     setSelectedMonth={setScheduleMonth}
+                    matchupOpponentId={matchupOpponentId}
+                    setMatchupOpponentId={setMatchupOpponentId}
+                    matchupSeriesView={matchupSeriesView}
+                    setMatchupSeriesView={setMatchupSeriesView}
                     onNavigateAway={onNavigateAway}
                   />
                 );

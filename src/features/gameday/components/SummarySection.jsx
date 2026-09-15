@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { SegmentedControl } from '../../../components/ui';
 import { playerHeadshotUrl } from '../../../utils/mlbHelpers';
+import { useLongPress } from '../../../hooks/useLongPress';
 import {
   formatUpdatedScore,
   getSummaryPlayIconKind,
@@ -127,7 +128,26 @@ function unlockOrientation() {
   }
 }
 
-function SummaryPlayAvatar({ item, onPlayerClick }) {
+function SummaryPlayerHeadshot({ batterId, sizeClass, onPlayerClick, onPlayerAbsClick }) {
+  const longPress = useLongPress({
+    enabled: Boolean(batterId && onPlayerAbsClick),
+    onClick: onPlayerClick,
+    onLongPress: () => onPlayerAbsClick?.(batterId),
+  });
+
+  return (
+    <button
+      type="button"
+      title="Tap for player page. Hold for today's at-bats."
+      className="flex-shrink-0 mt-0.5"
+      {...longPress}
+    >
+      <img src={playerHeadshotUrl(batterId, 2)} className={`${sizeClass} object-cover`} alt="" />
+    </button>
+  );
+}
+
+function SummaryPlayAvatar({ item, onPlayerClick, onPlayerAbsClick }) {
   const iconKind = getSummaryPlayIconKind(item);
   const sizeClass = 'w-16 h-16';
   const iconSize = 'text-xl';
@@ -238,9 +258,12 @@ function SummaryPlayAvatar({ item, onPlayerClick }) {
   }
 
   return (
-    <button type="button" onClick={onPlayerClick} className="flex-shrink-0 mt-0.5">
-      <img src={playerHeadshotUrl(item.batterId, 2)} className={`${sizeClass} object-cover`} alt="" />
-    </button>
+    <SummaryPlayerHeadshot
+      batterId={item.batterId}
+      sizeClass={sizeClass}
+      onPlayerClick={onPlayerClick}
+      onPlayerAbsClick={onPlayerAbsClick}
+    />
   );
 }
 
@@ -968,6 +991,7 @@ function SummaryPlayItemRow({
   item,
   onOpenPlay,
   onPlayerClick,
+  onPlayerAbsClick,
   onToggleVideo,
   pinnedVideo,
   statusChangeBadge,
@@ -998,7 +1022,7 @@ function SummaryPlayItemRow({
       onClick={() => item.play && onOpenPlay(item.play)}
       className={`flex items-start gap-2.5 p-2 transition-all ${item.play ? 'cursor-pointer hover:bg-slate-800/50' : ''}`}
     >
-      <SummaryPlayAvatar item={item} onPlayerClick={onPlayerClick} />
+      <SummaryPlayAvatar item={item} onPlayerClick={onPlayerClick} onPlayerAbsClick={onPlayerAbsClick} />
       <div className="min-w-0 flex-1">
         <span className={`inline-block text-[14px] px-2 py-0.5 rounded-full border font-semibold mb-1 ${badge.cls}`}>
           {badge.label}
@@ -1035,6 +1059,7 @@ export default function SummarySection({
   homeAbbr,
   onOpenPlay,
   onPlayerClick,
+  onPlayerAbsClick,
   onToggleVideo,
   pinnedVideo,
   statusChangeBadge,
@@ -1081,6 +1106,7 @@ export default function SummarySection({
                     expandedVideoKey={expandedVideoKey}
                     pinnedVideo={pinnedVideo}
                     onPlayerClick={(e) => onPlayerClick(e, item.batterId)}
+                    onPlayerAbsClick={() => onPlayerAbsClick?.(item.batterId)}
                     onOpenPlay={onOpenPlay}
                     onToggleVideo={onToggleVideo}
                     statusChangeBadge={statusChangeBadge}

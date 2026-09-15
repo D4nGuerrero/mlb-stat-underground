@@ -48,6 +48,8 @@ import SummarySection, { ScoringPlayVideo } from '../components/SummarySection';
 import GameVideoSection from '../components/GameVideoSection';
 import SavantStatcastSection from '../components/SavantStatcastSection';
 import TeamBoxSection, { TeamReservesSection } from '../components/TeamBoxSection';
+import PlayerGameAbsSheet from '../components/PlayerGameAbsSheet';
+import { PlayerAbsButton, PlayerAbsNameButton } from '../components/PlayerAbsTrigger';
 import { useDaySchedule } from '../hooks/useDaySchedule';
 import { useGameContent } from '../hooks/useGameContent';
 import { useLiveRecentPlays } from '../hooks/useLiveRecentPlays';
@@ -2219,7 +2221,7 @@ function LinescoreBoard({ ls, away, home, awayRuns, homeRuns, compact = false })
   );
 }
 
-function FinalHeaderDecisionLine({ label, player, stats, onPlayerSelect }) {
+function FinalHeaderDecisionLine({ label, player, stats, onPlayerSelect, onPlayerAbsSelect }) {
   if (!player) return null;
   const name = compactPlayerName(player, player.fullName);
   const statLine = label === 'S'
@@ -2233,16 +2235,18 @@ function FinalHeaderDecisionLine({ label, player, stats, onPlayerSelect }) {
       : '';
 
   return (
-    <div className="text-[11px] 2xl:text-xs text-slate-300">
+    <div className="flex items-center gap-1 text-[11px] 2xl:text-xs text-slate-300">
       <span className="font-extrabold text-white">{label}: </span>
-      <button
-        type="button"
-        onClick={() => onPlayerSelect(player.id)}
-        className={`font-bold hover:text-accent-400 transition-colors`}
+      <PlayerAbsNameButton
+        playerId={player.id}
+        onOpenPlayer={onPlayerSelect}
+        onOpenAbs={onPlayerAbsSelect}
+        className="font-bold hover:text-accent-400 transition-colors"
       >
         {name}
-      </button>
+      </PlayerAbsNameButton>
       {statLine && <span className="ml-1 text-slate-400">{statLine}</span>}
+      <PlayerAbsButton playerId={player.id} onOpenAbs={onPlayerAbsSelect} compact />
     </div>
   );
 }
@@ -2281,6 +2285,7 @@ function FinalGameHeader({
   gameChatLinks = [],
   onTeamSelect,
   onPlayerSelect,
+  onPlayerAbsSelect,
   onOpenPitchBreakdown,
   onOpenSituationBreakdown,
 }) {
@@ -2333,9 +2338,9 @@ function FinalGameHeader({
 
         <div className="flex min-h-0 flex-col justify-center gap-2.5 border-l border-t border-slate-700/60 px-4 py-3">
           <div className="space-y-1.5">
-            <FinalHeaderDecisionLine label="W" player={decisions?.winner} stats={getPitcherStats(decisions?.winner?.id)} onPlayerSelect={onPlayerSelect} />
-            <FinalHeaderDecisionLine label="L" player={decisions?.loser} stats={getPitcherStats(decisions?.loser?.id)} onPlayerSelect={onPlayerSelect} />
-            <FinalHeaderDecisionLine label="S" player={decisions?.save} stats={getPitcherStats(decisions?.save?.id)} onPlayerSelect={onPlayerSelect} />
+            <FinalHeaderDecisionLine label="W" player={decisions?.winner} stats={getPitcherStats(decisions?.winner?.id)} onPlayerSelect={onPlayerSelect} onPlayerAbsSelect={onPlayerAbsSelect} />
+            <FinalHeaderDecisionLine label="L" player={decisions?.loser} stats={getPitcherStats(decisions?.loser?.id)} onPlayerSelect={onPlayerSelect} onPlayerAbsSelect={onPlayerAbsSelect} />
+            <FinalHeaderDecisionLine label="S" player={decisions?.save} stats={getPitcherStats(decisions?.save?.id)} onPlayerSelect={onPlayerSelect} onPlayerAbsSelect={onPlayerAbsSelect} />
           </div>
           {onOpenPitchBreakdown && (
             <button
@@ -2877,6 +2882,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   );
   const [pitchCountSheetOpen, setPitchCountSheetOpen] = useState(false);
   const [situationBreakdownOpen, setSituationBreakdownOpen] = useState(false);
+  const [absPlayerId, setAbsPlayerId] = useState(null);
   // Track whether we pushed a history entry for the sheet
   const sheetHistoryRef = useRef(false);
   const suppressNextSheetPopRef = useRef(false);
@@ -3261,6 +3267,14 @@ function GamePageContent({ gamePk, navigate, location }) {
     return () => window.removeEventListener('popstate', onPopState);
   }, [selectedPlay, situationReturn, restorePitchCountView, restoreSituationBreakdownView]);
 
+  const handlePlayerSelect = useCallback((playerId) => {
+    if (playerId) navigate(`/player/${playerId}`);
+  }, [navigate]);
+
+  const handlePlayerAbsSelect = useCallback((playerId) => {
+    if (playerId) setAbsPlayerId(Number(playerId));
+  }, []);
+
   const handlePlayDetailPlayerSelect = useCallback(
     (playerId) => {
       setSelectedPlay(null);
@@ -3268,6 +3282,10 @@ function GamePageContent({ gamePk, navigate, location }) {
     },
     [navigate],
   );
+
+  const handlePlayDetailPlayerAbsSelect = useCallback((playerId) => {
+    if (playerId) setAbsPlayerId(Number(playerId));
+  }, []);
 
   // ── derived data ───────────────────────────────────────────────────────────
 
@@ -3433,6 +3451,10 @@ function GamePageContent({ gamePk, navigate, location }) {
   const handleSummaryPlayerClick = (e, batterId) => {
     e.stopPropagation();
     if (batterId) navigate(`/player/${batterId}`);
+  };
+
+  const handleSummaryPlayerAbs = (batterId) => {
+    if (batterId) setAbsPlayerId(Number(batterId));
   };
 
   const handleSummaryVideoToggle = (itemKey, video) => {
@@ -3603,7 +3625,8 @@ function GamePageContent({ gamePk, navigate, location }) {
         getGamePlayer={getGamePlayer}
         getPitcherGameStat={getPitcherGameStat}
         linescore={ls}
-        onPlayerSelect={handlePlayDetailPlayerSelect}
+        onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
         showDueUpMatchup={showDueUpMatchup}
       />
 
@@ -3637,6 +3660,7 @@ function GamePageContent({ gamePk, navigate, location }) {
       homeAbbr={home.abbreviation}
       onOpenPlay={openSheet}
       onPlayerClick={handleSummaryPlayerClick}
+      onPlayerAbsClick={handleSummaryPlayerAbs}
       onToggleVideo={handleSummaryVideoToggle}
       pinnedVideo={pinnedVideo}
       statusChangeBadge={STATUS_CHANGE_BADGE}
@@ -3785,6 +3809,7 @@ function GamePageContent({ gamePk, navigate, location }) {
             expandedVideoKey={expandedVideoKey}
             pinnedVideo={pinnedVideo}
             onPlayerClick={(e, batterId) => handleSummaryPlayerClick(e, batterId)}
+            onPlayerAbsClick={handleSummaryPlayerAbs}
             onOpenPlay={openSheet}
             onToggleVideo={handleSummaryVideoToggle}
             ScoringPlayVideo={ScoringPlayVideo}
@@ -3821,7 +3846,8 @@ function GamePageContent({ gamePk, navigate, location }) {
         teamBox={ld.boxscore?.teams?.[boxScoreSide]}
         decisions={decisions}
         hideHeader
-        onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+        onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
       />
 
       <BoxScoreGameNotes
@@ -3833,7 +3859,8 @@ function GamePageContent({ gamePk, navigate, location }) {
         <div className="mt-4 pt-4 border-t border-slate-700/40">
           <TeamReservesSection
             teamBox={ld.boxscore?.teams?.[boxScoreSide]}
-            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
           />
         </div>
       )}
@@ -3858,7 +3885,8 @@ function GamePageContent({ gamePk, navigate, location }) {
             decisions={decisions}
             compact
             part="batting"
-            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
           />
           <TeamBoxSection
             team={home}
@@ -3866,7 +3894,8 @@ function GamePageContent({ gamePk, navigate, location }) {
             decisions={decisions}
             compact
             part="batting"
-            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
           />
           <TeamBoxSection
             team={away}
@@ -3875,7 +3904,8 @@ function GamePageContent({ gamePk, navigate, location }) {
             compact
             hideHeader
             part="pitching"
-            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
           />
           <TeamBoxSection
             team={home}
@@ -3884,7 +3914,8 @@ function GamePageContent({ gamePk, navigate, location }) {
             compact
             hideHeader
             part="pitching"
-            onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+            onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
           />
         </div>
         {!isFinal && (
@@ -3892,12 +3923,14 @@ function GamePageContent({ gamePk, navigate, location }) {
             <TeamReservesSection
               teamBox={ld.boxscore?.teams?.away}
               compact
-              onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+              onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
             />
             <TeamReservesSection
               teamBox={ld.boxscore?.teams?.home}
               compact
-              onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+              onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
             />
           </div>
         )}
@@ -3959,7 +3992,8 @@ function GamePageContent({ gamePk, navigate, location }) {
           logoSrc={leagueLogoSrc}
           gameChatLinks={redditGameChatLinks}
           onTeamSelect={(teamId) => navigate(`/team/${teamId}`)}
-          onPlayerSelect={(playerId) => navigate(`/player/${playerId}`)}
+          onPlayerSelect={handlePlayerSelect}
+        onPlayerAbsSelect={handlePlayerAbsSelect}
           onOpenPitchBreakdown={() => setPitchCountSheetOpen(true)}
           onOpenSituationBreakdown={() => {
             setSituationReturn(null);
@@ -4250,18 +4284,21 @@ function GamePageContent({ gamePk, navigate, location }) {
                   const stats = getPitcherStats(player.id);
                   const lastName = compactPlayerName(player, player.fullName);
                   return (
-                    <div key={label}>
+                    <div key={label} className="flex flex-wrap items-center gap-1">
                       <span className="text-slate-500 font-semibold mr-1">
                         {label}:
                       </span>
-                      <button
-                        onClick={() => navigate(`/player/${player.id}`)}
-                        className={`font-semibold text-slate-100 hover:text-accent-400 transition-colors`}
+                      <PlayerAbsNameButton
+                        playerId={player.id}
+                        onOpenPlayer={handlePlayerSelect}
+                        onOpenAbs={handlePlayerAbsSelect}
+                        className="font-semibold text-slate-100 hover:text-accent-400 transition-colors"
                       >
                         {lastName}
-                      </button>
+                      </PlayerAbsNameButton>
+                      <PlayerAbsButton playerId={player.id} onOpenAbs={handlePlayerAbsSelect} compact />
                       {stats && (
-                        <div className="text-[11px] text-slate-500 mt-0.5 font-mono">
+                        <div className="w-full text-[11px] text-slate-500 mt-0.5 font-mono">
                           {label === 'S'
                             ? stats.saves != null
                               ? `${stats.saves} SV${fmtEra(stats.era) ? `  ${fmtEra(stats.era)} ERA` : ''}`
@@ -4427,10 +4464,27 @@ function GamePageContent({ gamePk, navigate, location }) {
           singleFieldImageUrl={singleFieldImageUrl}
           strikeZoneTopImageUrl={strikeZoneTopImageUrl}
           onPlayerSelect={handlePlayDetailPlayerSelect}
+          onPlayerAbsSelect={handlePlayDetailPlayerAbsSelect}
           getPlayBadge={getPlayBadge}
           getPlayHitData={getPlayHitData}
           renderHitDataPanel={(hitData) => <HitDataPanel hitData={hitData} />}
           showPitchTrails={SHOW_PLAY_DETAIL_PITCH_TRAILS}
+        />
+        <PlayerGameAbsSheet
+          open={Boolean(absPlayerId)}
+          playerId={absPlayerId}
+          onClose={() => setAbsPlayerId(null)}
+          allPlays={allPlays}
+          currentPlay={currentPlay}
+          away={away}
+          home={home}
+          getGamePlayer={getGamePlayer}
+          getPlayBadge={getPlayBadge}
+          onOpenPlay={(play) => openSheet(play)}
+          onOpenPlayer={(playerId) => {
+            setAbsPlayerId(null);
+            handlePlayerSelect(playerId);
+          }}
         />
           </>
         )}

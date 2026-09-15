@@ -9,48 +9,47 @@ import {
   OutsIndicator,
   getRunnersOnBase,
 } from '../../../components/LiveGameIndicators';
+import { PlayerAbsButton, PlayerAbsNameButton } from './PlayerAbsTrigger';
 
 function LiveMatchupPlayerCard({
   fallbackSrc,
   name,
   onSelect,
+  onOpenAbs,
   playerId,
   role,
   stat,
 }) {
   return (
-    <button
-      className="flex flex-col items-center hover:bg-slate-800/40 transition-colors p-2"
-      onClick={() => onSelect(playerId)}
-      // style={{
-      //   backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
-      //   backgroundSize: 'cover',
-      //   backgroundPosition: 'top',
-      //   backgroundRepeat: 'no-repeat',
-      // }}
-    >
-      {/* <div className="text-[8px] text-slate-500 uppercase tracking-widest">{label}</div> */}
-      <div
-        className={`w-14 h-14  overflow-hidden  flex-shrink-0`}
+    <div className="flex flex-col items-center p-2">
+      <PlayerAbsNameButton
+        playerId={playerId}
+        onOpenPlayer={onSelect}
+        onOpenAbs={onOpenAbs}
+        className="flex flex-col items-center hover:bg-slate-800/40 transition-colors rounded-xl px-1 py-1"
       >
-        <img
-          src={playerHeadshotUrl(playerId,2)}
-          className="w-full h-full object-cover object-top"
-          alt=""
-          onError={(e) => {
-            e.target.src = fallbackSrc;
-          }}
-        />
-      </div>
-      {/* DUE UP */}
-      <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[88px] truncate">
-        <span>{name || '—'}</span>
-        {role && <span className="ml-1 text-[10px] font-black text-slate-500">{role}</span>}
-      </div>
-      <div className="text-[12px] text-white-500 font-mono text-center font-bold font-sans">
-        {stat}
-      </div>
-    </button>
+        <div
+          className={`w-14 h-14  overflow-hidden  flex-shrink-0`}
+        >
+          <img
+            src={playerHeadshotUrl(playerId,2)}
+            className="w-full h-full object-cover object-top"
+            alt=""
+            onError={(e) => {
+              e.target.src = fallbackSrc;
+            }}
+          />
+        </div>
+        <div className="text-[11px] font-semibold text-slate-200 text-center leading-tight max-w-[88px] truncate">
+          <span>{name || '—'}</span>
+          {role && <span className="ml-1 text-[10px] font-black text-slate-500">{role}</span>}
+        </div>
+        <div className="text-[12px] text-white-500 font-mono text-center font-bold font-sans">
+          {stat}
+        </div>
+      </PlayerAbsNameButton>
+      <PlayerAbsButton playerId={playerId} onOpenAbs={onOpenAbs} className="mt-0.5" />
+    </div>
   );
 }
 
@@ -96,6 +95,7 @@ export default function LiveMatchupStrip({
   getPitcherGameStat,
   linescore,
   onPlayerSelect,
+  onPlayerAbsSelect,
   showDueUpMatchup,
 }) {
   const pitcherStatObj = getPitcherGameStat(linescore?.defense?.pitcher?.id);
@@ -176,6 +176,7 @@ function formatPitcherStat(s) {
                 label={idx === 0 ? 'Batter' : idx === 1 ? 'On Deck' : 'In Hole'}
                 name={batter.name || batter.fullName}
                 onSelect={onPlayerSelect}
+                onOpenAbs={onPlayerAbsSelect}
                 playerId={batter.id}
                 stat={formatBatterContribution(getBatterGameStat(batter.id))}
               />
@@ -190,6 +191,7 @@ function formatPitcherStat(s) {
             label="Pitching"
             name={compactPlayerName(linescore?.defense?.pitcher)}
             onSelect={onPlayerSelect}
+            onOpenAbs={onPlayerAbsSelect}
             playerId={linescore?.defense?.pitcher?.id}
             role={pitcherRole}
             stat={
@@ -216,6 +218,7 @@ function formatPitcherStat(s) {
             label="At Bat"
             name={compactPlayerName(linescore?.offense?.batter)}
             onSelect={onPlayerSelect}
+            onOpenAbs={onPlayerAbsSelect}
             playerId={linescore?.offense?.batter?.id}
             role={batterRole}
             stat={
