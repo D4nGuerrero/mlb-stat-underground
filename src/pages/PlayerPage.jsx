@@ -302,6 +302,7 @@ const pitchCols = [
   { key: 'runs', label: 'R' },
   { key: 'earnedRuns', label: 'ER' },
   { key: 'saves', label: 'SV' },
+  { key: 'saveOpportunities', label: 'SVO' },
 
   { key: 'homeRuns', label: 'HR' },
 ];

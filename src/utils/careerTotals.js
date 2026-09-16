@@ -10,7 +10,7 @@ const HITTING_SUM_KEYS = [
 
 const PITCHING_SUM_KEYS = [
   'gamesPlayed', 'gamesStarted', 'wins', 'losses', 'hits', 'runs', 'earnedRuns',
-  'baseOnBalls', 'strikeOuts', 'homeRuns', 'saves',
+  'baseOnBalls', 'strikeOuts', 'homeRuns', 'saves', 'saveOpportunities',
 ];
 
 const FIELDING_SUM_KEYS = [
