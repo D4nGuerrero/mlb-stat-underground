@@ -296,12 +296,35 @@ function points3D(pitch, scalers, step, numberOfPoints) {
   return point;
 }
 
-function pitchNumberFontSize(scalers, radius) {
+function pitchNumberFontSize(scalers, radius, digits = 1) {
   const baseFontSize = (scalers.fontSize / scalers.base_width) * scalers.fakeBallSize * 0.72;
   const minFontSize = scalers.clip
     ? STRIKE_ZONE_PITCH_NUMBER_FONT_SIZE
     : FULL_VIEW_PITCH_NUMBER_FONT_SIZE;
-  return Math.max(baseFontSize, radius * PITCH_NUMBER_RADIUS_SCALE, minFontSize);
+  const fitted = Math.max(baseFontSize, radius * PITCH_NUMBER_RADIUS_SCALE, minFontSize);
+  if (digits >= 3) return Math.min(fitted, Math.max(7, radius * 0.78));
+  if (digits >= 2) return Math.min(fitted, Math.max(8, radius * 0.86));
+  return fitted;
+}
+
+function drawPitchNumber(ctx, label, x, y, scalers, radius) {
+  const text = String(label ?? '');
+  if (!text) return;
+  let fontSize = pitchNumberFontSize(scalers, radius, text.length);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold ${fontSize}px Helvetica Neue, Helvetica, Arial, sans-serif`;
+  const maxWidth = radius * 1.55;
+  const width = ctx.measureText(text).width;
+  if (width > maxWidth && width > 0) {
+    fontSize *= maxWidth / width;
+    ctx.font = `bold ${fontSize}px Helvetica Neue, Helvetica, Arial, sans-serif`;
+  }
+  ctx.lineWidth = Math.max(2, fontSize * 0.22);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = scalers.ballTextColor || 'rgba(255, 255, 255, 1)';
+  ctx.fillText(text, x, y);
 }
 
 function drawCalledStrikeEye(ctx, x, y, radius) {
@@ -629,14 +652,12 @@ export function drawAtBatTrail(ctx, points, shader, fromIdx, toIdx) {
   ctx.restore();
 }
 
-export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
+export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1, { skipNumber = false } = {}) {
   if (!point) return;
   const [x, y] = point;
   const radius = point[4] || scalers.ballRadius;
   const strokeWidth = (scalers.canvasDensity > 1 ? scalers.canvasDensity : 1) * 1;
   const safeStroke = radius - strokeWidth / 2;
-  const fontSize = pitchNumberFontSize(scalers, radius);
-
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.globalCompositeOperation = 'source-over';
@@ -647,21 +668,13 @@ export function drawAtBatBall(ctx, point, pitch, scalers, shader, alpha = 1) {
   ctx.fill();
   ctx.closePath();
 
-  ctx.font = `bold ${fontSize}px Helvetica Neue, Helvetica, Arial, sans-serif`;
-  ctx.fillStyle = shader.text;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = Math.max(2, fontSize * 0.18);
-  // ctx.strokeStyle = 'red';
-  // ctx.strokeText(String(pitch.num ?? ''), x, y);
-  ctx.fillText(String(pitch.num ?? ''), x, y);
+  if (pitch.showCalledStrikeMarker) drawCalledStrikeEye(ctx, x, y, radius);
+  if (!skipNumber) drawPitchNumber(ctx, pitch.num, x, y, scalers, radius);
 
   ctx.beginPath();
   ctx.arc(x, y, safeStroke, 0, Math.PI * 2);
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = shader.ballStroke;
-  // ctx.stroke();
-  if (pitch.showCalledStrikeMarker) drawCalledStrikeEye(ctx, x, y, radius);
   ctx.restore();
 }
 
@@ -742,13 +755,11 @@ export function drawAtBatSpinningBaseball(ctx, point, progress, scalers, pitch =
   ctx.restore();
 }
 
-export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.55) {
+export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.55, { skipNumber = false } = {}) {
   if (!point) return;
   const [x, y] = point;
   const radius = point[4] || scalers.ballRadius;
   const strokeWidth = (scalers.canvasDensity > 1 ? scalers.canvasDensity : 1) * 1;
-  const fontSize = pitchNumberFontSize(scalers, radius);
-
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.beginPath();
@@ -758,15 +769,18 @@ export function drawAtBatPitchDot(ctx, point, pitch, scalers, shader, alpha = 0.
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = shader.ballStroke;
   ctx.stroke();
-  ctx.fillStyle = shader.text;
-  ctx.font = `bold ${fontSize}px Helvetica Neue, Helvetica, Arial, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = Math.max(2, fontSize * 0.18);
-  // ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-  // ctx.strokeText(String(pitch.num ?? ''), x, y);
-  ctx.fillText(String(pitch.num ?? ''), x, y);
   if (pitch.showCalledStrikeMarker) drawCalledStrikeEye(ctx, x, y, radius);
+  if (!skipNumber) drawPitchNumber(ctx, pitch.num, x, y, scalers, radius);
+  ctx.restore();
+}
+
+export function drawAtBatPitchNumber(ctx, point, pitch, scalers, alpha = 1) {
+  if (!point) return;
+  const [x, y] = point;
+  const radius = point[4] || scalers.ballRadius;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  drawPitchNumber(ctx, pitch.num, x, y, scalers, radius);
   ctx.restore();
 }
 

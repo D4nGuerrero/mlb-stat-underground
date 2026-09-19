@@ -14,6 +14,7 @@ import {
   drawAtBatBall,
   drawAtBatSpinningBaseball,
   drawAtBatPitchDot,
+  drawAtBatPitchNumber,
   hasRenderablePitchData,
   AT_BAT_ANIMATION_MS,
   AT_BAT_FIXED_WIDTH,
@@ -22,6 +23,7 @@ import {
   computeAtBatStrikeZoneCrop,
   resolveStrikeZoneDims,
 } from '../pitchfx/atBatPitchFx';
+import { isAtBatPitchSequenceEvent } from '../utils/absChallenge';
 
 const TRAIL_OPACITY = 0.8;
 const OLD_PITCH_ALPHA = 0.82;
@@ -278,8 +280,9 @@ export default function PitchCanvas({
     const list = [];
     let n = 0;
     for (const [eventIdx, ev] of playEvents.entries()) {
-      if (!ev.isPitch || !hasRenderablePitchData(ev.pitchData)) continue;
+      if (!isAtBatPitchSequenceEvent(ev)) continue;
       n += 1;
+      if (!hasRenderablePitchData(ev.pitchData)) continue;
       const pitch = buildPitchFromEvent(ev, ev.__pitchNumberOverride ?? n, null, playEvents, eventIdx);
       if (pitch) {
         pitch.playScored = Boolean(
@@ -315,8 +318,9 @@ export default function PitchCanvas({
     const list = [];
     let n = 0;
     for (const [eventIdx, ev] of cropPlayEvents.entries()) {
-      if (!ev.isPitch || !hasRenderablePitchData(ev.pitchData)) continue;
+      if (!isAtBatPitchSequenceEvent(ev)) continue;
       n += 1;
+      if (!hasRenderablePitchData(ev.pitchData)) continue;
       const pitch = buildPitchFromEvent(ev, ev.__pitchNumberOverride ?? n, null, cropPlayEvents, eventIdx);
       if (pitch) list.push(pitch);
     }
@@ -500,12 +504,16 @@ export default function PitchCanvas({
       if (showHotZones) drawAtBatHotZones(ctx, refPitch, scaler);
 
       const focusedIdx = Number.isInteger(focusedPitchIndex) ? focusedPitchIndex : -1;
+      const landedPoint = (idx) => {
+        const traj = trajList[idx];
+        return traj?.[traj.length - 1] ?? null;
+      };
+
       for (let i = 0; i < pitchList.length - 1; i += 1) {
         if (i === focusedIdx) continue;
-        const traj = trajList[i];
-        if (!traj?.length) continue;
-        const last = traj[traj.length - 1];
-        drawAtBatPitchDot(ctx, last, pitchList[i], scaler, getPitchShader(pitchList[i], scaler), OLD_PITCH_ALPHA);
+        const last = landedPoint(i);
+        if (!last) continue;
+        drawAtBatPitchDot(ctx, last, pitchList[i], scaler, getPitchShader(pitchList[i], scaler), OLD_PITCH_ALPHA, { skipNumber: true });
       }
 
       if (currentIdx < 0) return;
@@ -516,14 +524,23 @@ export default function PitchCanvas({
 
       if (phase === 'settled') {
         const last = traj[traj.length - 1];
-        drawAtBatBall(ctx, last, pitch, scaler, shader, 1);
+        drawAtBatBall(ctx, last, pitch, scaler, shader, 1, { skipNumber: true });
         if (focusedIdx >= 0 && focusedIdx !== currentIdx) {
-          const focusedTraj = trajList[focusedIdx];
           const focusedPitch = pitchList[focusedIdx];
-          const focusedLast = focusedTraj?.[focusedTraj.length - 1];
+          const focusedLast = landedPoint(focusedIdx);
           if (focusedLast && focusedPitch) {
-            drawAtBatBall(ctx, focusedLast, focusedPitch, scaler, getPitchShader(focusedPitch, scaler), 1);
+            drawAtBatBall(ctx, focusedLast, focusedPitch, scaler, getPitchShader(focusedPitch, scaler), 1, { skipNumber: true });
           }
+        }
+        for (let i = 0; i < pitchList.length; i += 1) {
+          if (i === focusedIdx) continue;
+          const point = landedPoint(i);
+          if (!point) continue;
+          drawAtBatPitchNumber(ctx, point, pitchList[i], scaler, i === currentIdx ? 1 : OLD_PITCH_ALPHA);
+        }
+        if (focusedIdx >= 0) {
+          const focusedLast = landedPoint(focusedIdx);
+          if (focusedLast) drawAtBatPitchNumber(ctx, focusedLast, pitchList[focusedIdx], scaler, 1);
         }
         return;
       }

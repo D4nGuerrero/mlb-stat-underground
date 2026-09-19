@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { Modal } from '../../../components/ui';
 import LiveAtBatVisual from '../../../components/LiveAtBatVisual';
-import { formatPitchDescriptionWithAbsContext } from '../../../utils/absChallenge';
+import {
+  formatPitchDescriptionWithAbsContext,
+  isAtBatPitchSequenceEvent,
+} from '../../../utils/absChallenge';
 import { playerHeadshotUrl } from '../../../utils/mlbHelpers';
 import { PlayerAbsButton, PlayerAbsNameButton } from './PlayerAbsTrigger';
 import {
@@ -67,13 +70,14 @@ export default function PlayDetailSheet({
   singleFieldImageUrl = null,
   strikeZoneTopImageUrl = null,
   highlightedPitchKey = null,
+  highlightedPitchNumber = null,
 }) {
   if (!selectedPlay) return null;
 
   const play = selectedPlay;
   const pitches = (play.playEvents || [])
     .map((event, eventIdx) => ({ event, eventIdx }))
-    .filter(({ event }) => event.isPitch);
+    .filter(({ event }) => isAtBatPitchSequenceEvent(event));
   const playScored = Boolean(play.about?.isScoringPlay || play.about?.hasScoreChange);
   const playEventsWithContext = (play.playEvents || []).map((event) => ({
     ...event,
@@ -82,8 +86,11 @@ export default function PlayDetailSheet({
   }));
   const hitData = getPlayHitData(play);
   const badge = getPlayBadge(play.result?.eventType, play);
-  const szT = pitches[pitches.length - 1]?.pitchData?.strikeZoneTop || 3.55;
-  const szB = pitches[pitches.length - 1]?.pitchData?.strikeZoneBottom || 1.47;
+  const lastLocatedPitch = [...pitches].reverse().find(({ event }) => (
+    event?.pitchData?.strikeZoneTop != null || event?.pitchData?.strikeZoneBottom != null
+  ));
+  const szT = lastLocatedPitch?.event?.pitchData?.strikeZoneTop || 3.55;
+  const szB = lastLocatedPitch?.event?.pitchData?.strikeZoneBottom || 1.47;
   const inningStr = `${play.about?.halfInning === 'top' ? 'TOP' : 'BOT'} ${play.about?.inning}`;
   const scoreStr = `${away.abbreviation} ${play.result?.awayScore ?? 0} - ${home.abbreviation} ${play.result?.homeScore ?? 0}`;
 
@@ -319,6 +326,11 @@ export default function PlayDetailSheet({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-extrabold text-white leading-tight">{desc || '-'}</div>
+                      {isHighlighted && highlightedPitchNumber != null && (
+                        <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-accent-300">
+                          Pitch #{highlightedPitchNumber}
+                        </div>
+                      )}
                       <div className="mt-0.5 text-sm text-white leading-tight">
                         {mph && <span className="font-extrabold">{mph} mph</span>}
                         {mph && type && <span className="text-white/80"> </span>}

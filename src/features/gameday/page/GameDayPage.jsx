@@ -973,6 +973,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
     if (event?.__playContext) {
       onOpenPlay?.(event.__playContext, {
         highlightedPitchKey: event.playId ?? event.index,
+        highlightedPitchNumber: pitchNumber,
       });
     }
   };
@@ -1242,7 +1243,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
               usePurpleInPlayOuts
               preserveCropAspect
               disablePitchAnimation
-              showCalledStrikeMarker={canvasPitchEvents.length > 0 && visiblePitchKinds.strikes && visibleStrikeSubtypes.called}
+              showCalledStrikeMarker={false}
               focusPitchNumber={previewPitchNumber}
               className="mx-auto w-full"
             />
@@ -1292,8 +1293,13 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                   const pitchNumber = Number(event.__pitchNumberOverride);
                   const play = event.__playContext;
                   const batterName = play?.matchup?.batter?.fullName || 'At bat';
-                  const result = play?.result?.event || event.details?.description || 'Pitch';
-                  const pitcherLabel = pitcher?.isAllPitchers && event.__pitcherName ? `${event.__pitcherName} · ` : '';
+                  const pitchCall = event.details?.description || event.details?.call?.description || 'Pitch';
+                  const paResult = play?.result?.event || '';
+                  const pitcherLabel = pitcher?.isAllPitchers && event.__pitcherName ? event.__pitcherName : '';
+                  const countAfter = event.count;
+                  const countLabel = countAfter
+                    ? `${countAfter.balls ?? 0}-${countAfter.strikes ?? 0}`
+                    : '';
                   const kind = pitchMapKind(event);
                   const tone =
                     kind === 'balls'
@@ -1301,6 +1307,7 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                       : kind === 'inPlay'
                         ? 'text-blue-300'
                         : 'text-red-300';
+                  const meta = [pitcherLabel, paResult].filter(Boolean).join(' · ');
                   return (
                     <MenuItem key={`${event.playId ?? event.index}-${pitchNumber}`}>
                       {({ focus, close }) => (
@@ -1322,8 +1329,12 @@ function PitcherPitchMapSheet({ pitcher, team, onClose, gamePk, onOpenPlay }) {
                             #{pitchNumber}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-bold">{batterName}</span>
-                            <span className="block truncate text-[10px] text-slate-500">{pitcherLabel}{result}</span>
+                            <span className="block truncate font-bold">
+                              {pitchCall}{countLabel ? ` · ${countLabel}` : ''}
+                            </span>
+                            <span className="block truncate text-[10px] text-slate-500">
+                              {batterName}{meta ? ` · ${meta}` : ''}
+                            </span>
                           </span>
                         </button>
                       )}
@@ -2869,6 +2880,7 @@ function GamePageContent({ gamePk, navigate, location }) {
   const [wsReconnectKey, setWsReconnectKey] = useState(0);
   const [selectedPlay, setSelectedPlay] = useState(null);
   const [selectedPlayTargetPitchKey, setSelectedPlayTargetPitchKey] = useState(null);
+  const [selectedPlayTargetPitchNumber, setSelectedPlayTargetPitchNumber] = useState(null);
   const [pitchCountReturn, setPitchCountReturn] = useState(null);
   const [situationReturn, setSituationReturn] = useState(null);
   const [summaryFilter, setSummaryFilter] = useState('all');
@@ -3211,6 +3223,9 @@ function GamePageContent({ gamePk, navigate, location }) {
   const openSheet = useCallback((play, options = {}) => {
     setSelectedPlay(play);
     setSelectedPlayTargetPitchKey(options.highlightedPitchKey ?? null);
+    setSelectedPlayTargetPitchNumber(
+      options.highlightedPitchNumber != null ? Number(options.highlightedPitchNumber) : null,
+    );
     setPitchCountReturn(options.returnToPitchCount
       ? { ...options.returnToPitchCount, nonce: Date.now() }
       : null);
@@ -3237,6 +3252,7 @@ function GamePageContent({ gamePk, navigate, location }) {
     const situationReturnState = situationReturn;
     setSelectedPlay(null);
     setSelectedPlayTargetPitchKey(null);
+    setSelectedPlayTargetPitchNumber(null);
     restorePitchCountView(pitchReturnState);
     restoreSituationBreakdownView(situationReturnState);
     if (sheetHistoryRef.current) {
@@ -3257,6 +3273,7 @@ function GamePageContent({ gamePk, navigate, location }) {
         sheetHistoryRef.current = false;
         setSelectedPlay(null);
         setSelectedPlayTargetPitchKey(null);
+        setSelectedPlayTargetPitchNumber(null);
         const situationReturnState = situationReturn;
         restorePitchCountView();
         restoreSituationBreakdownView(situationReturnState);
@@ -4452,6 +4469,7 @@ function GamePageContent({ gamePk, navigate, location }) {
           selectedPlay={selectedPlay}
           closeSheet={closeSheet}
           highlightedPitchKey={selectedPlayTargetPitchKey}
+          highlightedPitchNumber={selectedPlayTargetPitchNumber}
           away={away}
           home={home}
           allPlays={allPlays}

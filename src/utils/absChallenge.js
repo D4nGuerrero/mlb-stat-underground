@@ -73,10 +73,16 @@ export function getAbsChallengePitchLabel(event) {
 
 function compactTimerLabel(eventType = '', text = '') {
   const haystack = `${eventType} ${text}`.toLowerCase();
-  if (/timer violation.*batter|batter.*timer violation|pitch clock violation.*batter|batter.*pitch clock violation|automatic strike|auto strike|batter[_\s-]?timer[_\s-]?violation/.test(haystack)) {
+  if (
+    /batter/.test(haystack) &&
+    /timer|clock|violation/.test(haystack)
+  ) {
     return 'Batter Timer Violation';
   }
-  if (/timer violation.*pitch|pitch(?:er)?.*timer violation|pitch clock violation.*pitch|pitch(?:er)?.*pitch clock violation|automatic ball|auto ball|pitch(?:er)?[_\s-]?timer[_\s-]?violation/.test(haystack)) {
+  if (
+    /pitcher/.test(haystack) &&
+    /timer|clock|violation/.test(haystack)
+  ) {
     return 'Pitcher Timer Violation';
   }
   if (/timer|clock/.test(haystack)) return 'Timer Violation';
@@ -86,27 +92,58 @@ function compactTimerLabel(eventType = '', text = '') {
 export function getAutomaticPitchTimerCall(event) {
   const eventType = String(event?.details?.eventType || event?.type || '').trim();
   const description = String(event?.details?.description || event?.details?.call?.description || '').trim();
-  const haystack = `${eventType} ${description}`.toLowerCase();
+  const violationType = String(event?.details?.violation?.type || '').trim();
+  const violationDesc = String(event?.details?.violation?.description || '').trim();
+  const code = String(event?.details?.code || event?.details?.call?.code || '').trim();
+  const haystack = `${eventType} ${description} ${violationType} ${violationDesc}`.toLowerCase();
+  const isPitchTimer =
+    ((code === 'VP' || code === 'VS') && (event?.details?.isBall === true || event?.details?.isStrike === true)) ||
+    /pitcher_pitch_timer|batter_pitch_timer|pitch_timer/.test(haystack) ||
+    /automatic strike|auto strike|automatic ball|auto ball/.test(haystack) ||
+    /timer violation|pitch clock violation/.test(haystack);
+
+  if (!isPitchTimer) return null;
+
+  const detail = compactTimerLabel(eventType, `${description} ${violationType} ${violationDesc}`)
+    ?? (event?.details?.isStrike ? 'Batter Timer Violation'
+      : event?.details?.isBall ? 'Pitcher Timer Violation'
+        : 'Timer Violation');
 
   if (
-    /automatic strike|auto strike|timer violation.*batter|batter.*timer violation|pitch clock violation.*batter|batter.*pitch clock violation|batter[_\s-]?timer[_\s-]?violation/.test(haystack)
+    event?.details?.isStrike === true ||
+    /batter_pitch_timer/.test(haystack) ||
+    /automatic strike|auto strike/.test(haystack)
   ) {
-    return {
-      label: 'Automatic Strike',
-      detail: compactTimerLabel(eventType, description) ?? 'Batter Timer Violation',
-    };
+    return { label: 'Automatic Strike', detail };
   }
 
   if (
-    /automatic ball|auto ball|timer violation.*pitch|pitch(?:er)?.*timer violation|pitch clock violation.*pitch|pitch(?:er)?.*pitch clock violation|pitch(?:er)?[_\s-]?timer[_\s-]?violation/.test(haystack)
+    event?.details?.isBall === true ||
+    /pitcher_pitch_timer/.test(haystack) ||
+    /automatic ball|auto ball/.test(haystack)
   ) {
+    return { label: 'Automatic Ball', detail };
+  }
+
+  if (/batter/.test(haystack)) {
+    return {
+      label: 'Automatic Strike',
+      detail: detail === 'Timer Violation' ? 'Batter Timer Violation' : detail,
+    };
+  }
+  if (/pitcher/.test(haystack)) {
     return {
       label: 'Automatic Ball',
-      detail: compactTimerLabel(eventType, description) ?? 'Pitcher Timer Violation',
+      detail: detail === 'Timer Violation' ? 'Pitcher Timer Violation' : detail,
     };
   }
 
   return null;
+}
+
+/** Thrown pitches plus pitch-timer automatic balls/strikes in an at-bat. */
+export function isAtBatPitchSequenceEvent(event) {
+  return Boolean(event?.isPitch || getAutomaticPitchTimerCall(event));
 }
 
 export function formatAutomaticPitchTimerCall(event, fallback = '') {
