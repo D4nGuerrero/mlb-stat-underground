@@ -1,12 +1,37 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 import TeamAbbrCell from '../components/TeamAbbrCell';
-import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE, TABLE_LAYOUT_STANDINGS } from '../components/ui';
+import { TabBar, Select, SegmentedControl, BaseballSpinner, stickyTeamHead, stickyTeamCell, statHead, statCell, TABLE_SCROLL, TABLE_BASE } from '../components/ui';
 import { LeagueLevelPicker } from '../components/LeagueLevelPicker';
 import { LEAGUE_LEVEL_BY_VALUE, LEAGUE_LEVEL_STORAGE_KEY, LEAGUE_LEVEL_VALUES } from '../constants/leagueLevels.js';
-import { TABLE_TEXT_CLASS, TABLE_TEAM_COL_CLASS } from '../theme/tableTheme';
+import { TABLE_TEXT_CLASS } from '../theme/tableTheme';
 import { fetchStatsApiJson } from '../lib/mlb/client';
-import { useTheme } from '../context/ThemeContext.jsx';
+import { useLocalStorageState } from '../hooks/useStorageState';
+import LeagueTitle from '../features/standings/LeagueTitle';
+import StandingsColumnSettings from '../features/standings/StandingsColumnSettings';
+import {
+  DEFAULT_STANDINGS_COLUMN_PREFS,
+  EXPANDED_COLUMNS,
+  STANDINGS_COLUMN_STORAGE_KEY,
+  VS_DIVISION_COLUMNS,
+  WILDCARD_COLUMNS,
+  glossaryForColumns,
+  resolveStandingsColumns,
+} from '../features/standings/standingsColumns';
+import {
+  CLINCH_LABELS,
+  formatElimNumber,
+  formatGamesBack,
+  leagueKeyFromName,
+  parseGamesBack,
+  parseSortValue,
+  parseStandings,
+  sortDivisions,
+  wildCardCutoffIndex,
+  withGamesBackFromGroupLeader,
+} from '../utils/standings';
+import StandingsTimelineSheet from '../features/standings/StandingsTimelineSheet';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASON_OPTIONS = Array.from({ length: CURRENT_YEAR - 2003 + 1 }, (_, i) => {
@@ -21,62 +46,11 @@ const STANDINGS_TABS = [
   { key: 'vsdivision', label: 'Vs. Division' },
 ];
 
-const LEAGUE_LOGOS = {
-  AL: {
-    dark: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/159.svg',
-    light: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/159.svg',
-  },
-  NL: {
-    dark: 'https://www.mlbstatic.com/team-logos/team-cap-on-dark/160.svg',
-    light: 'https://www.mlbstatic.com/team-logos/team-cap-on-light/160.svg',
-  },
-};
-
-function leagueKeyFromName(name) {
-  if (/\bamerican league\b|\bAL\b/i.test(name ?? '')) return 'AL';
-  if (/\bnational league\b|\bNL\b/i.test(name ?? '')) return 'NL';
-  return null;
-}
-
-function LeagueTitle({ title, className = '' }) {
-  const { isDark } = useTheme();
-  const leagueKey = leagueKeyFromName(title);
-  const logos = leagueKey ? LEAGUE_LOGOS[leagueKey] : null;
-
-  return (
-    <span className={`inline-flex items-center gap-2 pl-2 ${className}`}>
-      {logos && (
-        <img
-          src={isDark ? logos.dark : logos.light}
-          alt=""
-          className="w-5 h-5 object-contain flex-shrink-0"
-          onError={(e) => (e.target.style.display = 'none')}
-        />
-      )}
-      <span>{title}</span>
-    </span>
-  );
-}
-
 const VIEW_SCOPE_OPTIONS = [
   { value: 'division', label: 'Division' },
   { value: 'league', label: 'League' },
   { value: 'overall', label: 'Overall' },
 ];
-
-const DIVISION_META = {
-  201: { short: 'East', league: 'AL', order: 0 },
-  202: { short: 'Central', league: 'AL', order: 1 },
-  200: { short: 'West', league: 'AL', order: 2 },
-  204: { short: 'East', league: 'NL', order: 0 },
-  205: { short: 'Central', league: 'NL', order: 1 },
-  203: { short: 'West', league: 'NL', order: 2 },
-};
-
-const LEAGUE_DIV_IDS = {
-  103: { east: 201, central: 202, west: 200, intrLeague: 104 },
-  104: { east: 204, central: 205, west: 203, intrLeague: 103 },
-};
 
 const STANDINGS_TYPE_BY_TAB = {
   standings: 'regularSeason',
@@ -92,26 +66,9 @@ const DEFAULT_SORT = {
   wildcard: 'wcGb',
 };
 
-const CLINCH_LABELS = {
-  z: 'Clinched best record in league',
-  y: 'Clinched Division',
-  x: 'Clinched Postseason',
-  w: 'Clinched Wild Card',
-};
-
-const EXPANDED_GLOSSARY = [
-  { key: '1-RUN', text: 'One-run games' },
-  { key: 'XTRA', text: 'Extra-inning games' },
-];
-
-const VS_DIV_GLOSSARY = [
-  { key: 'EAST', text: 'Vs. East Division (in league)' },
-  { key: 'CENT', text: 'Vs. Central Division (in league)' },
-  { key: 'WEST', text: 'Vs. West Division (in league)' },
-  { key: 'INTR', text: 'Vs. Interleague opponents' },
-  { key: 'RHP', text: 'Vs. right-handed pitchers' },
-  { key: 'LHP', text: 'Vs. left-handed pitchers' },
-];
+const STANDINGS_TEAM_COL = 'w-[38%] sm:w-[28%]';
+const STANDINGS_TEAM_COL_SCROLL = 'w-[8.75rem] min-w-[8.75rem] sm:w-[10.5rem] sm:min-w-[10.5rem]';
+const WIDE_STAT_KEYS = new Set(['home', 'away', 'oneRun', 'extraInning', 'lastTen', 'wcGb']);
 
 const loadStandingsLeague = () => {
   try {
@@ -121,104 +78,6 @@ const loadStandingsLeague = () => {
     return 'mlb';
   }
 };
-
-function divisionShortName(divId, fallback) {
-  return DIVISION_META[divId]?.short ?? fallback?.replace(/American League |National League /, '') ?? 'Division';
-}
-
-function sortDivisions(divisions) {
-  return [...divisions].sort((a, b) => {
-    const am = DIVISION_META[a.divId] ?? { league: 'ZZ', order: 99 };
-    const bm = DIVISION_META[b.divId] ?? { league: 'ZZ', order: 99 };
-    if (am.league !== bm.league) return am.league === 'AL' ? -1 : 1;
-    return am.order - bm.order;
-  });
-}
-
-function fmtWL(w, l) {
-  if (w == null || l == null) return '—';
-  return `${w}-${l}`;
-}
-
-function parseWL(value) {
-  if (!value || value === '—') return 0;
-  const [w] = String(value).split('-').map((n) => parseInt(n, 10));
-  return Number.isNaN(w) ? 0 : w;
-}
-
-/**
- * WCGB sort order (asc = best wild-card position first):
- *   +8, +3 (ahead) → — (in/clinched) → 0 → 2.0, 5.0… (games behind)
- * Desc reverses that order.
- */
-function parseGamesBack(value) {
-  if (value == null || value === '' || value === '-' || value === '—') return 0;
-  const s = String(value).trim();
-  if (s.startsWith('+')) {
-    const n = parseFloat(s.slice(1));
-    return Number.isNaN(n) ? -1000 : -1000 - n;
-  }
-  const n = parseFloat(s);
-  return Number.isNaN(n) ? 0 : n;
-}
-
-function resolveClinchIndicator(tr) {
-  const raw = String(tr?.clinchIndicator ?? '').trim().toLowerCase();
-  if (raw && CLINCH_LABELS[raw]) return raw;
-  if (tr?.divisionChamp) return 'y';
-  if (tr?.clinched) return 'x';
-  return null;
-}
-
-function formatGamesBack(value) {
-  if (value == null || value === '' || value === '-' || value === '—' || value === '0.0') return '—';
-  const s = String(value).trim();
-  const n = parseFloat(s.startsWith('+') ? s.slice(1) : s);
-  if (Number.isNaN(n)) return '—';
-  const num = Number.isInteger(n) ? String(n) : String(n);
-  return s.startsWith('+') ? `+${num}` : num;
-}
-
-function gamesBackFromLeader(team, leader) {
-  if (!team || !leader) return '-';
-  const gamesBack = ((leader.wins - team.wins) + (team.losses - leader.losses)) / 2;
-  if (!Number.isFinite(gamesBack) || gamesBack <= 0) return '-';
-  return Number.isInteger(gamesBack) ? String(gamesBack) : gamesBack.toFixed(1);
-}
-
-function getGroupLeader(teams, rankKey) {
-  return [...teams].sort((a, b) => {
-    const ar = Number.isFinite(a[rankKey]) ? a[rankKey] : 99;
-    const br = Number.isFinite(b[rankKey]) ? b[rankKey] : 99;
-    if (ar !== br) return ar - br;
-    const pctDiff = (parseFloat(b.pct) || 0) - (parseFloat(a.pct) || 0);
-    if (pctDiff !== 0) return pctDiff;
-    return (b.wins ?? 0) - (a.wins ?? 0);
-  })[0];
-}
-
-function withGamesBackFromGroupLeader(teams, rankKey) {
-  const leader = getGroupLeader(teams, rankKey);
-  return teams.map((team) => ({
-    ...team,
-    gb: gamesBackFromLeader(team, leader),
-  }));
-}
-
-function parseSortValue(col, value) {
-  if (col === 'streak') {
-    if (!value || value === '-') return 0;
-    const num = parseInt(String(value).slice(1), 10) || 0;
-    return String(value).startsWith('W') ? num : -num;
-  }
-  if (col === 'wcGb' || col === 'gb') return parseGamesBack(value);
-  if (col === 'pct' || col === 'vsDivPct') return parseFloat(value) || 0;
-  if (['oneRun', 'extraInning', 'vsEast', 'vsCentral', 'vsWest', 'vsIntr', 'vsRhp', 'vsLhp', 'lastTen', 'home', 'away'].includes(col)) {
-    return parseWL(value);
-  }
-  if (typeof value === 'string') return parseFloat(value) || 0;
-  return value ?? 0;
-}
 
 export default function Standings() {
   const navigate = useNavigate();
@@ -232,9 +91,19 @@ export default function Standings() {
   const [sortCol, setSortCol] = useState('divisionRank');
   const [sortDir, setSortDir] = useState('asc');
   const [standingsLeague, setStandingsLeague] = useState(loadStandingsLeague);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  const [columnPrefs, setColumnPrefs] = useLocalStorageState(
+    STANDINGS_COLUMN_STORAGE_KEY,
+    DEFAULT_STANDINGS_COLUMN_PREFS,
+  );
 
   const standingsType = STANDINGS_TYPE_BY_TAB[activeTab] ?? 'regularSeason';
   const selectedLeague = LEAGUE_LEVEL_BY_VALUE[standingsLeague] ?? LEAGUE_LEVEL_BY_VALUE.mlb;
+  const leagueParams = useMemo(
+    () => Object.fromEntries(new URLSearchParams(selectedLeague.standingsQuery)),
+    [selectedLeague.standingsQuery],
+  );
 
   useEffect(() => {
     const key = `${standingsLeague}:${season}:${standingsType}`;
@@ -248,8 +117,6 @@ export default function Standings() {
     const controller = new AbortController();
     setIsLoading(true);
     setError(null);
-
-    const leagueParams = Object.fromEntries(new URLSearchParams(selectedLeague.standingsQuery));
 
     fetchStatsApiJson('/api/v1/standings', {
       query: {
@@ -274,7 +141,7 @@ export default function Standings() {
       });
 
     return () => controller.abort();
-  }, [season, standingsType, standingsLeague, selectedLeague.standingsQuery]);
+  }, [season, standingsType, standingsLeague, leagueParams]);
 
   useEffect(() => {
     localStorage.setItem(LEAGUE_LEVEL_STORAGE_KEY, standingsLeague);
@@ -289,122 +156,9 @@ export default function Standings() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const buildTeamRow = (tr, { leagueId, divId }) => {
-    const splits = tr.records?.splitRecords || [];
-    const home = splits.find((s) => s.type === 'home');
-    const away = splits.find((s) => s.type === 'away');
-    const lastTen = splits.find((s) => s.type === 'lastTen');
-    const oneRun = splits.find((s) => s.type === 'oneRun');
-    const extraInning = splits.find((s) => s.type === 'extraInning');
-    const vsLeft = splits.find((s) => s.type === 'left');
-    const vsRight = splits.find((s) => s.type === 'right');
-
-    const ownLeagueId = tr.team?.league?.id ?? leagueId;
-    const ownDivisionId = tr.team?.division?.id ?? divId;
-    const divMap = LEAGUE_DIV_IDS[ownLeagueId] ?? {};
-    const divisionRecords = tr.records?.divisionRecords || [];
-    const leagueRecords = tr.records?.leagueRecords || [];
-
-    const getDivRecord = (id) => divisionRecords.find((d) => d.division?.id === id);
-    const east = getDivRecord(divMap.east);
-    const central = getDivRecord(divMap.central);
-    const west = getDivRecord(divMap.west);
-    const intr = leagueRecords.find((l) => l.league?.id === divMap.intrLeague);
-
-    return {
-      teamId: tr.team?.id,
-      team: tr.team,
-      teamName: tr.team?.name,
-      wins: tr.wins ?? 0,
-      losses: tr.losses ?? 0,
-      pct: tr.leagueRecord?.pct ?? '.000',
-      gb: tr.divisionGamesBack ?? '-',
-      lgGb: tr.leagueGamesBack ?? '-',
-      wcGb: tr.wildCardGamesBack ?? '-',
-      home: home ? fmtWL(home.wins, home.losses) : '—',
-      away: away ? fmtWL(away.wins, away.losses) : '—',
-      lastTen: lastTen ? fmtWL(lastTen.wins, lastTen.losses) : '—',
-      oneRun: oneRun ? fmtWL(oneRun.wins, oneRun.losses) : '—',
-      extraInning: extraInning ? fmtWL(extraInning.wins, extraInning.losses) : '—',
-      runsScored: tr.runsScored ?? null,
-      runsAllowed: tr.runsAllowed ?? null,
-      streak: tr.streak?.streakCode ?? '-',
-      runDiff: tr.runDifferential ?? 0,
-      divisionRank: parseInt(tr.divisionRank ?? '99', 10),
-      leagueRank: parseInt(tr.leagueRank ?? '99', 10),
-      sportRank: parseInt(tr.sportRank ?? '99', 10),
-      wildCardRank: parseInt(tr.wildCardRank ?? '99', 10),
-      gamesPlayed: tr.gamesPlayed ?? 0,
-      divisionChamp: tr.divisionChamp ?? false,
-      clinched: tr.clinched ?? false,
-      clinchIndicator: resolveClinchIndicator(tr),
-      wildCard: tr.wildCard ?? false,
-      leagueId: ownLeagueId,
-      divId: ownDivisionId,
-      vsEast: east ? fmtWL(east.wins, east.losses) : '—',
-      vsCentral: central ? fmtWL(central.wins, central.losses) : '—',
-      vsWest: west ? fmtWL(west.wins, west.losses) : '—',
-      vsIntr: intr ? fmtWL(intr.wins, intr.losses) : '—',
-      vsRhp: vsRight ? fmtWL(vsRight.wins, vsRight.losses) : '—',
-      vsLhp: vsLeft ? fmtWL(vsLeft.wins, vsLeft.losses) : '—',
-    };
-  };
-
-  const parseStandings = useCallback((records) => {
-    if (!records) return { divisions: [], wildCardGroups: [] };
-    const divisions = {};
-    const wildCardGroups = {};
-
-    records.forEach((record) => {
-      const firstTeam = record.teamRecords?.[0]?.team;
-      const leagueId = record.league?.id ?? firstTeam?.league?.id;
-      const leagueName = record.league?.name ?? firstTeam?.league?.name ?? 'League';
-      const divId = record.division?.id ?? firstTeam?.division?.id ?? `league-${leagueId ?? 'unknown'}`;
-      const divName = record.division?.name ?? firstTeam?.division?.name ?? leagueName;
-
-      if (record.standingsType === 'wildCard') {
-        const key = leagueId ?? 'league';
-        if (!wildCardGroups[key]) wildCardGroups[key] = { leagueId, name: leagueName, teams: [] };
-        (record.teamRecords || []).forEach((tr) => {
-          wildCardGroups[key].teams.push(buildTeamRow(tr, { leagueId, divId }));
-        });
-        return;
-      }
-
-      if (!divId || leagueId == null) return;
-
-      if (!divisions[divId]) {
-        divisions[divId] = {
-          divId,
-          name: divisionShortName(divId, divName),
-          leagueId,
-          leagueLabel: leagueName,
-          teams: [],
-        };
-      }
-
-      (record.teamRecords || []).forEach((tr) => {
-        divisions[divId].teams.push(buildTeamRow(tr, { leagueId, divId }));
-      });
-    });
-
-    Object.values(divisions).forEach((div) => {
-      div.teams.sort((a, b) => a.divisionRank - b.divisionRank);
-    });
-
-    Object.values(wildCardGroups).forEach((group) => {
-      group.teams.sort((a, b) => (a.wildCardRank ?? 99) - (b.wildCardRank ?? 99));
-    });
-
-    return {
-      divisions: Object.values(divisions),
-      wildCardGroups: Object.values(wildCardGroups),
-    };
-  }, []);
-
   const parsed = useMemo(
     () => (standingsData?.records ? parseStandings(standingsData.records) : null),
-    [parseStandings, standingsData],
+    [standingsData],
   );
 
   const handleSort = (col) => {
@@ -520,7 +274,7 @@ export default function Standings() {
     const active = sortCol === col;
     return (
       <th
-        className={`${statHead(`cursor-pointer select-none hover:text-slate-300 transition-colors ${active ? 'text-accent-400' : 'text-slate-500'}`)} ${className}`}
+        className={`${statHead(`cursor-pointer select-none bg-[#0b1220] uppercase tracking-wider transition-colors ${active ? 'text-accent-400' : 'text-slate-400 hover:text-slate-200'}`, { align: 'text-center' })} ${className}`}
         onClick={() => handleSort(col)}
       >
         {label}{active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -528,8 +282,8 @@ export default function Standings() {
     );
   };
 
-  const renderTeamCell = (team) => (
-    <td className={stickyTeamCell('bg-slate-900', { shadow: false })}>
+  const renderTeamCell = (team, { rowBg = 'bg-slate-900', teamColClass = STANDINGS_TEAM_COL, stickyShadow = false, className = '' } = {}) => (
+    <td className={`${stickyTeamCell(rowBg, { shadow: stickyShadow, widthClass: teamColClass })} border-r border-slate-700/70 !px-3 sm:!px-4 ${className}`}>
       <button
         type="button"
         className="text-left hover:opacity-90 transition-opacity"
@@ -538,7 +292,7 @@ export default function Standings() {
           navigate(`/team/${team.teamId}${seasonQuery}`);
         }}
       >
-        <span className="inline-flex items-center gap-0.5 min-w-0">
+        <span className="inline-flex items-center gap-1 min-w-0">
           {team.clinchIndicator && (
             <span
               className="flex-shrink-0 text-[11px] font-bold text-accent-400 sm:text-xs"
@@ -552,9 +306,9 @@ export default function Standings() {
             teamId={team.teamId}
             teamName={team.teamName}
             hidePlaceholderAbbr={selectedLeague.value !== 'mlb'}
-            size="lg"
-            abbrClassName="text-[11px] font-semibold"
-            nameClassName="text-sm font-semibold"
+            size="xl"
+            abbrClassName="text-[13px] font-bold text-white"
+            nameClassName="text-sm font-semibold text-white"
           />
         </span>
       </button>
@@ -566,6 +320,11 @@ export default function Standings() {
       case 'gb':
       case 'wcGb':
         return formatGamesBack(team[col.key]);
+      case 'elimNumber':
+      case 'wcElimNumber': {
+        const label = formatElimNumber(col.key === 'wcElimNumber' ? team.wcElimNumber : team.elimNumber);
+        return label === 'E' ? <span className="text-slate-500">E</span> : label;
+      }
       case 'streak':
         return <StreakBadge streak={team.streak} />;
       case 'runDiff':
@@ -574,130 +333,145 @@ export default function Standings() {
       case 'runsAllowed':
         return team[col.key] ?? '—';
       case 'wins':
-        return <span className="font-semibold text-slate-100">{team.wins}</span>;
+        return <span className="font-semibold text-white">{team.wins}</span>;
       case 'losses':
-        return <span className="text-slate-400">{team.losses}</span>;
+        return <span className="text-slate-300">{team.losses}</span>;
       case 'pct':
-        return <span className="text-slate-300">{team.pct}</span>;
+        return <span className="text-slate-200">{team.pct}</span>;
       default:
         return team[col.key] ?? '—';
     }
   };
 
+  const standingsColumns = useMemo(() => resolveStandingsColumns(columnPrefs), [columnPrefs]);
   const COLUMN_SETS = {
-    standings: [
-      { key: 'wins', label: 'W' },
-      { key: 'losses', label: 'L' },
-      { key: 'pct', label: 'PCT' },
-      { key: 'gb', label: 'GB' },
-      { key: 'runsScored', label: 'RS' },
-      { key: 'runsAllowed', label: 'RA' },
-      { key: 'runDiff', label: 'DIFF' },
-      { key: 'streak', label: 'Strk' },
-      { key: 'lastTen', label: 'L10' },
-    ],
-    wildcard: [
-      { key: 'wins', label: 'W' },
-      { key: 'losses', label: 'L' },
-      { key: 'pct', label: 'PCT' },
-      { key: 'wcGb', label: 'WCGB' },
-      { key: 'runsScored', label: 'RS' },
-      { key: 'runsAllowed', label: 'RA' },
-      { key: 'runDiff', label: 'DIFF' },
-      { key: 'streak', label: 'Strk' },
-      { key: 'lastTen', label: 'L10' },
-    ],
-    expanded: [
-      { key: 'wins', label: 'W' },
-      { key: 'losses', label: 'L' },
-      { key: 'pct', label: 'PCT' },
-      { key: 'gb', label: 'GB' },
-      { key: 'home', label: 'Home', className: 'hidden sm:table-cell' },
-      { key: 'away', label: 'Away', className: 'hidden sm:table-cell' },
-      { key: 'runsScored', label: 'RS' },
-      { key: 'runsAllowed', label: 'RA' },
-      { key: 'runDiff', label: 'DIFF' },
-      { key: 'oneRun', label: '1-RUN' },
-      { key: 'extraInning', label: 'XTRA' },
-      { key: 'streak', label: 'Strk' },
-      { key: 'lastTen', label: 'L10' },
-    ],
-    vsdivision: [
-      { key: 'vsEast', label: 'EAST' },
-      { key: 'vsCentral', label: 'CENT' },
-      { key: 'vsWest', label: 'WEST' },
-      { key: 'vsIntr', label: 'INTR' },
-      { key: 'vsRhp', label: 'RHP' },
-      { key: 'vsLhp', label: 'LHP' },
-    ],
+    standings: standingsColumns,
+    wildcard: WILDCARD_COLUMNS,
+    expanded: EXPANDED_COLUMNS,
+    vsdivision: VS_DIVISION_COLUMNS,
   };
 
-  const renderTable = (title, teams, { highlightLeader = false } = {}) => {
+  const divisionColumnLabel = (div) => {
+    const league = leagueKeyFromName(div.leagueLabel);
+    const short = String(div.name || '').toUpperCase();
+    if (league && /EAST|CENTRAL|WEST/.test(short)) return `${league} ${short}`;
+    return short || 'DIVISION';
+  };
+
+  const columnEdgeClass = (col, index) => {
+    const edges = [];
+    if (index === 0) edges.push('border-l border-slate-700/70');
+    if (col.grouped) edges.push('border-l border-slate-700/70');
+    return edges.join(' ');
+  };
+
+  const renderTable = (title, teams, { highlightLeader = false, embedded = false } = {}) => {
     const columns = COLUMN_SETS[activeTab] ?? COLUMN_SETS.standings;
-    const tableMinWidthClass = activeTab === 'expanded' ? 'min-w-[760px] sm:min-w-[980px]' : '';
-    return (
-      <div key={title} className="bg-slate-900 border border-slate-800/80 rounded-2xl overflow-hidden">
-        <div className="px-4 sm:px-5 py-2.5 border-b border-slate-800/80">
-          <h2 className="font-semibold text-sm sm:text-base text-slate-200">
-            <LeagueTitle title={title} />
-          </h2>
-        </div>
-        <div className={TABLE_SCROLL}>
-          <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${TABLE_LAYOUT_STANDINGS} ${tableMinWidthClass}`}>
-            <colgroup>
-              <col className={TABLE_TEAM_COL_CLASS} />
-              {columns.map((col) => (
-                <col key={col.key} className={col.className ?? undefined} />
+    const isScrollTable = activeTab === 'wildcard' || activeTab === 'expanded' || columns.length > 7;
+    const teamColClass = isScrollTable ? STANDINGS_TEAM_COL_SCROLL : STANDINGS_TEAM_COL;
+    const tableMinWidthClass = isScrollTable
+      ? (columns.length >= 12 ? 'min-w-[1080px]' : 'min-w-[760px]')
+      : '';
+    const tableLayoutClass = isScrollTable ? 'w-max min-w-full' : 'table-fixed w-full';
+    const wildcardCutoffIndex = activeTab === 'wildcard' && sortCol === 'wcGb' && sortDir === 'asc'
+      ? wildCardCutoffIndex(teams, season)
+      : -1;
+    const statWidthClass = (col) => {
+      if (!isScrollTable) return col.className ?? '';
+      return `${WIDE_STAT_KEYS.has(col.key) ? 'min-w-[3.35rem]' : 'min-w-[2.55rem]'} ${col.className ?? ''}`;
+    };
+    const table = (
+      <div className={embedded ? '' : TABLE_SCROLL}>
+        <table className={`${TABLE_BASE} ${TABLE_TEXT_CLASS} ${tableLayoutClass} ${tableMinWidthClass}`}>
+          <colgroup>
+            <col className={teamColClass} />
+            {columns.map((col) => (
+              <col key={col.key} className={statWidthClass(col) || undefined} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="border-b border-slate-700/80">
+              <th className={`${stickyTeamHead('bg-[#0b1220]', { shadow: isScrollTable, widthClass: teamColClass })} border-r border-b border-slate-700/70 !px-3 py-2.5 text-left text-[13px] font-bold uppercase tracking-[0.08em] text-white sm:!px-4`}>
+                {title}
+              </th>
+              {columns.map((col, index) => (
+                <SortTh
+                  key={col.key}
+                  col={col.key}
+                  label={col.label}
+                  className={`${statWidthClass(col)} ${columnEdgeClass(col, index)} py-2.5`}
+                />
               ))}
-            </colgroup>
-            <thead>
-              <tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800/80">
-                <th className={`${stickyTeamHead('bg-slate-900', { shadow: false })} font-semibold text-slate-500`}>
-                  Team
-                </th>
-                {columns.map((col) => (
-                  <SortTh key={col.key} col={col.key} label={col.label} className={col.className ?? ''} />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((team, i) => (
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map((team, i) => {
+              const isLeader = i === 0 && highlightLeader;
+              const cutoffCellClass = i === wildcardCutoffIndex ? 'border-b-2 !border-b-slate-600' : '';
+              const rowBg = isLeader ? 'bg-slate-800' : 'bg-slate-900';
+              return (
                 <tr
                   key={team.teamId}
                   className={[
-                    'group border-b border-slate-800/30 last:border-b-0 transition-colors hover:bg-slate-800/25',
-                    i === 0 && highlightLeader ? 'bg-accent-500/[0.05]' : '',
+                    'group border-b border-slate-800/50 last:border-b-0 transition-colors hover:bg-slate-800/40',
+                    isLeader ? 'bg-slate-800' : '',
                   ].join(' ')}
                 >
-                  {renderTeamCell(team)}
-                  {columns.map((col) => (
+                  {renderTeamCell(team, { rowBg, teamColClass, stickyShadow: isScrollTable, className: cutoffCellClass })}
+                  {columns.map((col, index) => (
                     <td
                       key={col.key}
-                      className={`${statCell('text-slate-300')} ${col.className ?? ''}`}
+                      className={`${statCell('text-slate-200 py-2.5', { align: 'text-center' })} ${statWidthClass(col)} ${columnEdgeClass(col, index)} ${cutoffCellClass}`}
                     >
                       {renderCell(team, col)}
                     </td>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+
+    if (embedded) return <div key={title}>{table}</div>;
+
+    return (
+      <div key={title} className="overflow-hidden border-y border-slate-800 bg-slate-900 sm:rounded-2xl sm:border">
+        {table}
       </div>
     );
   };
 
+  const renderLeaguePanel = (group) => (
+    <section key={group.name} className="space-y-3">
+      <LeagueTitle title={group.name} variant="banner" className="px-4 sm:px-1" />
+      <div className="overflow-hidden border-y border-slate-800 bg-slate-900 sm:rounded-2xl sm:border">
+        <div className={TABLE_SCROLL}>
+          {group.divisions.map((div) => renderTable(
+            divisionColumnLabel(div),
+            div.teams,
+            { highlightLeader: true, embedded: true },
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+
   const grouped = !isLoading && !error && parsed ? getGroupedData() : null;
 
-  const renderGlossary = (items) => (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-4 pt-4 border-t border-slate-800/60">
-      {items.map(({ key, text }) => (
-        <span key={key}>
-          <span className="text-slate-400 font-semibold">{key}</span>: {text}
-        </span>
-      ))}
-    </div>
-  );
+  const renderGlossary = (items) => {
+    if (!items?.length) return null;
+    return (
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-4 pt-4 border-t border-slate-800/60">
+        {items.map(({ key, text }) => (
+          <span key={key}>
+            <span className="text-slate-400 font-semibold">{key}</span>: {text}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-7xl mx-auto sm:px-6 py-0 sm:py-8 max-w-3xl">
@@ -737,7 +511,17 @@ export default function Standings() {
             />
           </div>
         )}
-        <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} buttonClassName="min-w-[100px]" />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTimelineOpen(true)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-200 transition-colors hover:border-accent-400/50 hover:text-white"
+          >
+            <i className="fa-solid fa-clock-rotate-left text-[11px] text-accent-400" aria-hidden />
+            Timeline
+          </button>
+          <Select value={season} onChange={setSeason} options={SEASON_OPTIONS} buttonClassName="min-w-[100px]" />
+        </div>
       </div>
 
       {isLoading && (
@@ -753,29 +537,41 @@ export default function Standings() {
       )}
 
       {grouped?.layout === 'league-groups' && (
-        <div className="space-y-5">
-          {grouped.groups.map((g) => renderTable(g.name, g.teams))}
+        <div className="space-y-8">
+          {grouped.groups.map((g) => (
+            <section key={g.name} className="space-y-3">
+              <LeagueTitle title={g.name} variant="banner" className="px-4 sm:px-1" />
+              {renderTable('Team', g.teams)}
+            </section>
+          ))}
         </div>
       )}
 
       {grouped?.layout === 'single' && renderTable(grouped.title, grouped.teams)}
 
       {grouped?.layout === 'divisions' && (
-        <div className="space-y-5">
-          {grouped.groups.map((group, index) => (
-            <div key={group.name} className={`${index > 0 ? 'border-t border-slate-700/60 pt-5' : ''} space-y-4`}>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
-                <LeagueTitle title={group.name} />
-              </div>
-              {group.divisions.map((div) => renderTable(div.name, div.teams, { highlightLeader: true }))}
-            </div>
-          ))}
+        <div className="space-y-8">
+          {grouped.groups.map((group) => renderLeaguePanel(group))}
         </div>
       )}
 
       {!isLoading && !error && grouped?.layout === 'league-groups' && grouped.groups.every((g) => !g.teams.length) && (
         <div className="border border-dashed border-slate-700 rounded-3xl p-12 text-center text-slate-500">
           No standings data available for this selection.
+        </div>
+      )}
+
+      {activeTab === 'standings' && !isLoading && !error && (
+        <div className="flex justify-center mt-4 px-4 sm:px-0">
+          <button
+            type="button"
+            onClick={() => setColumnSettingsOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:border-slate-500 hover:text-white"
+            aria-label="Edit standings columns"
+          >
+            <Settings size={13} />
+            Columns
+          </button>
         </div>
       )}
 
@@ -790,9 +586,25 @@ export default function Standings() {
           <span className="text-slate-600 italic">Click column headers to sort</span>
         </div>
 
-        {activeTab === 'expanded' && renderGlossary(EXPANDED_GLOSSARY)}
-        {activeTab === 'vsdivision' && renderGlossary(VS_DIV_GLOSSARY)}
+        {renderGlossary(glossaryForColumns(COLUMN_SETS[activeTab] ?? []))}
       </div>
+
+      <StandingsColumnSettings
+        open={columnSettingsOpen}
+        onClose={() => setColumnSettingsOpen(false)}
+        prefs={columnPrefs}
+        onChange={setColumnPrefs}
+      />
+
+      <StandingsTimelineSheet
+        open={timelineOpen}
+        onClose={() => setTimelineOpen(false)}
+        season={season}
+        leagueLevel={standingsLeague}
+        leagueParams={leagueParams}
+        leagueShortLabel={selectedLeague.shortLabel}
+      />
     </div>
   );
 }
+

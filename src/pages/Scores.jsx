@@ -536,7 +536,7 @@ export default function Scores() {
     const request = (async () => {
       try {
         const res = await fetch(
-          `https://statsapi.mlb.com/api/v1/schedule?${selectedLeague.sportQuery}&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore,broadcasts(all)`,
+          `https://statsapi.mlb.com/api/v1/schedule?${selectedLeague.sportQuery}&date=${dateStr}&hydrate=team(record),linescore,probablePitcher,boxscore,broadcasts(all),decisions`,
         );
         if (!res.ok) throw new Error(`Schedule ${res.status}`);
         const data = await res.json();
@@ -903,7 +903,7 @@ export default function Scores() {
     const ls = game.linescore;
     if (!ls?.innings?.length) {
       return (
-        <div className="rounded-xl border border-slate-800 bg-slate-950/30 px-3 py-3 text-xs text-slate-500">
+        <div className="px-1 py-2 text-xs text-slate-500">
           Line score will appear when game data is available.
         </div>
       );
@@ -932,15 +932,15 @@ export default function Scores() {
     const rowClass = 'grid items-center gap-1';
 
     return (
-      <div className="overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/25 px-2 py-3 sm:px-3">
-        <div className="w-full space-y-2 font-mono text-[11px] tabular-nums sm:text-xs">
-          <div className={`${rowClass} text-center text-[10px] font-bold text-slate-500 sm:text-xs`} style={lineGridStyle}>
+      <div className="px-0 pt-1">
+        <div className="w-full space-y-1.5 font-mono text-[11px] tabular-nums sm:text-xs">
+          <div className={`${rowClass} text-center text-[10px] font-semibold text-slate-500 sm:text-xs`} style={lineGridStyle}>
             <span />
             {inningNums.map((num) => <span key={num}>{num}</span>)}
             <span />
-            <span className="text-slate-300">R</span>
-            <span className="text-slate-300">H</span>
-            <span className="text-slate-300">E</span>
+            <span className="text-slate-400">R</span>
+            <span className="text-slate-400">H</span>
+            <span className="text-slate-400">E</span>
           </div>
           {[
             { side: 'away', team: away.team, score: awayScore },
@@ -960,12 +960,33 @@ export default function Scores() {
     );
   };
 
+  const renderCardDecisions = (game) => {
+    const winner = game.decisions?.winner;
+    const loser = game.decisions?.loser;
+    if (!winner && !loser) return null;
+    const item = (label, person) => {
+      if (!person) return <span />;
+      return (
+        <span className="min-w-0 truncate">
+          <span className="text-slate-500">{label}: </span>
+          <span className="font-semibold text-blue-400">{compactPlayerName(person)}</span>
+        </span>
+      );
+    };
+    return (
+      <div className="flex items-center justify-between gap-4 pt-3 text-[13px]">
+        {item('W', winner)}
+        {item('L', loser)}
+      </div>
+    );
+  };
+
   const renderExpandedCardActions = (game, date) => {
-    const linkBase = 'flex-1 rounded-xl px-3 py-2 text-center text-sm font-black text-blue-400 transition-colors hover:bg-slate-800/70 hover:text-blue-300';
+    const linkBase = 'flex-1 py-3 text-center text-[15px] font-semibold text-blue-400 transition-colors hover:text-blue-300';
     const gameState = buildGameState(date);
 
     return (
-      <div className="grid grid-cols-3 gap-2 border-t border-slate-800 pt-3">
+      <div className="grid grid-cols-3 border-t border-slate-800/70 mt-1">
         <button
           type="button"
           onClick={(event) => {
@@ -1258,8 +1279,15 @@ export default function Scores() {
       );
     }
 
+    const cardTeamName = (team) => team?.teamName || team?.shortName || team?.name || '';
+    const cardTeamRecord = (side) => {
+      const rec = side?.leagueRecord || side?.team?.record?.leagueRecord || side?.team?.record;
+      if (rec?.wins == null || rec?.losses == null) return '';
+      return `${rec.wins}-${rec.losses}`;
+    };
+
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-2.5">
         {sortedGames.map((game) => {
           const { isLive, isFinal, isDelayed, isPostponed } = getStatusInfo(game);
           const awayScore = game.teams.away.score ?? 0;
@@ -1282,19 +1310,24 @@ export default function Scores() {
             ? `${game.linescore.balls ?? 0}-${game.linescore.strikes ?? 0}`
             : null;
           const liveOuts = Number(game.linescore?.outs ?? 0);
+          const outlinedStatus = (label, tone) => (
+            <span className={`inline-flex items-center rounded-md border px-2 py-[3px] text-[11px] font-semibold uppercase tracking-wide ${tone}`}>
+              {label}
+            </span>
+          );
           const statusBadge = isPostponed ? (
-            <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-400 rounded-lg font-bold">PPD</span>
+            outlinedStatus('PPD', 'border-orange-400/50 text-orange-300')
           ) : isDelayed && !isLive ? (
-            <div className="flex flex-col items-start">
-              <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
-              {game.gameDate && <span className="text-[9px] text-slate-600 font-mono mt-0.5">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+            <div className="flex flex-col items-start gap-0.5">
+              {outlinedStatus('Delayed', 'border-yellow-400/50 text-yellow-300')}
+              {game.gameDate && <span className="text-[10px] text-slate-500 font-mono">{new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
             </div>
           ) : isDelayed ? (
-            <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-lg font-bold">DELAYED</span>
+            outlinedStatus('Delayed', 'border-yellow-400/50 text-yellow-300')
           ) : isFinal ? (
-            <span className="text-xs px-2 py-0.5 bg-slate-700/50 text-slate-400 rounded-lg">{formatFinalStatus(game.linescore)}</span>
+            outlinedStatus(formatFinalStatus(game.linescore), 'border-slate-500/80 text-slate-200')
           ) : !isLive ? (
-            <span className="text-xs text-slate-500">
+            <span className="text-[13px] text-slate-400">
               {game.gameDate
                 ? new Date(game.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                 : '—'}
@@ -1319,27 +1352,22 @@ export default function Scores() {
               data-watch-division-hurt={divisionHurt || undefined}
               style={divisionHurtStyle}
               className={[
-                'relative overflow-hidden bg-slate-900 border rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.985]',
+                'relative overflow-hidden rounded-none bg-slate-900 px-4 py-3.5 cursor-pointer',
                 rootingInterest.hasAny ? 'scoreboard-watch-game' : '',
-                isExpanded
-                  ? `border-accent-500/50 shadow-lg shadow-black/20`
-                  : rootingInterest.hasAny
-                    ? 'border-transparent hover:-translate-y-0.5'
-                    : 'border-slate-800 hover:border-slate-600 hover:-translate-y-0.5',
               ].join(' ')}
             >
               {rootingInterest.hasAny && <span className="scoreboard-watch-atmosphere" aria-hidden />}
-              <div className="relative z-[1] flex items-center justify-between mb-2">
+              <div className="relative z-[1] flex items-center justify-between mb-3">
                 <div className="min-w-0">
                   {isLive ? (
-                    <span className="inline-flex items-center gap-x-1 text-xs px-2 py-0.5 bg-red-500/10 text-red-400 rounded-lg font-bold">
-                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> LIVE
+                    <span className="inline-flex items-center gap-x-1.5 rounded-md border border-red-400/60 px-2 py-[3px] text-[11px] font-semibold uppercase tracking-wide text-red-400">
+                      <span className="w-1.5 h-1.5 bg-red-400 rounded-full live-pulse" /> Live
                     </span>
                   ) : (
                     statusBadge
                   )}
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <NationalBroadcastIcons game={game} compact />
                   {noHitAlerts?.map((a) => (
                     <span key={a.side} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
@@ -1360,14 +1388,8 @@ export default function Scores() {
                           {liveOuts} OUT{liveOuts === 1 ? '' : 'S'}
                         </span>
                       </div>
-                    ) : (
-                      <span className="text-xs text-red-400 font-bold">LIVE</span>
-                    )
+                    ) : null
                   ) : null}
-                  <i
-                    className={`fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                    aria-hidden
-                  />
                 </div>
               </div>
               {rootingInterest.hasAny && (
@@ -1375,8 +1397,8 @@ export default function Scores() {
                   <RootingGameCallout game={game} rootingInterest={rootingInterest} />
                 </div>
               )}
-              <div className="relative z-[1] flex items-center justify-between mb-2">
-                <div className="flex items-center gap-x-2.5">
+              <div className="relative z-[1] flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-x-3 min-w-0">
                   <RootingTeamLogo
                     team={game.teams.away.team}
                     interest={rootingInterest.away}
@@ -1385,12 +1407,17 @@ export default function Scores() {
                     fireworks={watchOutcome === 'good' && rootingInterest.cheerSide === 'away'}
                     cheerRace={priorityInterest?.raceType}
                     showBoo={(rootingVisualPending || finalWildcardHurt) && rootingInterest.away?.isPrimary}
-                    className="w-8 h-8"
+                    className="w-10 h-10"
                   />
-                  <div>
-                    <div className={`font-semibold text-sm ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>{game.teams.away.team.name}</div>
-                    <div className="text-[10px] text-slate-600 font-mono">
-                      {game.teams.away.team.record ? `${game.teams.away.team.record.wins}-${game.teams.away.team.record.losses}` : ''}
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className={`truncate text-[17px] font-bold leading-tight ${awayWin || !isFinal ? 'text-white' : 'text-slate-300'}`}>
+                        {cardTeamName(game.teams.away.team)}
+                      </span>
+                      <span className="flex-shrink-0 text-[13px] tabular-nums text-slate-500">
+                        {cardTeamRecord(game.teams.away)}
+                      </span>
+                      {awayWin && <span className="flex-shrink-0 text-[11px] text-slate-400">★</span>}
                     </div>
                     <RootingInterestBadge
                       interest={rootingInterest.away}
@@ -1398,10 +1425,12 @@ export default function Scores() {
                     />
                   </div>
                 </div>
-                <div className={`font-display text-2xl tabular-nums ${awayWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.away.score ?? ''}</div>
+                <div className={`font-display text-[2rem] leading-none tabular-nums flex-shrink-0 pl-3 ${awayWin || !isFinal ? 'text-white' : 'text-slate-300'}`}>
+                  {(isLive || isFinal) ? (game.teams.away.score ?? 0) : ''}
+                </div>
               </div>
               <div className="relative z-[1] flex items-center justify-between">
-                <div className="flex items-center gap-x-2.5">
+                <div className="flex items-center gap-x-3 min-w-0">
                   <RootingTeamLogo
                     team={game.teams.home.team}
                     interest={rootingInterest.home}
@@ -1410,12 +1439,17 @@ export default function Scores() {
                     fireworks={watchOutcome === 'good' && rootingInterest.cheerSide === 'home'}
                     cheerRace={priorityInterest?.raceType}
                     showBoo={(rootingVisualPending || finalWildcardHurt) && rootingInterest.home?.isPrimary}
-                    className="w-8 h-8"
+                    className="w-10 h-10"
                   />
-                  <div>
-                    <div className={`font-semibold text-sm ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-200'}`}>{game.teams.home.team.name}</div>
-                    <div className="text-[10px] text-slate-600 font-mono">
-                      {game.teams.home.team.record ? `${game.teams.home.team.record.wins}-${game.teams.home.team.record.losses}` : ''}
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className={`truncate text-[17px] font-bold leading-tight ${homeWin || !isFinal ? 'text-white' : 'text-slate-300'}`}>
+                        {cardTeamName(game.teams.home.team)}
+                      </span>
+                      <span className="flex-shrink-0 text-[13px] tabular-nums text-slate-500">
+                        {cardTeamRecord(game.teams.home)}
+                      </span>
+                      {homeWin && <span className="flex-shrink-0 text-[11px] text-slate-400">★</span>}
                     </div>
                     <RootingInterestBadge
                       interest={rootingInterest.home}
@@ -1423,18 +1457,25 @@ export default function Scores() {
                     />
                   </div>
                 </div>
-                <div className={`font-display text-2xl tabular-nums ${homeWin ? 'text-white' : isFinal ? 'text-slate-400' : 'text-slate-400'}`}>{game.teams.home.score ?? ''}</div>
+                <div className={`font-display text-[2rem] leading-none tabular-nums flex-shrink-0 pl-3 ${homeWin || !isFinal ? 'text-white' : 'text-slate-300'}`}>
+                  {(isLive || isFinal) ? (game.teams.home.score ?? 0) : ''}
+                </div>
               </div>
               {!isLive && !isFinal && (
-                <div className="relative z-[1] mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-600">
+                <div className="relative z-[1] mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
                   <span>{compactPlayerName(game.teams.away.probablePitcher)}</span>
-                  <span className="text-slate-700">vs</span>
+                  <span className="text-slate-600">vs</span>
                   <span>{compactPlayerName(game.teams.home.probablePitcher)}</span>
                 </div>
               )}
               {isExpanded && (
-                <div className="relative z-[1] mt-4 space-y-3" onClick={(event) => event.stopPropagation()}>
-                  {renderExpandedLinescore(game, { isFinal })}
+                <div className="relative z-[1] mt-1" onClick={(event) => event.stopPropagation()}>
+                  {isFinal && renderCardDecisions(game)}
+                  {game.linescore?.innings?.length ? (
+                    <div className="mt-3">
+                      {renderExpandedLinescore(game, { isFinal })}
+                    </div>
+                  ) : null}
                   {renderExpandedCardActions(game, date)}
                 </div>
               )}
